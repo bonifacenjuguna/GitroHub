@@ -53,8 +53,50 @@ async def handle_callback(update: Update, context):
     # ── Navigation ──────────────────────────────────────────────────────────
 
     if data == "home":
-        from handlers.core import cmd_start
-        await query.message.reply_text("🏠 Home")
+        from handlers.core import escape_md as _escape_md
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        session = get_active_session(telegram_id)
+        if not session:
+            oauth_url, _ = __import__('handlers.auth', fromlist=['generate_oauth_url']).generate_oauth_url(telegram_id)
+            await query.edit_message_text(
+                "👋 *Welcome to GitroHub\\!*\n\n"
+                "Your GitHub lives here now\\. Manage repos,\n"
+                "commit code, upload files, handle branches\n"
+                "\\& PRs — all without leaving Telegram\\.\n\n"
+                "Secure · Fast · Always in sync with GitHub\n\n"
+                "Tap below to connect your GitHub account 👇",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔗 Connect GitHub Account", url=oauth_url)
+                ]])
+            )
+        else:
+            username = session["github_username"]
+            active_repo = session.get("active_repo", "No active repo")
+            active_branch = session.get("active_branch", "main")
+            keyboard = [
+                [
+                    InlineKeyboardButton("📂 Projects", callback_data="projects"),
+                    InlineKeyboardButton("📦 All Repos", callback_data="repos"),
+                    InlineKeyboardButton("⬆️ Upload", callback_data="upload_menu"),
+                ],
+                [
+                    InlineKeyboardButton("⬇️ Download", callback_data="download_menu"),
+                    InlineKeyboardButton("🌿 Branches", callback_data="branches"),
+                    InlineKeyboardButton("📜 History", callback_data="log"),
+                ],
+                [
+                    InlineKeyboardButton("📊 Stats", callback_data="stats"),
+                    InlineKeyboardButton("👤 Accounts", callback_data="accounts"),
+                    InlineKeyboardButton("❓ Help", callback_data="help"),
+                ]
+            ]
+            await query.edit_message_text(
+                f"👋 *Welcome back, {_escape_md(username)}\\!*\n\n"
+                f"📁 `{_escape_md(active_repo)}` @ `{_escape_md(active_branch)}`",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
         return
 
     if data == "cancel":
@@ -78,6 +120,7 @@ async def handle_callback(update: Update, context):
     if data == "login_start":
         from handlers.auth import generate_oauth_url
         from database.db import set_state as _set_state
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
         oauth_url, state = generate_oauth_url(telegram_id)
         _set_state(telegram_id, "awaiting_oauth", {"state": state})
         await query.edit_message_text(
@@ -720,6 +763,32 @@ async def handle_callback(update: Update, context):
             "Repo deletion requires 3\\-step verification\\.\n"
             "All tokens encrypted with AES\\-256\\."
         ),
+        "help_download": (
+            "⬇️ *Download Commands*\n\n"
+            "/download — Download active repo as ZIP\n"
+            "Or use the Download button on any repo\n\n"
+            "You can also download by GitHub URL\\."
+        ),
+        "help_issues": (
+            "📝 *Issue Commands*\n\n"
+            "/issues — View open issues\n"
+            "Create, close and view issues\n"
+            "directly from Telegram\\."
+        ),
+        "help_releases": (
+            "🚀 *Release Commands*\n\n"
+            "/releases — View repo releases\n"
+            "Create and delete releases\n"
+            "directly from Telegram\\."
+        ),
+        "help_stats": (
+            "📊 *Stats Commands*\n\n"
+            "/stats — Repo statistics\n"
+            "/traffic — View repo traffic\n"
+            "/contributors — View contributors\n"
+            "/profile — Your GitHub profile\n"
+            "/whoami — Current account info"
+        ),
     }
 
     if data in help_sections:
@@ -784,7 +853,361 @@ async def handle_callback(update: Update, context):
         )
         return
 
+    # ── Help (callback) ──────────────────────────────────────────────────────
+
+    if data == "help":
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        keyboard = [
+            [
+                InlineKeyboardButton("📁 Repos", callback_data="help_repos"),
+                InlineKeyboardButton("📂 Files", callback_data="help_files"),
+                InlineKeyboardButton("⬆️ Upload", callback_data="help_upload"),
+            ],
+            [
+                InlineKeyboardButton("⬇️ Download", callback_data="help_download"),
+                InlineKeyboardButton("🌿 Branches", callback_data="help_branches"),
+                InlineKeyboardButton("📜 History", callback_data="help_history"),
+            ],
+            [
+                InlineKeyboardButton("📝 Issues", callback_data="help_issues"),
+                InlineKeyboardButton("🚀 Releases", callback_data="help_releases"),
+                InlineKeyboardButton("📊 Stats", callback_data="help_stats"),
+            ],
+            [
+                InlineKeyboardButton("👤 Accounts", callback_data="help_accounts"),
+                InlineKeyboardButton("⚙️ Settings", callback_data="help_settings"),
+                InlineKeyboardButton("🛡️ Safety", callback_data="help_safety"),
+            ],
+            [InlineKeyboardButton("🏠 Home", callback_data="home")]
+        ]
+        await query.edit_message_text(
+            "❓ *GitroHub — Help*\n\nSelect a category to see commands:",
+            parse_mode="MarkdownV2",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    # ── Stats (callback) ─────────────────────────────────────────────────────
+
+    if data == "stats":
+        session = get_active_session(telegram_id)
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        if not session or not session.get("active_repo"):
+            await query.edit_message_text(
+                "❌ No active repo\\. Use /use to set one\\.",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📦 Repos", callback_data="repos"),
+                    InlineKeyboardButton("🏠 Home", callback_data="home")
+                ]])
+            )
+            return
+        from handlers.extras import cmd_stats
+        # Create a fake update-like object using the callback message
+        class _FakeUpdate:
+            effective_user = update.effective_user
+            message = query.message
+        await cmd_stats(_FakeUpdate(), context)
+        return
+
+    # ── Log / History (callback) ──────────────────────────────────────────────
+
+    if data == "log":
+        session = get_active_session(telegram_id)
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        if not session or not session.get("active_repo"):
+            await query.edit_message_text(
+                "❌ No active repo\\. Use /use to set one\\.",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📦 Repos", callback_data="repos"),
+                    InlineKeyboardButton("🏠 Home", callback_data="home")
+                ]])
+            )
+            return
+        from handlers.history import show_log
+        await show_log(query.message, telegram_id)
+        return
+
+    # ── Branches (callback) ───────────────────────────────────────────────────
+
+    if data == "branches":
+        session = get_active_session(telegram_id)
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        if not session or not session.get("active_repo"):
+            await query.edit_message_text(
+                "❌ No active repo\\. Use /use to set one\\.",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📦 Repos", callback_data="repos"),
+                    InlineKeyboardButton("🏠 Home", callback_data="home")
+                ]])
+            )
+            return
+        from handlers.branches import show_branches
+        await show_branches(query.message, telegram_id)
+        return
+
+    # ── Issues (callback) ─────────────────────────────────────────────────────
+
+    if data == "issues":
+        session = get_active_session(telegram_id)
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        if not session or not session.get("active_repo"):
+            await query.edit_message_text(
+                "❌ No active repo\\. Use /use to set one\\.",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📦 Repos", callback_data="repos"),
+                    InlineKeyboardButton("🏠 Home", callback_data="home")
+                ]])
+            )
+            return
+        from handlers.extras import cmd_issues
+        class _FakeUpdate:
+            effective_user = update.effective_user
+            message = query.message
+        await cmd_issues(_FakeUpdate(), context)
+        return
+
+    # ── Releases (callback) ───────────────────────────────────────────────────
+
+    if data == "releases":
+        session = get_active_session(telegram_id)
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        if not session or not session.get("active_repo"):
+            await query.edit_message_text(
+                "❌ No active repo\\. Use /use to set one\\.",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📦 Repos", callback_data="repos"),
+                    InlineKeyboardButton("🏠 Home", callback_data="home")
+                ]])
+            )
+            return
+        from handlers.extras import cmd_releases
+        class _FakeUpdate:
+            effective_user = update.effective_user
+            message = query.message
+        await cmd_releases(_FakeUpdate(), context)
+        return
+
+    # ── Repo Settings (callback) ──────────────────────────────────────────────
+
+    if data == "repo_settings":
+        session = get_active_session(telegram_id)
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        if not session or not session.get("active_repo"):
+            await query.edit_message_text(
+                "❌ No active repo\\.",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🏠 Home", callback_data="home")
+                ]])
+            )
+            return
+        repo_full = session["active_repo"]
+        keyboard = [[
+            InlineKeyboardButton("🌍/🔒 Visibility",
+                callback_data=f"toggle_vis_{repo_full}"),
+            InlineKeyboardButton("🗑️ Delete Repo",
+                callback_data=f"delete_repo_confirm_{repo_full}"),
+        ], [
+            InlineKeyboardButton("🏠 Home", callback_data="home")
+        ]]
+        await query.edit_message_text(
+            f"⚙️ *Repo Settings*\n`{escape_md(repo_full)}`\n\n"
+            f"What would you like to do?",
+            parse_mode="MarkdownV2",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    # ── Search repos (callback) ───────────────────────────────────────────────
+
+    if data == "search_repos":
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        set_state(telegram_id, "awaiting_repo_search", {})
+        await query.edit_message_text(
+            "🔍 *Search Repos*\n\nType the repo name to search for:",
+            parse_mode="MarkdownV2",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ Cancel", callback_data="cancel")
+            ]])
+        )
+        return
+
+    # ── Confirm batch commit (callback) ───────────────────────────────────────
+
+    if data == "confirm_batch_commit":
+        state_info = get_state(telegram_id)
+        state_data = state_info.get("state_data", {})
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        await query.edit_message_text(
+            "💬 *Commit message?*",
+            parse_mode="MarkdownV2",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("✏️ Write", callback_data="commit_write"),
+                    InlineKeyboardButton("🤖 Auto-generate", callback_data="commit_auto"),
+                ],
+                [InlineKeyboardButton("❌ Cancel", callback_data="cancel")]
+            ])
+        )
+        return
+
+    # ── Download by URL (callback) ────────────────────────────────────────────
+
+    if data == "dl_by_url":
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        set_state(telegram_id, "awaiting_dl_url", {})
+        await query.edit_message_text(
+            "🔗 *Download by URL*\n\nSend a GitHub repo URL\\:\n"
+            "`https://github.com/user/repo`",
+            parse_mode="MarkdownV2",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("❌ Cancel", callback_data="cancel")
+            ]])
+        )
+        return
+
+    if data.startswith("dl_"):
+        repo_full = data[len("dl_"):]
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        from utils.github_helper import get_github_client
+        gh = get_github_client(telegram_id)
+        try:
+            await query.edit_message_text(
+                f"⬇️ *Preparing download…*\n`{escape_md(repo_full)}`",
+                parse_mode="MarkdownV2"
+            )
+            repo = gh.get_repo(repo_full)
+            branch = get_active_session(telegram_id).get("active_branch", repo.default_branch)
+            zip_url = f"https://github.com/{repo_full}/archive/refs/heads/{branch}.zip"
+            await query.edit_message_text(
+                f"⬇️ *Download ready\\!*\n\n"
+                f"Repo: `{escape_md(repo_full)}`\n"
+                f"Branch: `{escape_md(branch)}`\n\n"
+                f"Tap the button to download the ZIP\\.",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("⬇️ Download ZIP", url=zip_url),
+                ], [
+                    InlineKeyboardButton("🏠 Home", callback_data="home")
+                ]])
+            )
+        except Exception as e:
+            await query.edit_message_text(
+                f"❌ Error: {escape_md(str(e))}",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🏠 Home", callback_data="home")
+                ]])
+            )
+        return
+
     logger.info(f"Unhandled callback: {data}")
+
+
+async def do_batch_commit(query, telegram_id: int, commit_msg: str):
+    """Commit all files from a batch upload."""
+    from database.db import get_state, clear_state, get_active_session
+    from utils.github_helper import get_github_client
+    from handlers.core import escape_md
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+    import base64
+
+    state_info = get_state(telegram_id)
+    state_data = state_info.get("state_data", {})
+    session = get_active_session(telegram_id)
+    files = state_data.get("files", {})
+
+    if not session or not session.get("active_repo"):
+        await query.edit_message_text("❌ No active repo.")
+        return
+
+    gh = get_github_client(telegram_id)
+    repo = gh.get_repo(session["active_repo"])
+    branch = session.get("active_branch", "main")
+
+    committed = 0
+    errors = []
+    for path, content in files.items():
+        try:
+            try:
+                existing = repo.get_contents(path, ref=branch)
+                repo.update_file(path, commit_msg, content, existing.sha, branch=branch)
+            except Exception:
+                repo.create_file(path, commit_msg, content, branch=branch)
+            committed += 1
+        except Exception as e:
+            errors.append(f"{path}: {str(e)[:40]}")
+
+    clear_state(telegram_id)
+    msg = f"✅ *Committed {committed} file{'s' if committed != 1 else ''}\\!*\n"
+    if errors:
+        msg += f"\n⚠️ {len(errors)} error\\(s\\):\n"
+        for err in errors[:3]:
+            msg += f"• `{escape_md(err)}`\n"
+
+    await query.edit_message_text(
+        msg,
+        parse_mode="MarkdownV2",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("📂 Browse", callback_data="browse"),
+            InlineKeyboardButton("🏠 Home", callback_data="home")
+        ]])
+    )
+
+
+async def do_zip_commit(query, telegram_id: int, commit_msg: str):
+    """Commit all files from a ZIP upload."""
+    from database.db import get_state, clear_state, get_active_session
+    from utils.github_helper import get_github_client
+    from handlers.core import escape_md
+    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+
+    state_info = get_state(telegram_id)
+    state_data = state_info.get("state_data", {})
+    session = get_active_session(telegram_id)
+    files = state_data.get("files", {})
+
+    if not session or not session.get("active_repo"):
+        await query.edit_message_text("❌ No active repo.")
+        return
+
+    gh = get_github_client(telegram_id)
+    repo = gh.get_repo(session["active_repo"])
+    branch = session.get("active_branch", "main")
+
+    committed = 0
+    errors = []
+    for path, content in files.items():
+        try:
+            try:
+                existing = repo.get_contents(path, ref=branch)
+                repo.update_file(path, commit_msg, content, existing.sha, branch=branch)
+            except Exception:
+                repo.create_file(path, commit_msg, content, branch=branch)
+            committed += 1
+        except Exception as e:
+            errors.append(f"{path}: {str(e)[:40]}")
+
+    clear_state(telegram_id)
+    msg = f"✅ *ZIP committed — {committed} file{'s' if committed != 1 else ''}\\!*\n"
+    if errors:
+        msg += f"\n⚠️ {len(errors)} error\\(s\\):\n"
+        for err in errors[:3]:
+            msg += f"• `{escape_md(err)}`\n"
+
+    await query.edit_message_text(
+        msg,
+        parse_mode="MarkdownV2",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("📂 Browse", callback_data="browse"),
+            InlineKeyboardButton("🏠 Home", callback_data="home")
+        ]])
+    )
 
 
 async def handle_text_message(update: Update, context):
@@ -807,6 +1230,77 @@ async def handle_text_message(update: Update, context):
         from handlers.upload import do_commit_single
         set_state(telegram_id, "confirming_single_commit", state_data)
         await do_commit_single(update.message, telegram_id, text, context)
+        return
+
+    if state == "awaiting_repo_search":
+        clear_state(telegram_id)
+        from utils.github_helper import get_github_client
+        gh = get_github_client(telegram_id)
+        if not gh:
+            await update.message.reply_text("❌ Not logged in.")
+            return
+        try:
+            user = gh.get_user()
+            all_repos = list(user.get_repos())
+            matches = [r for r in all_repos if text.lower() in r.name.lower()][:10]
+            if not matches:
+                await update.message.reply_text(
+                    f"🔍 No repos matching `{escape_md(text)}`",
+                    parse_mode="MarkdownV2",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("📦 All Repos", callback_data="repos"),
+                        InlineKeyboardButton("🏠 Home", callback_data="home")
+                    ]])
+                )
+                return
+            keyboard = []
+            for r in matches:
+                keyboard.append([
+                    InlineKeyboardButton(
+                        f"{'🔒' if r.private else '🌍'} {r.name}",
+                        callback_data=f"open_repo_{r.full_name}"
+                    )
+                ])
+            keyboard.append([InlineKeyboardButton("🏠 Home", callback_data="home")])
+            await update.message.reply_text(
+                f"🔍 *Results for* `{escape_md(text)}`:",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error: {e}")
+        return
+
+    if state == "awaiting_dl_url":
+        clear_state(telegram_id)
+        import re
+        match = re.match(r"https?://github\.com/([^/]+/[^/\s]+)", text.strip())
+        if not match:
+            await update.message.reply_text(
+                "❌ Invalid GitHub URL\\.\nExpected: `https://github.com/user/repo`",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🏠 Home", callback_data="home")
+                ]])
+            )
+            return
+        repo_full = match.group(1).rstrip("/")
+        from utils.github_helper import get_github_client
+        gh = get_github_client(telegram_id)
+        try:
+            repo = gh.get_repo(repo_full)
+            zip_url = f"https://github.com/{repo_full}/archive/refs/heads/{repo.default_branch}.zip"
+            await update.message.reply_text(
+                f"⬇️ *Download ready\\!*\n`{escape_md(repo_full)}`",
+                parse_mode="MarkdownV2",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("⬇️ Download ZIP", url=zip_url),
+                ], [
+                    InlineKeyboardButton("🏠 Home", callback_data="home")
+                ]])
+            )
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error: {e}")
         return
 
     if state == "awaiting_search":

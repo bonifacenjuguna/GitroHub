@@ -10,7 +10,7 @@ from utils.github_helper import get_github_client, format_time_ago
 logger = logging.getLogger(__name__)
 
 ADMIN_ID = int(os.environ.get("TELEGRAM_ADMIN_ID", 0))
-BOT_VERSION = "1.0.0"
+BOT_VERSION = "1.2.0"
 BOT_RELEASE_DATE = "Apr 2026"
 
 ALL_COMMANDS = [
@@ -83,9 +83,12 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if not session:
         # First time — onboarding
+        from handlers.auth import generate_oauth_url
+        oauth_url, state = generate_oauth_url(telegram_id)
+        from database.db import set_state as _set_state
+        _set_state(telegram_id, "awaiting_oauth", {"state": state})
         keyboard = [[
-            InlineKeyboardButton("🔗 Connect GitHub Account",
-                                  callback_data="login_start")
+            InlineKeyboardButton("🔗 Connect GitHub Account", url=oauth_url)
         ]]
         await update.message.reply_text(
             "👋 *Welcome to GitroHub\\!*\n\n"
@@ -257,19 +260,24 @@ async def cmd_version(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Version: `{BOT_VERSION}`\n"
         f"Released: {BOT_RELEASE_DATE}\n\n"
         f"📋 *Changelog:*\n"
+        f"v1\\.2\\.0 — Bug\\-fix & polish release\n"
+        f"• Connect GitHub button is now a proper link\n"
+        f"• Home button now shows full dashboard\n"
+        f"• All inline buttons now respond correctly\n"
+        f"• Stats, log, branches, issues, releases\n"
+        f"  all respond from inline buttons\n"
+        f"• Help sections fully wired up\n"
+        f"• Download by URL added\n"
+        f"• Batch commit flow fully fixed\n\n"
+        f"v1\\.1\\.0 — Multi\\-account support\n"
         f"v1\\.0\\.0 — Initial release\n"
         f"• Full GitHub management\n"
-        f"• Multi\\-account support\n"
         f"• ZIP mirror \\& update modes\n"
         f"• Single \\& batch file upload\n"
         f"• Interactive browse with breadcrumbs\n"
-        f"• Inline button UI throughout\n"
         f"• Persistent encrypted sessions\n"
         f"• Commit history \\& rollback\n"
-        f"• Branch management\n"
-        f"• Releases \\& gists\n"
-        f"• Stats \\& profile\n"
-        f"• Personalization settings",
+        f"• Branch management",
         parse_mode="MarkdownV2",
         reply_markup=InlineKeyboardMarkup([[
             InlineKeyboardButton("🏠 Home", callback_data="home")
