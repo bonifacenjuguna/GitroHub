@@ -14,7 +14,12 @@ logger = logging.getLogger(__name__)
 
 GITHUB_CLIENT_ID = os.environ.get("GITHUB_CLIENT_ID", "")
 GITHUB_CLIENT_SECRET = os.environ.get("GITHUB_CLIENT_SECRET", "")
-GITHUB_REDIRECT_URI = os.environ.get("GITHUB_REDIRECT_URI", "")
+# Auto-build redirect URI using standard /auth/github/callback path
+_WEBHOOK_URL = os.environ.get("WEBHOOK_URL", "").rstrip("/")
+GITHUB_REDIRECT_URI = os.environ.get(
+    "GITHUB_REDIRECT_URI",
+    f"{_WEBHOOK_URL}/auth/github/callback" if _WEBHOOK_URL else ""
+)
 
 # Store pending OAuth states in memory (short-lived)
 pending_oauth: dict[str, dict] = {}

@@ -189,7 +189,7 @@ async def confirm_rollback(message, telegram_id: int, sha: str, sha_short: str):
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
 
-    except GinhubException as e:
+    except GithubException as e:
         await message.reply_text(get_error_message(e.status))
 
 

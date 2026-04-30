@@ -20,7 +20,7 @@
 2. Fill in:
    - **Application name:** GitroHub
    - **Homepage URL:** `https://your-app.railway.app`
-   - **Authorization callback URL:** `https://your-app.railway.app/callback`
+   - **Authorization callback URL:** `https://your-app.railway.app/auth/github/callback`
 3. Click **Register application**
 4. Copy your **Client ID** and **Client Secret**
 
@@ -57,7 +57,7 @@ TELEGRAM_BOT_TOKEN      = your_bot_token_from_botfather
 TELEGRAM_ADMIN_ID       = your_telegram_user_id
 GITHUB_CLIENT_ID        = your_github_oauth_client_id
 GITHUB_CLIENT_SECRET    = your_github_oauth_client_secret
-GITHUB_REDIRECT_URI     = https://your-app.railway.app/callback
+GITHUB_REDIRECT_URI     = https://your-app.railway.app/auth/github/callback
 WEBHOOK_URL             = https://your-app.railway.app
 AES_ENCRYPTION_KEY      = your_generated_32_byte_hex_key
 DATABASE_URL            = (Railway fills this automatically)

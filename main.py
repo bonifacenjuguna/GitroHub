@@ -76,8 +76,22 @@ async def handle_callback(update: Update, context):
     # ── Auth ─────────────────────────────────────────────────────────────────
 
     if data == "login_start":
-        from handlers.auth import cmd_login
-        await cmd_login(update, context)
+        from handlers.auth import generate_oauth_url
+        from database.db import set_state as _set_state
+        oauth_url, state = generate_oauth_url(telegram_id)
+        _set_state(telegram_id, "awaiting_oauth", {"state": state})
+        await query.edit_message_text(
+            "🔐 *Connect your GitHub account*\n\n"
+            "Tap the button below to authorize GitroHub on GitHub\\.\n"
+            "GitHub will ask for your confirmation — complete it there\\.\n\n"
+            "⏳ Waiting for GitHub approval\\.\\.\\.\.",
+            parse_mode="MarkdownV2",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔗 Connect GitHub Account", url=oauth_url),
+            ], [
+                InlineKeyboardButton("❌ Cancel", callback_data="cancel")
+            ]])
+        )
         return
 
     if data == "accounts":
@@ -953,9 +967,82 @@ async def main():
             await app.process_update(update)
             return web.Response(text="OK")
 
+        # ── OAuth callback handler — /auth/github/callback ────────────────
+        async def oauth_callback_handler(request):
+            """GitHub redirects here after user authorizes the app."""
+            from handlers.auth import handle_oauth_callback
+            code = request.rel_url.query.get("code")
+            state = request.rel_url.query.get("state")
+            error = request.rel_url.query.get("error")
+
+            if error:
+                logger.warning(f"OAuth error: {error}")
+                return web.Response(
+                    content_type="text/html",
+                    text="""
+                    <html><body style="background:#1a1a2e;color:#e0e0e0;
+                    font-family:sans-serif;text-align:center;padding:60px">
+                    <h2>❌ Authorization Failed</h2>
+                    <p>You cancelled or an error occurred.</p>
+                    <p>Go back to Telegram and try /login again.</p>
+                    </body></html>
+                    """
+                )
+
+            if not code or not state:
+                return web.Response(
+                    content_type="text/html",
+                    text="""
+                    <html><body style="background:#1a1a2e;color:#e0e0e0;
+                    font-family:sans-serif;text-align:center;padding:60px">
+                    <h2>⚠️ Invalid Request</h2>
+                    <p>Missing code or state parameter.</p>
+                    <p>Go back to Telegram and try /login again.</p>
+                    </body></html>
+                    """
+                )
+
+            success = await handle_oauth_callback(code, state, app.bot)
+
+            if success:
+                return web.Response(
+                    content_type="text/html",
+                    text="""
+                    <html><body style="background:#1a1a2e;color:#e0e0e0;
+                    font-family:sans-serif;text-align:center;padding:60px">
+                    <h2>✅ Connected!</h2>
+                    <p>Your GitHub account has been connected to GitroHub.</p>
+                    <p><strong>Go back to Telegram</strong> to continue. 🚀</p>
+                    <script>setTimeout(()=>window.close(),3000)</script>
+                    </body></html>
+                    """
+                )
+            else:
+                return web.Response(
+                    content_type="text/html",
+                    text="""
+                    <html><body style="background:#1a1a2e;color:#e0e0e0;
+                    font-family:sans-serif;text-align:center;padding:60px">
+                    <h2>❌ Connection Failed</h2>
+                    <p>Could not connect your GitHub account.</p>
+                    <p>Go back to Telegram and try /login again.</p>
+                    </body></html>
+                    """
+                )
+
         web_app = web.Application()
         web_app.router.add_post("/webhook", webhook_handler)
-        web_app.router.add_get("/", lambda r: web.Response(text="GitroHub Bot Running 🚀"))
+        # Primary OAuth callback — standard path
+        web_app.router.add_get("/auth/github/callback", oauth_callback_handler)
+        # Legacy fallback path (in case old URL is cached)
+        web_app.router.add_get("/callback", oauth_callback_handler)
+        web_app.router.add_get("/", lambda r: web.Response(
+            content_type="text/html",
+            text="<html><body style='background:#1a1a2e;color:#e0e0e0;"
+                 "font-family:sans-serif;text-align:center;padding:60px'>"
+                 "<h2>🤖 GitroHub Bot</h2><p>Running ✅</p>"
+                 "<p>Open Telegram to use the bot.</p></body></html>"
+        ))
 
         runner = web.AppRunner(web_app)
         await runner.setup()
@@ -963,9 +1050,10 @@ async def main():
         await site.start()
 
         logger.info(f"🚀 GitroHub Bot running on port {PORT}")
+        logger.info(f"✅ OAuth callback: {WEBHOOK_URL}/auth/github/callback")
         await asyncio.Event().wait()
     else:
-        # Local polling mode
+        # Local polling mode — use polling, no webhook needed
         logger.info("🔄 Running in polling mode (local)")
         await app.run_polling(allowed_updates=Update.ALL_TYPES)
 
