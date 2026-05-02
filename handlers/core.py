@@ -1,17 +1,18 @@
+"""Core handlers — GitroHub v1.3"""
+import logging
 import os
 import time
-import logging
-from datetime import datetime, timezone
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, BotCommand
+
+from telegram import BotCommand, InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import ContextTypes
-from database.db import get_active_session, get_all_sessions, get_settings
-from utils.github_helper import get_github_client, format_time_ago
+
+from database.db import get_active_session, get_settings
+from utils.github_helper import h
 
 logger = logging.getLogger(__name__)
 
 ADMIN_ID = int(os.environ.get("TELEGRAM_ADMIN_ID", 0))
-BOT_VERSION = "1.2.0"
-BOT_RELEASE_DATE = "Apr 2026"
+BOT_VERSION = "1.3.0"
 
 ALL_COMMANDS = [
     BotCommand("start", "Welcome & quick start"),
@@ -21,13 +22,13 @@ ALL_COMMANDS = [
     BotCommand("use", "Switch active repo"),
     BotCommand("upload", "Upload a single file"),
     BotCommand("batch", "Upload multiple files"),
-    BotCommand("mirror", "ZIP upload full mirror mode"),
-    BotCommand("update", "ZIP upload add and modify mode"),
+    BotCommand("mirror", "ZIP upload — full mirror mode"),
+    BotCommand("update", "ZIP upload — add and modify mode"),
     BotCommand("browse", "Browse repo files interactively"),
     BotCommand("search", "Search inside active repo"),
     BotCommand("read", "Read a file from repo"),
     BotCommand("edit", "Edit a file directly in chat"),
-    BotCommand("move", "Move a file to new path"),
+    BotCommand("move", "Move a file to a new path"),
     BotCommand("rename", "Rename a file"),
     BotCommand("delete", "Delete a file or folder"),
     BotCommand("download", "Download repo as ZIP"),
@@ -43,6 +44,7 @@ ALL_COMMANDS = [
     BotCommand("releases", "Manage repo releases"),
     BotCommand("gists", "Manage your gists"),
     BotCommand("star", "Star any GitHub repo"),
+    BotCommand("unstar", "Unstar a repo"),
     BotCommand("stars", "View your starred repos"),
     BotCommand("contributors", "View repo contributors"),
     BotCommand("traffic", "View repo traffic"),
@@ -51,15 +53,15 @@ ALL_COMMANDS = [
     BotCommand("whoami", "Current account and session info"),
     BotCommand("status", "Current bot status"),
     BotCommand("accounts", "Manage connected GitHub accounts"),
-    BotCommand("switchaccount", "Switch between accounts"),
-    BotCommand("privatemsg", "Customize unauthorized message"),
-    BotCommand("savedpaths", "Manage favourite paths"),
+    BotCommand("switchaccount", "Switch between GitHub accounts"),
+    BotCommand("privatemsg", "Customize unauthorized access message"),
+    BotCommand("savedpaths", "Manage favourite upload paths"),
     BotCommand("aliases", "Manage command shortcuts"),
-    BotCommand("templates", "Commit message templates"),
+    BotCommand("templates", "Manage commit message templates"),
     BotCommand("settings", "Bot personalization settings"),
     BotCommand("ping", "Check bot is alive"),
     BotCommand("version", "Bot version and changelog"),
-    BotCommand("help", "Full command list"),
+    BotCommand("help", "Full command list by category"),
     BotCommand("cancel", "Cancel any current action"),
     BotCommand("login", "Connect a GitHub account"),
     BotCommand("logout", "Disconnect current GitHub account"),
@@ -67,76 +69,59 @@ ALL_COMMANDS = [
 
 
 async def setup_commands(bot):
-    """Register all commands with Telegram — called on startup."""
     await bot.set_my_commands(ALL_COMMANDS)
     logger.info("✅ Bot commands registered with Telegram")
 
 
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
-
     if telegram_id != ADMIN_ID:
         await send_private_message(update, telegram_id)
         return
 
     session = get_active_session(telegram_id)
-
     if not session:
-        # First time — onboarding
         from handlers.auth import generate_oauth_url
+        from database.db import set_state
         oauth_url, state = generate_oauth_url(telegram_id)
-        from database.db import set_state as _set_state
-        _set_state(telegram_id, "awaiting_oauth", {"state": state})
-        keyboard = [[
-            InlineKeyboardButton("🔗 Connect GitHub Account", url=oauth_url)
-        ]]
+        set_state(telegram_id, "awaiting_oauth", {"state": state})
         await update.message.reply_text(
-            "👋 *Welcome to GitroHub\\!*\n\n"
-            "Your GitHub lives here now\\. Manage repos,\n"
-            "commit code, upload files, handle branches\n"
-            "\\& PRs — all without leaving Telegram\\.\n\n"
-            "Secure · Fast · Always in sync with GitHub\n\n"
+            "👋 <b>Welcome to GitroHub!</b>\n\n"
+            "Your GitHub lives here now. Manage repos, commit code, "
+            "upload files, handle branches — all without leaving Telegram.\n\n"
+            "<b>Secure · Fast · Always in sync with GitHub</b>\n\n"
             "Tap below to connect your GitHub account 👇",
-            parse_mode="MarkdownV2",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔗 Connect GitHub Account", url=oauth_url)
+            ]])
         )
         return
 
-    # Returning user
     username = session["github_username"]
-    active_repo = session.get("active_repo", "No active repo")
-    active_branch = session.get("active_branch", "main")
-
+    repo = session.get("active_repo") or "No active repo"
+    branch = session.get("active_branch") or "main"
     keyboard = [
-        [
-            InlineKeyboardButton("📂 Projects", callback_data="projects"),
-            InlineKeyboardButton("📦 All Repos", callback_data="repos"),
-            InlineKeyboardButton("⬆️ Upload", callback_data="upload_menu"),
-        ],
-        [
-            InlineKeyboardButton("⬇️ Download", callback_data="download_menu"),
-            InlineKeyboardButton("🌿 Branches", callback_data="branches"),
-            InlineKeyboardButton("📜 History", callback_data="log"),
-        ],
-        [
-            InlineKeyboardButton("📊 Stats", callback_data="stats"),
-            InlineKeyboardButton("👤 Accounts", callback_data="accounts"),
-            InlineKeyboardButton("❓ Help", callback_data="help"),
-        ]
+        [InlineKeyboardButton("📂 Projects", callback_data="projects"),
+         InlineKeyboardButton("📦 Repos", callback_data="repos"),
+         InlineKeyboardButton("⬆️ Upload", callback_data="upload_menu")],
+        [InlineKeyboardButton("⬇️ Download", callback_data="download_menu"),
+         InlineKeyboardButton("🌿 Branches", callback_data="branches"),
+         InlineKeyboardButton("📜 Log", callback_data="log")],
+        [InlineKeyboardButton("📊 Stats", callback_data="stats"),
+         InlineKeyboardButton("👤 Accounts", callback_data="show_accounts"),
+         InlineKeyboardButton("❓ Help", callback_data="help_back")],
     ]
-
     await update.message.reply_text(
-        f"👋 *Welcome back, {escape_md(username)}\\!*\n\n"
-        f"📁 `{escape_md(active_repo)}` @ `{escape_md(active_branch)}`",
-        parse_mode="MarkdownV2",
+        f"👋 <b>Welcome back, {h(username)}!</b>\n\n"
+        f"📁 <code>{h(repo)}</code> @ <code>{h(branch)}</code>",
+        parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(keyboard)
     )
 
 
 async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     start = time.time()
-
-    # Test DB
     db_ok = False
     try:
         from database.db import db_cursor
@@ -146,35 +131,29 @@ async def cmd_ping(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception:
         pass
 
-    # Test GitHub API
     gh_ok = False
     try:
         import aiohttp
         async with aiohttp.ClientSession() as s:
-            r = await s.get("https://api.github.com/zen",
-                            timeout=aiohttp.ClientTimeout(total=5))
+            r = await s.get("https://api.github.com/zen", timeout=aiohttp.ClientTimeout(total=5))
             gh_ok = r.status == 200
     except Exception:
         pass
 
     elapsed = int((time.time() - start) * 1000)
+    from datetime import datetime, timezone
     now = datetime.now(timezone.utc).strftime("%H:%M:%S UTC")
 
-    db_icon = "🟢" if db_ok else "🔴"
-    gh_icon = "🟢" if gh_ok else "🔴"
-
     await update.message.reply_text(
-        f"🏓 *Pong\\!*\n"
+        f"🏓 <b>Pong!</b>\n"
         f"━━━━━━━━━━━━━━━━━━\n"
-        f"⚡ Response time: `{elapsed}ms`\n"
+        f"⚡ Response: <code>{elapsed}ms</code>\n"
         f"🟢 Bot: Online\n"
-        f"{db_icon} Database: {'Connected' if db_ok else 'Error'}\n"
-        f"{gh_icon} GitHub API: {'Reachable' if gh_ok else 'Unreachable'}\n"
-        f"🕐 Server time: `{now}`",
-        parse_mode="MarkdownV2",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🏠 Home", callback_data="home")
-        ]])
+        f"{'🟢' if db_ok else '🔴'} Database: {'Connected' if db_ok else 'Error'}\n"
+        f"{'🟢' if gh_ok else '🔴'} GitHub API: {'Reachable' if gh_ok else 'Unreachable'}\n"
+        f"🕐 Server time: <code>{now}</code>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Home", callback_data="home")]])
     )
 
 
@@ -182,7 +161,6 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     session = get_active_session(telegram_id)
 
-    # System checks
     db_ok = False
     try:
         from database.db import db_cursor
@@ -196,8 +174,7 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         import aiohttp
         async with aiohttp.ClientSession() as s:
-            r = await s.get("https://api.github.com/zen",
-                            timeout=aiohttp.ClientTimeout(total=5))
+            r = await s.get("https://api.github.com/zen", timeout=aiohttp.ClientTimeout(total=5))
             gh_ok = r.status == 200
     except Exception:
         pass
@@ -205,178 +182,186 @@ async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE):
     from database.db import get_state
     state_info = get_state(telegram_id)
     current_state = state_info.get("state", "idle")
-    pending = "None — bot is idle" if current_state == "idle" else f"⏳ {current_state}"
-
-    db_icon = "🟢" if db_ok else "🔴"
-    gh_icon = "🟢" if gh_ok else "🔴"
 
     if session:
-        username = session["github_username"]
-        repo = session.get("active_repo") or "None"
-        branch = session.get("active_branch") or "main"
         text = (
-            f"📍 *Current Status*\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 Account:   `{escape_md(username)}`\n"
-            f"📁 Repo:      `{escape_md(repo)}`\n"
-            f"🌿 Branch:    `{escape_md(branch)}`\n\n"
-            f"⚡ *Pending Actions:*\n"
-            f"{escape_md(pending)}\n\n"
-            f"🟢 *All systems:*\n"
-            f"Bot:      🟢 Online\n"
-            f"Database: {db_icon} {'Connected' if db_ok else 'Error'}\n"
-            f"GitHub:   {gh_icon} {'Reachable' if gh_ok else 'Unreachable'}"
+            f"📍 <b>Current Status</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 Account: <code>{h(session['github_username'])}</code>\n"
+            f"📁 Repo: <code>{h(session.get('active_repo') or 'None')}</code>\n"
+            f"🌿 Branch: <code>{h(session.get('active_branch') or 'main')}</code>\n"
+            f"⚡ State: <code>{h(current_state)}</code>\n\n"
+            f"🟢 Bot: Online\n"
+            f"{'🟢' if db_ok else '🔴'} Database: {'Connected' if db_ok else 'Error'}\n"
+            f"{'🟢' if gh_ok else '🔴'} GitHub: {'Reachable' if gh_ok else 'Unreachable'}"
         )
     else:
         text = (
-            f"📍 *Status*\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━\n"
-            f"👤 Account:   Not logged in\n\n"
-            f"🟢 *Systems:*\n"
-            f"Bot:      🟢 Online\n"
-            f"Database: {db_icon} {'Connected' if db_ok else 'Error'}\n"
-            f"GitHub:   {gh_icon} {'Reachable' if gh_ok else 'Unreachable'}"
+            f"📍 <b>Status</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 Account: Not logged in\n\n"
+            f"🟢 Bot: Online\n"
+            f"{'🟢' if db_ok else '🔴'} Database: {'Connected' if db_ok else 'Error'}\n"
+            f"{'🟢' if gh_ok else '🔴'} GitHub: {'Reachable' if gh_ok else 'Unreachable'}"
         )
-
-    keyboard = []
+    keyboard = [[InlineKeyboardButton("🏠 Home", callback_data="home")]]
     if session:
-        keyboard.append([
-            InlineKeyboardButton("📂 Open Repo", callback_data="browse"),
-            InlineKeyboardButton("⬆️ Upload", callback_data="upload_menu"),
-        ])
-    keyboard.append([
-        InlineKeyboardButton("🏠 Home", callback_data="home")
-    ])
-
-    await update.message.reply_text(
-        text, parse_mode="MarkdownV2",
-        reply_markup=InlineKeyboardMarkup(keyboard)
-    )
+        keyboard.insert(0, [InlineKeyboardButton("📂 Browse", callback_data="browse"),
+                             InlineKeyboardButton("⬆️ Upload", callback_data="upload_menu")])
+    await update.message.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
 
 async def cmd_version(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
-        f"🤖 *GitroHub*\n"
-        f"Version: `{BOT_VERSION}`\n"
-        f"Released: {BOT_RELEASE_DATE}\n\n"
-        f"📋 *Changelog:*\n"
-        f"v1\\.2\\.0 — Bug\\-fix & polish release\n"
-        f"• Connect GitHub button is now a proper link\n"
-        f"• Home button now shows full dashboard\n"
-        f"• All inline buttons now respond correctly\n"
-        f"• Stats, log, branches, issues, releases\n"
-        f"  all respond from inline buttons\n"
-        f"• Help sections fully wired up\n"
-        f"• Download by URL added\n"
-        f"• Batch commit flow fully fixed\n\n"
-        f"v1\\.1\\.0 — Multi\\-account support\n"
-        f"v1\\.0\\.0 — Initial release\n"
-        f"• Full GitHub management\n"
-        f"• ZIP mirror \\& update modes\n"
-        f"• Single \\& batch file upload\n"
-        f"• Interactive browse with breadcrumbs\n"
-        f"• Persistent encrypted sessions\n"
-        f"• Commit history \\& rollback\n"
-        f"• Branch management",
-        parse_mode="MarkdownV2",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🏠 Home", callback_data="home")
-        ]])
+        f"🤖 <b>GitroHub v{BOT_VERSION}</b>\n\n"
+        f"📋 <b>Changelog v1.3.0:</b>\n"
+        f"• Migrated to HTML parse mode (fixes all button crashes)\n"
+        f"• Fixed /auth/github/callback OAuth route\n"
+        f"• Fixed show_accounts in callback context\n"
+        f"• Added global error handler (no more silent crashes)\n"
+        f"• Fixed all protect_branch, new_branch callbacks\n"
+        f"• Fixed cmd_stats/issues/releases from callback context\n"
+        f"• Registered all 50 commands correctly\n"
+        f"• Full batch/ZIP commit flows working\n"
+        f"• Bot now stable and crash-resistant",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Home", callback_data="home")]])
     )
 
 
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    keyboard = [
-        [
-            InlineKeyboardButton("📁 Repos", callback_data="help_repos"),
-            InlineKeyboardButton("📂 Files", callback_data="help_files"),
-            InlineKeyboardButton("⬆️ Upload", callback_data="help_upload"),
-        ],
-        [
-            InlineKeyboardButton("⬇️ Download", callback_data="help_download"),
-            InlineKeyboardButton("🌿 Branches", callback_data="help_branches"),
-            InlineKeyboardButton("📜 History", callback_data="help_history"),
-        ],
-        [
-            InlineKeyboardButton("📝 Issues", callback_data="help_issues"),
-            InlineKeyboardButton("🚀 Releases", callback_data="help_releases"),
-            InlineKeyboardButton("📊 Stats", callback_data="help_stats"),
-        ],
-        [
-            InlineKeyboardButton("👤 Accounts", callback_data="help_accounts"),
-            InlineKeyboardButton("⚙️ Settings", callback_data="help_settings"),
-            InlineKeyboardButton("🛡️ Safety", callback_data="help_safety"),
-        ],
-        [
-            InlineKeyboardButton("🏠 Home", callback_data="home")
-        ]
-    ]
-
     await update.message.reply_text(
-        "❓ *GitroHub — Help*\n\n"
-        "Select a category to see commands:",
-        parse_mode="MarkdownV2",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        "❓ <b>GitroHub — Help</b>\n\nSelect a category:",
+        parse_mode="HTML",
+        reply_markup=_help_keyboard()
     )
 
 
 async def cmd_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    telegram_id = update.effective_user.id
     from database.db import clear_state
-    clear_state(telegram_id)
-
+    clear_state(update.effective_user.id)
     await update.message.reply_text(
-        "❌ *Cancelled — nothing was changed\\.*\n\n"
-        "💡 Use /help to see what you can do",
-        parse_mode="MarkdownV2",
-        reply_markup=InlineKeyboardMarkup([[
-            InlineKeyboardButton("🏠 Home", callback_data="home")
-        ]])
+        "❌ <b>Cancelled — nothing was changed.</b>\n\n💡 Use /help to see what you can do",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🏠 Home", callback_data="home")]])
     )
 
 
+def _help_keyboard():
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📁 Repos", callback_data="help_repos"),
+         InlineKeyboardButton("📂 Files", callback_data="help_files"),
+         InlineKeyboardButton("⬆️ Upload", callback_data="help_upload")],
+        [InlineKeyboardButton("⬇️ Download", callback_data="help_download"),
+         InlineKeyboardButton("🌿 Branches", callback_data="help_branches"),
+         InlineKeyboardButton("📜 History", callback_data="help_history")],
+        [InlineKeyboardButton("📝 Issues", callback_data="help_issues"),
+         InlineKeyboardButton("🚀 Releases", callback_data="help_releases"),
+         InlineKeyboardButton("📊 Stats", callback_data="help_stats")],
+        [InlineKeyboardButton("👤 Accounts", callback_data="help_accounts"),
+         InlineKeyboardButton("⚙️ Settings", callback_data="help_settings"),
+         InlineKeyboardButton("🛡️ Safety", callback_data="help_safety")],
+        [InlineKeyboardButton("🏠 Home", callback_data="home")],
+    ])
+
+
+HELP_SECTIONS = {
+    "help_repos": (
+        "📁 <b>Repo Commands</b>\n\n"
+        "/projects — Your active repos\n/repos — All repos on GitHub\n"
+        "/create — Create new repo\n/use &lt;repo&gt; — Set active repo\n"
+        "/clone &lt;url&gt; — Clone any repo\n/download — Download as ZIP\n"
+        "/stats — Repo statistics"
+    ),
+    "help_files": (
+        "📂 <b>File Commands</b>\n\n"
+        "/browse — Browse repo files\n/read &lt;file&gt; — Read file contents\n"
+        "/edit &lt;file&gt; — Edit file in chat\n/move — Move file\n"
+        "/rename — Rename file\n/delete — Delete file\n/search — Search in repo"
+    ),
+    "help_upload": (
+        "⬆️ <b>Upload Commands</b>\n\n"
+        "/upload &lt;path&gt; — Single file\n/batch — Multiple files\n"
+        "/mirror — ZIP (full mirror)\n/update — ZIP (add and modify only)"
+    ),
+    "help_download": (
+        "⬇️ <b>Download Commands</b>\n\n"
+        "/download — Active repo as ZIP\n/download &lt;name&gt; — Your repo\n"
+        "/download &lt;user/repo&gt; — Any public repo\n/clone &lt;url&gt; — Clone into your account"
+    ),
+    "help_branches": (
+        "🌿 <b>Branch Commands</b>\n\n"
+        "/branch — View all branches\n/switch &lt;name&gt; — Switch branch\n"
+        "/merge &lt;name&gt; — Merge branch\n/diff &lt;b1&gt; &lt;b2&gt; — Compare branches"
+    ),
+    "help_history": (
+        "📜 <b>History Commands</b>\n\n"
+        "/log — Commit history\n/undo — Reverse last commit\n"
+        "/rollback &lt;sha&gt; — Go to specific commit"
+    ),
+    "help_issues": (
+        "📝 <b>Issues and Stars</b>\n\n"
+        "/issues — View open issues\n/star &lt;repo&gt; — Star a repo\n"
+        "/unstar &lt;repo&gt; — Unstar a repo\n/stars — Your starred repos\n/gists — Manage gists"
+    ),
+    "help_releases": (
+        "🚀 <b>Releases</b>\n\n"
+        "/releases — List releases\n"
+        "Tap ➕ New Release in the releases menu to create one"
+    ),
+    "help_stats": (
+        "📊 <b>Stats Commands</b>\n\n"
+        "/stats — Repo statistics\n/profile — GitHub profile\n"
+        "/traffic — Repo traffic\n/contributors — Contributors\n"
+        "/whoami — Session info\n/status — Bot status"
+    ),
+    "help_accounts": (
+        "👤 <b>Account Commands</b>\n\n"
+        "/login — Connect GitHub\n/logout — Disconnect account\n"
+        "/accounts — Manage accounts\n/switchaccount — Switch account\n"
+        "/whoami — Current account info\n/status — Bot status"
+    ),
+    "help_settings": (
+        "⚙️ <b>Settings Commands</b>\n\n"
+        "/settings — Personalization\n/privatemsg — Custom private message\n"
+        "/savedpaths — Favourite paths\n/aliases — Command shortcuts\n"
+        "/templates — Commit templates"
+    ),
+    "help_safety": (
+        "🛡️ <b>Safety</b>\n\n"
+        "/cancel — Cancel any action\n/ping — Check bot status\n/version — Bot version\n\n"
+        "All deletions require confirmation.\n"
+        "Repo deletion: 3-step verification.\n"
+        "Tokens: AES-256-GCM encrypted."
+    ),
+}
+
+
 async def send_private_message(update: Update, telegram_id: int):
-    from database.db import get_settings
     settings = get_settings(ADMIN_ID) if ADMIN_ID else {}
     custom_msg = settings.get("private_message")
     owner = settings.get("private_message_owner", "@GitroHubBot")
     link = settings.get("private_message_link")
 
     if custom_msg:
-        # Replace variables
-        import time
         from datetime import datetime
-        msg = custom_msg
-        msg = msg.replace("{owner}", owner or "")
-        msg = msg.replace("{botname}", "GitroHub")
-        msg = msg.replace("{date}", datetime.now().strftime("%b %d %Y"))
-        msg = msg.replace("{link}", link or "")
+        msg = (custom_msg
+               .replace("{owner}", owner or "")
+               .replace("{botname}", "GitroHub")
+               .replace("{date}", datetime.now().strftime("%b %d %Y"))
+               .replace("{link}", link or ""))
         await update.message.reply_text(msg)
         return
 
     text = (
-        "🔒 *GitroHub — Private Bot*\n\n"
-        "This bot is privately owned and is\n"
-        "not open for public access\\.\n\n"
-        f"👤 Owner: {escape_md(owner or 'the owner')}\n\n"
-        "📖 *About:*\n"
-        "GitroHub is a personal GitHub management\n"
-        "bot — commit code, manage repos, upload\n"
-        "files \\& handle branches directly from\n"
-        "Telegram\\."
+        f"🔒 <b>GitroHub — Private Bot</b>\n\n"
+        f"This bot is privately owned and is not open for public access.\n\n"
+        f"👤 Owner: {h(owner)}\n\n"
+        f"📖 <b>About:</b>\n"
+        f"GitroHub is a personal GitHub management bot — commit code, manage repos, "
+        f"upload files and handle branches directly from Telegram."
     )
-
     if link:
-        text += f"\n\n🔗 {escape_md(link)}"
-
+        text += f"\n\n🔗 {h(link)}"
     text += "\n\n──────────────────────\n⚙️ Powered by @GitroHubBot"
-
-    await update.message.reply_text(text, parse_mode="MarkdownV2")
-
-
-def escape_md(text: str) -> str:
-    """Escape special characters for MarkdownV2."""
-    if not text:
-        return ""
-    special = r"\_*[]()~`>#+-=|{}.!"
-    return "".join(f"\\{c}" if c in special else c for c in str(text))
+    await update.message.reply_text(text, parse_mode="HTML")

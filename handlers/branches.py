@@ -1,11 +1,12 @@
+"""Branch management — GitroHub v1.2"""
 import logging
-import base64
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ContextTypes
-from database.db import get_active_session, get_state, set_state, clear_state, update_session
-from utils.github_helper import get_github_client, get_error_message, format_time_ago
-from handlers.core import escape_md
+
 from github import GithubException
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import ContextTypes
+
+from database.db import get_active_session, update_session
+from utils.github_helper import format_time_ago, get_error_message, get_github_client, h
 
 logger = logging.getLogger(__name__)
 
@@ -14,30 +15,25 @@ async def cmd_branch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     session = get_active_session(telegram_id)
     if not session or not session.get("active_repo"):
-        await update.message.reply_text("❌ No active repo. Use /use first.")
+        await update.message.reply_text("❌ No active repo. Use /use first.", parse_mode="HTML")
         return
-
     if context.args:
-        # Create new branch
-        branch_name = context.args[0]
-        await create_branch(update.message, telegram_id, branch_name)
+        await create_branch(update.message, telegram_id, context.args[0])
         return
+    await show_branches(update.message, telegram_id, send_new=True)
 
-    await show_branches(update.message, telegram_id)
 
-
-async def show_branches(message, telegram_id: int, edit: bool = False):
+async def show_branches(msg_or_query, telegram_id: int, send_new: bool = False):
     session = get_active_session(telegram_id)
     gh = get_github_client(telegram_id)
-
     try:
         repo = gh.get_repo(session["active_repo"])
         branches = list(repo.get_branches())
         active_branch = session.get("active_branch", "main")
 
         text = (
-            f"🌿 *Branches — {escape_md(session['active_repo'].split('/')[-1])}*\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🌿 <b>Branches — {h(repo.name)}</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n\n"
         )
 
         keyboard = []
@@ -45,177 +41,118 @@ async def show_branches(message, telegram_id: int, edit: bool = False):
             is_active = branch.name == active_branch
             is_protected = branch.protected
             marker = "●" if is_active else " "
-            prot_icon = "🔒" if is_protected else ""
-
-            text += f"{marker} `{escape_md(branch.name)}` {prot_icon}\n"
+            prot = "🔒" if is_protected else ""
+            text += f"{marker} <code>{h(branch.name)}</code> {prot}\n"
 
             row = []
-            if not is_active:
-                row.append(InlineKeyboardButton(
-                    "🔄 Switch",
-                    callback_data=f"switch_branch_{branch.name}"
-                ))
+            if is_active:
+                row.append(InlineKeyboardButton("✅ Active", callback_data="noop"))
+                row.append(InlineKeyboardButton("🔒 Protect", callback_data=f"protect_branch_{branch.name}"))
             else:
-                row.append(InlineKeyboardButton(
-                    "✅ Active", callback_data="noop"
-                ))
-
-            if not is_protected and not is_active:
-                row.append(InlineKeyboardButton(
-                    "🔀 Merge",
-                    callback_data=f"merge_branch_{branch.name}"
-                ))
-                row.append(InlineKeyboardButton(
-                    "🗑️",
-                    callback_data=f"delete_branch_{branch.name}"
-                ))
-            elif is_active:
-                row.append(InlineKeyboardButton(
-                    "🔒 Protect",
-                    callback_data=f"protect_branch_{branch.name}"
-                ))
-
+                row.append(InlineKeyboardButton("🔄 Switch", callback_data=f"switch_branch_{branch.name}"))
+                if not is_protected:
+                    row.append(InlineKeyboardButton("🔀 Merge", callback_data=f"merge_branch_{branch.name}"))
+                    row.append(InlineKeyboardButton("🗑️", callback_data=f"delete_branch_{branch.name}"))
             keyboard.append(row)
 
         keyboard.append([
             InlineKeyboardButton("➕ New Branch", callback_data="new_branch"),
-            InlineKeyboardButton("🔀 Diff branches", callback_data="diff_menu"),
+            InlineKeyboardButton("🔀 Diff", callback_data="diff_menu"),
         ])
         keyboard.append([
             InlineKeyboardButton("⬅️ Back", callback_data="home"),
-            InlineKeyboardButton("❌ Cancel", callback_data="cancel")
+            InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
         ])
 
-        if edit and hasattr(message, 'edit_text'):
-            await message.edit_text(text, parse_mode="MarkdownV2",
-                                    reply_markup=InlineKeyboardMarkup(keyboard))
+        if send_new:
+            await msg_or_query.reply_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
         else:
-            await message.reply_text(text, parse_mode="MarkdownV2",
-                                     reply_markup=InlineKeyboardMarkup(keyboard))
+            await msg_or_query.edit_message_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(keyboard))
 
     except GithubException as e:
-        await message.reply_text(get_error_message(e.status))
+        err = get_error_message(e.status)
+        if send_new:
+            await msg_or_query.reply_text(err, parse_mode="HTML")
+        else:
+            await msg_or_query.edit_message_text(err, parse_mode="HTML")
 
 
 async def create_branch(message, telegram_id: int, branch_name: str):
     session = get_active_session(telegram_id)
     gh = get_github_client(telegram_id)
-
     try:
         repo = gh.get_repo(session["active_repo"])
-        current_branch = session.get("active_branch", "main")
-
-        # Get SHA of current branch
-        ref = repo.get_git_ref(f"heads/{current_branch}")
-        sha = ref.object.sha
-
-        # Create new branch
-        repo.create_git_ref(f"refs/heads/{branch_name}", sha)
-
-        keyboard = [[
-            InlineKeyboardButton("🔄 Switch to it",
-                callback_data=f"switch_branch_{branch_name}"),
-            InlineKeyboardButton("🌿 All branches", callback_data="branches"),
-        ], [
-            InlineKeyboardButton("🏠 Home", callback_data="home")
-        ]]
-
+        current = session.get("active_branch", "main")
+        ref = repo.get_git_ref(f"heads/{current}")
+        repo.create_git_ref(f"refs/heads/{branch_name}", ref.object.sha)
         await message.reply_text(
-            f"✅ *Branch created\\!*\n\n"
-            f"🌿 `{escape_md(branch_name)}` from `{escape_md(current_branch)}`",
-            parse_mode="MarkdownV2",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            f"✅ <b>Branch created!</b>\n\n🌿 <code>{h(branch_name)}</code> from <code>{h(current)}</code>",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔄 Switch to it", callback_data=f"switch_branch_{branch_name}"),
+                InlineKeyboardButton("🌿 All branches", callback_data="branches"),
+            ]])
         )
-
     except GithubException as e:
         if e.status == 422:
             await message.reply_text(
-                f"❌ *Branch already exists*\n"
-                f"Reason: A branch named `{escape_md(branch_name)}` already exists "
-                f"in this repo\\. GitHub doesn't allow duplicate branch names\\.\n\n"
-                f"Fix: Choose a different name or switch to the existing branch\\.",
-                parse_mode="MarkdownV2",
+                f"❌ <b>Branch already exists</b>\n<b>Reason:</b> <code>{h(branch_name)}</code> already exists.\n\n<b>Fix:</b> Choose a different name.",
+                parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔄 Switch to it",
-                        callback_data=f"switch_branch_{branch_name}"),
-                    InlineKeyboardButton("✏️ New name", callback_data="new_branch"),
-                    InlineKeyboardButton("❌ Cancel", callback_data="cancel")
+                    InlineKeyboardButton("🔄 Switch to it", callback_data=f"switch_branch_{branch_name}"),
+                    InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
                 ]])
             )
         else:
-            await message.reply_text(get_error_message(e.status))
+            await message.reply_text(get_error_message(e.status), parse_mode="HTML")
 
 
 async def cmd_switch(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     if not context.args:
-        await show_branches(update.message, telegram_id)
+        await show_branches(update.message, telegram_id, send_new=True)
         return
-
-    branch_name = context.args[0]
-    await do_switch_branch(update.message, telegram_id, branch_name)
+    await do_switch_branch(update.message, telegram_id, context.args[0])
 
 
 async def do_switch_branch(message, telegram_id: int, branch_name: str):
     session = get_active_session(telegram_id)
     gh = get_github_client(telegram_id)
-
     try:
         repo = gh.get_repo(session["active_repo"])
-        # Verify branch exists
-        repo.get_branch(branch_name)
+        repo.get_branch(branch_name)  # verify exists
         update_session(telegram_id, active_branch=branch_name)
-
-        # Main branch protection warning
+        warning = ""
         if branch_name in ("main", "master"):
-            warning = (
-                f"\n\n⚠️ *You're on main* — commits go directly to main\\.\n"
-                f"Consider using a feature branch\\."
-            )
-        else:
-            warning = ""
-
+            warning = "\n\n⚠️ You're on <b>main</b> — commits go directly here. Consider using a feature branch."
         await message.reply_text(
-            f"✅ *Switched to* `{escape_md(branch_name)}`{warning}",
-            parse_mode="MarkdownV2",
+            f"✅ Switched to <code>{h(branch_name)}</code>{warning}",
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("⬆️ Upload", callback_data="upload_menu"),
                 InlineKeyboardButton("📂 Browse", callback_data="browse"),
                 InlineKeyboardButton("🌿 Branches", callback_data="branches"),
             ]])
         )
-
     except GithubException as e:
-        await message.reply_text(get_error_message(e.status))
+        await message.reply_text(get_error_message(e.status), parse_mode="HTML")
 
 
 async def cmd_merge(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     if not context.args:
-        await update.message.reply_text(
-            "Usage: /merge <branch-to-merge>\n"
-            "Merges the specified branch into your current branch."
-        )
+        await update.message.reply_text("Usage: /merge &lt;branch-to-merge&gt;", parse_mode="HTML")
         return
-
     branch_name = context.args[0]
     session = get_active_session(telegram_id)
-    current = session.get("active_branch", "main")
-
-    keyboard = [[
-        InlineKeyboardButton(
-            f"✅ Merge {branch_name} → {current}",
-            callback_data=f"confirm_merge_{branch_name}"
-        ),
-        InlineKeyboardButton("❌ Cancel", callback_data="cancel")
-    ]]
-
+    current = session.get("active_branch", "main") if session else "main"
     await update.message.reply_text(
-        f"🔀 *Merge branch?*\n\n"
-        f"From: `{escape_md(branch_name)}`\n"
-        f"Into: `{escape_md(current)}`",
-        parse_mode="MarkdownV2",
-        reply_markup=InlineKeyboardMarkup(keyboard)
+        f"🔀 <b>Merge branch?</b>\n\nFrom: <code>{h(branch_name)}</code>\nInto: <code>{h(current)}</code>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton(f"✅ Merge", callback_data=f"confirm_merge_{branch_name}"),
+            InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
+        ]])
     )
 
 
@@ -223,149 +160,110 @@ async def do_merge(message, telegram_id: int, branch_name: str):
     session = get_active_session(telegram_id)
     gh = get_github_client(telegram_id)
     current = session.get("active_branch", "main")
-
     try:
         repo = gh.get_repo(session["active_repo"])
-        merge = repo.merge(current, branch_name,
-                            f"Merge {branch_name} into {current}")
-
+        merge = repo.merge(current, branch_name, f"Merge {branch_name} into {current}")
         if merge is None:
-            await message.reply_text(
-                f"⏭️ *Nothing to merge*\n"
-                f"`{escape_md(branch_name)}` is already up to date with `{escape_md(current)}`\\.",
-                parse_mode="MarkdownV2"
-            )
+            await message.reply_text(f"⏭️ Already up to date. Nothing to merge.", parse_mode="HTML")
             return
-
         await message.reply_text(
-            f"✅ *Merged successfully\\!*\n\n"
-            f"`{escape_md(branch_name)}` → `{escape_md(current)}`\n"
-            f"Commit: `{escape_md(merge.sha[:7])}`",
-            parse_mode="MarkdownV2",
+            f"✅ <b>Merged!</b>\n<code>{h(branch_name)}</code> → <code>{h(current)}</code>\nCommit: <code>{merge.sha[:7]}</code>",
+            parse_mode="HTML",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("📜 View Log", callback_data="log"),
+                InlineKeyboardButton("📜 Log", callback_data="log"),
                 InlineKeyboardButton("🌿 Branches", callback_data="branches"),
-                InlineKeyboardButton("🏠 Home", callback_data="home"),
             ]])
         )
-
     except GithubException as e:
         if e.status == 409:
             await message.reply_text(
-                f"❌ *Merge conflict detected*\n"
-                f"Reason: Both branches modified the same lines differently\\. "
-                f"GitHub can't automatically decide which version to keep\\.\n\n"
-                f"Fix: Resolve the conflict manually on GitHub then retry\\.",
-                parse_mode="MarkdownV2",
+                "❌ <b>Merge conflict detected</b>\n<b>Reason:</b> Both branches modified the same lines.\n<b>Fix:</b> Resolve the conflict on GitHub first.",
+                parse_mode="HTML",
                 reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("🔗 Resolve on GitHub",
-                        url=f"https://github.com/{session['active_repo']}/compare/{branch_name}"),
-                    InlineKeyboardButton("❌ Cancel", callback_data="cancel")
+                    InlineKeyboardButton("🔗 Resolve on GitHub", url=f"https://github.com/{session['active_repo']}/compare/{branch_name}"),
+                    InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
                 ]])
             )
         else:
-            await message.reply_text(get_error_message(e.status))
+            await message.reply_text(get_error_message(e.status), parse_mode="HTML")
 
 
 async def cmd_diff(update: Update, context: ContextTypes.DEFAULT_TYPE):
     telegram_id = update.effective_user.id
     session = get_active_session(telegram_id)
     if not session or not session.get("active_repo"):
-        await update.message.reply_text("❌ No active repo.")
+        await update.message.reply_text("❌ No active repo.", parse_mode="HTML")
         return
-
     if len(context.args) < 2:
-        await update.message.reply_text(
-            "Usage: /diff <branch1> <branch2>\n"
-            "Example: /diff main dev"
-        )
+        await update.message.reply_text("Usage: /diff &lt;branch1&gt; &lt;branch2&gt;", parse_mode="HTML")
         return
-
     b1, b2 = context.args[0], context.args[1]
     gh = get_github_client(telegram_id)
-
     try:
         repo = gh.get_repo(session["active_repo"])
         comparison = repo.compare(b1, b2)
-
-        ahead = comparison.ahead_by
-        behind = comparison.behind_by
         files = list(comparison.files)[:10]
-
         text = (
-            f"🔀 *Diff: `{escape_md(b1)}` vs `{escape_md(b2)}`*\n"
-            f"━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"`{escape_md(b2)}` is:\n"
-            f"⬆️ {ahead} commits ahead\n"
-            f"⬇️ {behind} commits behind `{escape_md(b1)}`\n\n"
-            f"*Changed files ({len(files)}):*\n"
+            f"🔀 <b>Diff: <code>{h(b1)}</code> vs <code>{h(b2)}</code></b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"<code>{h(b2)}</code> is:\n"
+            f"⬆️ {comparison.ahead_by} commits ahead\n"
+            f"⬇️ {comparison.behind_by} commits behind <code>{h(b1)}</code>\n\n"
+            f"<b>Changed files ({len(files)}):</b>\n"
         )
-
         for f in files:
-            status_icon = {"added": "✨", "modified": "🟡",
-                           "removed": "🗑️", "renamed": "📝"}.get(f.status, "📄")
-            text += f"{status_icon} `{escape_md(f.filename)}`\n"
-
-        keyboard = [[
-            InlineKeyboardButton(
-                f"🔀 Merge {b2} → {b1}",
-                callback_data=f"confirm_merge_{b2}"
-            ),
-            InlineKeyboardButton("❌ Cancel", callback_data="cancel")
-        ]]
-
+            icon = {"added": "✨", "modified": "🟡", "removed": "🗑️", "renamed": "📝"}.get(f.status, "📄")
+            text += f"{icon} <code>{h(f.filename)}</code>\n"
         await update.message.reply_text(
-            text, parse_mode="MarkdownV2",
-            reply_markup=InlineKeyboardMarkup(keyboard)
+            text, parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton(f"🔀 Merge {b2}→{b1}", callback_data=f"confirm_merge_{b2}"),
+                InlineKeyboardButton("❌ Cancel", callback_data="cancel"),
+            ]])
         )
-
     except GithubException as e:
-        await update.message.reply_text(get_error_message(e.status))
+        await update.message.reply_text(get_error_message(e.status), parse_mode="HTML")
+
+
+async def protect_branch(message, telegram_id: int, branch_name: str):
+    session = get_active_session(telegram_id)
+    gh = get_github_client(telegram_id)
+    try:
+        repo = gh.get_repo(session["active_repo"])
+        branch = repo.get_branch(branch_name)
+        branch.edit_protection(required_approving_review_count=0, enforce_admins=False)
+        await message.reply_text(
+            f"🔒 <code>{h(branch_name)}</code> is now protected.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌿 Branches", callback_data="branches")]])
+        )
+    except GithubException as e:
+        await message.reply_text(get_error_message(e.status), parse_mode="HTML")
 
 
 async def delete_branch(message, telegram_id: int, branch_name: str):
     session = get_active_session(telegram_id)
     gh = get_github_client(telegram_id)
-    current = session.get("active_branch", "main")
-
-    if branch_name == current:
+    if branch_name == session.get("active_branch"):
         await message.reply_text(
-            f"❌ *Cannot delete active branch*\n"
-            f"Reason: You're currently on `{escape_md(branch_name)}`\\.\n"
-            f"Switch to another branch first\\.",
-            parse_mode="MarkdownV2"
+            f"❌ <b>Cannot delete active branch</b>\nSwitch to another branch first.",
+            parse_mode="HTML"
         )
         return
-
     try:
         repo = gh.get_repo(session["active_repo"])
         ref = repo.get_git_ref(f"heads/{branch_name}")
         ref.delete()
-
         await message.reply_text(
-            f"🗑️ *Branch deleted*\n\n"
-            f"`{escape_md(branch_name)}` removed from "
-            f"`{escape_md(session['active_repo'])}`",
-            parse_mode="MarkdownV2",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🌿 All branches", callback_data="branches"),
-                InlineKeyboardButton("🏠 Home", callback_data="home")
-            ]])
+            f"🗑️ Branch <code>{h(branch_name)}</code> deleted.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🌿 Branches", callback_data="branches")]])
         )
-
     except GithubException as e:
         if e.status == 422:
             await message.reply_text(
-                f"❌ *Cannot delete protected branch*\n"
-                f"Reason: `{escape_md(branch_name)}` is marked as protected\\. "
-                f"Protected branches cannot be deleted directly\\.\n\n"
-                f"Fix: Remove branch protection in repo settings first\\.",
-                parse_mode="MarkdownV2",
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("⚙️ Repo Settings",
-                        callback_data="repo_settings"),
-                    InlineKeyboardButton("❌ Cancel", callback_data="cancel")
-                ]])
+                "❌ <b>Cannot delete protected branch</b>\nRemove protection in repo settings first.",
+                parse_mode="HTML"
             )
         else:
-            await message.reply_text(get_error_message(e.status))
+            await message.reply_text(get_error_message(e.status), parse_mode="HTML")
