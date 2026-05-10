@@ -31,7 +31,6 @@ from bot.ui.panel import PanelManager, CTX_DASHBOARD
 from config import settings
 from database.pool import (
     count_unread, get_active_session, get_all_sessions,
-    get_commits as db_get_commits,
 )
 from utils.formatters import h, panel, time_ago, vis_label
 
