@@ -1,9 +1,15 @@
 
+from aiogram import Router
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+
 from bot.services.github import get_pulls, create_pull, merge_pull, close_pull
 from bot.states.flow import PullFlow
 from bot.ui.keyboards import pulls_kb, pull_detail_kb
 from bot.ui.panel import CTX_PULLS, PanelManager
-from utils.formatters import time_ago, pr_state
+from utils.formatters import h, panel, time_ago, pr_state
+
+router = Router()
 
 def _dt(s):
     if not s: return None
