@@ -1,3 +1,5 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram import Router
 
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -63,3 +65,5 @@ async def show_usage_stats(query, telegram_id):
     text = panel("📊  Bot Usage Stats", lines)
     await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="👥 Users",callback_data="users"), InlineKeyboardButton(text="🏠 Home",callback_data="home")]]))
+
+router = Router()

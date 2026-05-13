@@ -1,3 +1,4 @@
+from typing import Optional, Any
 """
 Start & Home Handlers — GitroHub v2.0
 /start, /home, menu button routing, onboarding flow.
@@ -43,7 +44,7 @@ router = Router()
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext,
-                    session: dict | None, telegram_id: int,
+                    session: Optional[dict], telegram_id: int,
                     is_admin: bool):
     pm = PanelManager(message.bot)
 
@@ -267,7 +268,7 @@ async def _handle_invite_link(message: Message, token: str, telegram_id: int):
 # ── Home callback ─────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "home")
-async def cb_home(query: CallbackQuery, session: dict | None,
+async def cb_home(query: CallbackQuery, session: Optional[dict],
                    telegram_id: int, is_admin: bool):
     pm = PanelManager(query.bot)
     await query.answer()
@@ -283,7 +284,7 @@ async def cb_home(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data == "cancel")
 async def cb_cancel(query: CallbackQuery, state: FSMContext,
-                     session: dict | None, telegram_id: int):
+                     session: Optional[dict], telegram_id: int):
     await state.clear()
     await query.answer("Cancelled.")
 
@@ -317,7 +318,7 @@ async def cb_noop(query: CallbackQuery):
 # ── Bottom menu routing ───────────────────────────────────────────────────────
 
 @router.message(F.text == "📁 Repos")
-async def menu_repos(message: Message, session: dict | None, telegram_id: int):
+async def menu_repos(message: Message, session: Optional[dict], telegram_id: int):
     if not session:
         await message.answer("Connect your GitHub account first.",
                               reply_markup=auth_menu())
@@ -326,7 +327,7 @@ async def menu_repos(message: Message, session: dict | None, telegram_id: int):
 
 
 @router.message(F.text == "👤 Account")
-async def menu_account(message: Message, session: dict | None, telegram_id: int):
+async def menu_account(message: Message, session: Optional[dict], telegram_id: int):
     if not session:
         await message.answer("Connect your GitHub account first.",
                               reply_markup=auth_menu())
@@ -335,7 +336,7 @@ async def menu_account(message: Message, session: dict | None, telegram_id: int)
 
 
 @router.message(F.text == "🔍 Explore")
-async def menu_explore(message: Message, session: dict | None, telegram_id: int):
+async def menu_explore(message: Message, session: Optional[dict], telegram_id: int):
     if not session:
         await message.answer("Connect your GitHub account first.",
                               reply_markup=auth_menu())
@@ -344,7 +345,7 @@ async def menu_explore(message: Message, session: dict | None, telegram_id: int)
 
 
 @router.message(F.text == "⚙️ Settings")
-async def menu_settings(message: Message, session: dict | None, telegram_id: int):
+async def menu_settings(message: Message, session: Optional[dict], telegram_id: int):
     if not session:
         await message.answer("Connect your GitHub account first.",
                               reply_markup=auth_menu())
@@ -353,7 +354,7 @@ async def menu_settings(message: Message, session: dict | None, telegram_id: int
 
 
 @router.message(F.text == "🔔 Notifs")
-async def menu_notifs(message: Message, session: dict | None, telegram_id: int):
+async def menu_notifs(message: Message, session: Optional[dict], telegram_id: int):
     if not session:
         await message.answer("Connect your GitHub account first.",
                               reply_markup=auth_menu())
@@ -362,7 +363,7 @@ async def menu_notifs(message: Message, session: dict | None, telegram_id: int):
 
 
 @router.message(F.text == "🗂️ More")
-async def menu_more(message: Message, session: dict | None,
+async def menu_more(message: Message, session: Optional[dict],
                      telegram_id: int, is_admin: bool):
     if not session:
         await message.answer("Connect your GitHub account first.",
@@ -377,7 +378,7 @@ async def menu_back(message: Message):
 
 
 @router.message(F.text == "🏠 Home")
-async def menu_home(message: Message, session: dict | None,
+async def menu_home(message: Message, session: Optional[dict],
                      telegram_id: int, is_admin: bool):
     pm = PanelManager(message.bot)
     if not session:
@@ -405,7 +406,7 @@ async def menu_connect(message: Message, telegram_id: int):
 # ── Submenu routing ───────────────────────────────────────────────────────────
 
 @router.message(F.text == "📋 My Repos")
-async def submenu_my_repos(message: Message, session: dict | None,
+async def submenu_my_repos(message: Message, session: Optional[dict],
                             telegram_id: int):
     if not session:
         return
@@ -415,7 +416,7 @@ async def submenu_my_repos(message: Message, session: dict | None,
 
 @router.message(F.text == "➕ New Repository")
 async def submenu_new_repo(message: Message, state: FSMContext,
-                            session: dict | None, telegram_id: int):
+                            session: Optional[dict], telegram_id: int):
     if not session:
         return
     from bot.handlers.repos import start_create_repo
@@ -423,7 +424,7 @@ async def submenu_new_repo(message: Message, state: FSMContext,
 
 
 @router.message(F.text == "🍴 My Forks")
-async def submenu_my_forks(message: Message, session: dict | None,
+async def submenu_my_forks(message: Message, session: Optional[dict],
                             telegram_id: int):
     if not session:
         return
@@ -432,7 +433,7 @@ async def submenu_my_forks(message: Message, session: dict | None,
 
 
 @router.message(F.text == "⭐ Starred")
-async def submenu_starred(message: Message, session: dict | None,
+async def submenu_starred(message: Message, session: Optional[dict],
                            telegram_id: int):
     if not session:
         return
@@ -441,7 +442,7 @@ async def submenu_starred(message: Message, session: dict | None,
 
 
 @router.message(F.text == "👤 My Profile")
-async def submenu_profile(message: Message, session: dict | None,
+async def submenu_profile(message: Message, session: Optional[dict],
                            telegram_id: int):
     if not session:
         return
@@ -450,7 +451,7 @@ async def submenu_profile(message: Message, session: dict | None,
 
 
 @router.message(F.text == "🔄 Switch Account")
-async def submenu_switch(message: Message, session: dict | None,
+async def submenu_switch(message: Message, session: Optional[dict],
                           telegram_id: int):
     if not session:
         return
@@ -489,7 +490,7 @@ async def submenu_add_account(message: Message, telegram_id: int):
 
 
 @router.message(F.text == "🚪 Disconnect")
-async def submenu_disconnect(message: Message, session: dict | None,
+async def submenu_disconnect(message: Message, session: Optional[dict],
                               telegram_id: int):
     if not session:
         return
@@ -516,7 +517,7 @@ async def submenu_disconnect(message: Message, session: dict | None,
 
 
 @router.message(F.text == "👥 Organizations")
-async def submenu_orgs(message: Message, session: dict | None,
+async def submenu_orgs(message: Message, session: Optional[dict],
                         telegram_id: int):
     if not session:
         return
@@ -525,7 +526,7 @@ async def submenu_orgs(message: Message, session: dict | None,
 
 
 @router.message(F.text == "📋 All Notifications")
-async def submenu_all_notifs(message: Message, session: dict | None,
+async def submenu_all_notifs(message: Message, session: Optional[dict],
                               telegram_id: int):
     if not session:
         return
@@ -534,7 +535,7 @@ async def submenu_all_notifs(message: Message, session: dict | None,
 
 
 @router.message(F.text == "🔵 Unread")
-async def submenu_unread(message: Message, session: dict | None,
+async def submenu_unread(message: Message, session: Optional[dict],
                           telegram_id: int):
     if not session:
         return
@@ -543,7 +544,7 @@ async def submenu_unread(message: Message, session: dict | None,
 
 
 @router.message(F.text == "⚙️ Notif Settings")
-async def submenu_notif_settings(message: Message, session: dict | None,
+async def submenu_notif_settings(message: Message, session: Optional[dict],
                                   telegram_id: int):
     if not session:
         return
@@ -552,7 +553,7 @@ async def submenu_notif_settings(message: Message, session: dict | None,
 
 
 @router.message(F.text == "✅ Mark All Read")
-async def submenu_mark_read(message: Message, session: dict | None,
+async def submenu_mark_read(message: Message, session: Optional[dict],
                              telegram_id: int):
     if not session:
         return
@@ -564,7 +565,7 @@ async def submenu_mark_read(message: Message, session: dict | None,
 
 @router.message(F.text == "🔕 Mute Repo")
 async def submenu_mute_repo(message: Message, state: FSMContext,
-                             session: dict | None, telegram_id: int):
+                             session: Optional[dict], telegram_id: int):
     if not session:
         return
     from bot.handlers.notifications import start_mute_repo
@@ -572,7 +573,7 @@ async def submenu_mute_repo(message: Message, state: FSMContext,
 
 
 @router.message(F.text == "🗂️ Projects")
-async def submenu_projects(message: Message, session: dict | None,
+async def submenu_projects(message: Message, session: Optional[dict],
                             telegram_id: int):
     if not session:
         return
@@ -610,7 +611,7 @@ async def submenu_users(message: Message, telegram_id: int, is_admin: bool):
 
 @router.message(F.text == "🔍 Search Repos")
 async def submenu_search(message: Message, state: FSMContext,
-                          session: dict | None, telegram_id: int):
+                          session: Optional[dict], telegram_id: int):
     if not session:
         return
     from bot.handlers.explore import start_search
@@ -619,7 +620,7 @@ async def submenu_search(message: Message, state: FSMContext,
 
 @router.message(F.text == "⬇️ Download by URL")
 async def submenu_download_url(message: Message, state: FSMContext,
-                                session: dict | None, telegram_id: int):
+                                session: Optional[dict], telegram_id: int):
     if not session:
         return
     from bot.handlers.explore import start_download_url
@@ -628,7 +629,7 @@ async def submenu_download_url(message: Message, state: FSMContext,
 
 @router.message(F.text == "👤 Find User")
 async def submenu_find_user(message: Message, state: FSMContext,
-                             session: dict | None, telegram_id: int):
+                             session: Optional[dict], telegram_id: int):
     if not session:
         return
     from bot.handlers.explore import start_find_user
@@ -636,7 +637,7 @@ async def submenu_find_user(message: Message, state: FSMContext,
 
 
 @router.message(F.text == "📈 Trending")
-async def submenu_trending(message: Message, session: dict | None,
+async def submenu_trending(message: Message, session: Optional[dict],
                             telegram_id: int):
     if not session:
         return
@@ -646,7 +647,7 @@ async def submenu_trending(message: Message, session: dict | None,
 
 @router.message(F.text == "🔎 Search Code")
 async def submenu_search_code(message: Message, state: FSMContext,
-                               session: dict | None, telegram_id: int):
+                               session: Optional[dict], telegram_id: int):
     if not session:
         return
     from bot.handlers.explore import start_search_code
@@ -654,7 +655,7 @@ async def submenu_search_code(message: Message, state: FSMContext,
 
 
 @router.message(F.text == "🔔 Notifications")
-async def submenu_notif_settings_menu(message: Message, session: dict | None,
+async def submenu_notif_settings_menu(message: Message, session: Optional[dict],
                                        telegram_id: int):
     if not session:
         return
@@ -663,7 +664,7 @@ async def submenu_notif_settings_menu(message: Message, session: dict | None,
 
 
 @router.message(F.text == "🎨 Display")
-async def submenu_display(message: Message, session: dict | None,
+async def submenu_display(message: Message, session: Optional[dict],
                            telegram_id: int):
     if not session:
         return
@@ -672,7 +673,7 @@ async def submenu_display(message: Message, session: dict | None,
 
 
 @router.message(F.text == "⌨️ Shortcuts")
-async def submenu_shortcuts(message: Message, session: dict | None,
+async def submenu_shortcuts(message: Message, session: Optional[dict],
                              telegram_id: int):
     if not session:
         return
@@ -681,7 +682,7 @@ async def submenu_shortcuts(message: Message, session: dict | None,
 
 
 @router.message(F.text == "💬 Private Msg")
-async def submenu_private_msg(message: Message, session: dict | None,
+async def submenu_private_msg(message: Message, session: Optional[dict],
                                telegram_id: int):
     if not session:
         return

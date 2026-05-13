@@ -1,3 +1,6 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.fsm.context import FSMContext
+from aiogram import Router
 
 from database.pool import create_project, delete_project, get_project, get_projects, update_project_files
 from bot.states.flow import ProjectFlow
@@ -23,7 +26,7 @@ async def start_create_project(query, state):
                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="projects")]]))
 
 @router.message(ProjectFlow.creating_name)
-async def project_name_received(message, state, telegram_id):
+async def project_name_received(message: Message, state: FSMContext, telegram_id: int):
     name = message.text.strip()
     await state.update_data(name=name)
     await state.set_state(ProjectFlow.creating_description)
@@ -31,7 +34,7 @@ async def project_name_received(message, state, telegram_id):
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⏭️ Skip",callback_data="project_skip_desc"), InlineKeyboardButton(text="❌ Cancel",callback_data="cancel")]]))
 
 @router.message(ProjectFlow.creating_description)
-async def project_desc_received(message, state, telegram_id):
+async def project_desc_received(message: Message, state: FSMContext, telegram_id: int):
     data = await state.get_data()
     await state.clear()
     project = await create_project(telegram_id, data["name"], message.text.strip())
@@ -64,14 +67,14 @@ async def start_add_project_file(query, state, name):
                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data=f"project_open:{name}")]]))
 
 @router.message(ProjectFlow.adding_file_name)
-async def project_file_name_received(message, state):
+async def project_file_name_received(message: Message, state: FSMContext):
     await state.update_data(file_name=message.text.strip())
     await state.set_state(ProjectFlow.adding_file_content)
     await message.answer(f"<pre>" + panel("📄  File Content",["---","  Type or paste the content:","  Then send it."]) + "</pre>", parse_mode="HTML",
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="📄 Empty file",callback_data="project_empty_file"), InlineKeyboardButton(text="❌ Cancel",callback_data="cancel")]]))
 
 @router.message(ProjectFlow.adding_file_content)
-async def project_file_content_received(message, state, telegram_id):
+async def project_file_content_received(message: Message, state: FSMContext, telegram_id: int):
     data = await state.get_data()
     await state.clear()
     project = await get_project(telegram_id, data["project_name"])
@@ -121,3 +124,4 @@ async def do_delete_project(query, telegram_id, name):
     await delete_project(telegram_id, name)
     await query.answer("🗑️ Project deleted.", show_alert=False)
     await show_projects(query, telegram_id)
+router = Router()

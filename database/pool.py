@@ -20,7 +20,7 @@ async def init_pool():
         min_size=settings.db_min_connections,
         max_size=settings.db_max_connections,
         command_timeout=10,
-        ssl="require",
+        ssl="require" if settings.database_url.startswith("postgresql://") and "localhost" not in settings.database_url and "127.0.0.1" not in settings.database_url else None,
     )
     await _create_tables()
     logger.info("✅ Database pool initialized")

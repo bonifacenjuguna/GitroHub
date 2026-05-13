@@ -48,9 +48,12 @@ def create_dispatcher() -> Dispatcher:
     dp = Dispatcher(storage=storage)
 
     # Register middlewares (order matters)
-    dp.update.middleware(ErrorMiddleware())
-    dp.update.middleware(LoggingMiddleware())
-    dp.update.middleware(AuthMiddleware())
+    dp.message.middleware(ErrorMiddleware())
+    dp.callback_query.middleware(ErrorMiddleware())
+    dp.message.middleware(LoggingMiddleware())
+    dp.callback_query.middleware(LoggingMiddleware())
+    dp.message.middleware(AuthMiddleware())
+    dp.callback_query.middleware(AuthMiddleware())
 
     # Register all routers
     from bot.handlers.start import router as start_router
@@ -214,7 +217,7 @@ async def main():
             # Immediate 200 — process in background
             data = await request.json()
             from aiogram.types import Update
-            update = Update.model_validate(data, context={"bot": bot})
+            update = Update.model_validate(data)
             asyncio.create_task(dp.process_update(update))
             return web.Response(text="OK")
 

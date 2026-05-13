@@ -1,3 +1,5 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram import Router
 
 from bot.services.github import get_my_forks, get_repo_forks, fork_repo, sync_fork, create_pull
 from bot.states.flow import PullFlow
@@ -85,3 +87,5 @@ async def start_contribute_pr(query, state, session, telegram_id, fork_name, par
     text = panel("🔀  Contribute to Upstream", ["---", f"  From: {h(fork_name)}", f"  Into: {h(parent_name)}", "---", "  Type the pull request title:"])
     await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data=f"fork_view:{fork_name}")]]))
+
+router = Router()

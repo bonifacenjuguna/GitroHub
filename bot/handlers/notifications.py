@@ -1,3 +1,6 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.fsm.context import FSMContext
+from aiogram import Router
 
 from bot.services.cache import cache_get, cache_set
 from bot.states.flow import SettingsFlow
@@ -69,14 +72,14 @@ async def setup_quiet_hours(query, state, telegram_id):
                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="notifs_settings")]]))
 
 @router.message(SettingsFlow.setting_quiet_from)
-async def quiet_from_received(message, state, telegram_id):
+async def quiet_from_received(message: Message, state: FSMContext, telegram_id: int):
     await state.update_data(quiet_from=message.text.strip())
     await state.set_state(SettingsFlow.setting_quiet_until)
     await message.answer("<pre>" + panel("⏰  Quiet Until",["---","  Type end time:","  e.g.  08:00"]) + "</pre>", parse_mode="HTML",
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="notifs_settings")]]))
 
 @router.message(SettingsFlow.setting_quiet_until)
-async def quiet_until_received(message, state, telegram_id):
+async def quiet_until_received(message: Message, state: FSMContext, telegram_id: int):
     data = await state.get_data()
     await state.clear()
     await update_settings(telegram_id, quiet_from=data["quiet_from"], quiet_until=message.text.strip(), quiet_hours_enabled=True)
@@ -84,9 +87,11 @@ async def quiet_until_received(message, state, telegram_id):
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back",callback_data="notifs_settings")]]))
 
 async def start_mute_repo(msg_or_query, state, session):
-    await state.set_state(SettingsFlow.setting_quiet_from)  # reuse state
+    await state.set_state(SettingsFlow.adding_savedpath)  # reuse input state
     repo = session.get("active_repo","") if session else ""
     text = panel("🔕  Mute Repository", ["---", f"  Current: {h(repo)}", "---", "  Type repo name to mute:","  e.g.  myproject"])
     msg = msg_or_query.message if isinstance(msg_or_query, CallbackQuery) else msg_or_query
     await msg.answer(f"<pre>{text}</pre>", parse_mode="HTML",
                       reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="notifs_settings")]]))
+
+router = Router()

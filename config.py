@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     aes_key: str = Field(..., alias="AES_ENCRYPTION_KEY")
 
     # ── App ───────────────────────────────────────────────────────────────────
-    bot_version: str = "2.1.0"
+    bot_version: str = "2.2.0"
     bot_name: str = "GitroHub"
     bot_username: str = "GitroHubBot"
     debug: bool = Field(False, alias="DEBUG")

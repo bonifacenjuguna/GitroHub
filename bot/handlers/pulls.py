@@ -1,3 +1,6 @@
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram import Router
 
 from bot.services.github import get_pulls, create_pull, merge_pull, close_pull
 from bot.states.flow import PullFlow
@@ -126,3 +129,5 @@ async def show_pull_commits(query, session, telegram_id, repo_name, pr_number):
     text = panel("📜  PR Commits", lines)
     await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back to PR",callback_data=f"pull_view:{repo_name}:{pr_number}"), InlineKeyboardButton(text="🏠 Home",callback_data="home")]]))
+
+router = Router()

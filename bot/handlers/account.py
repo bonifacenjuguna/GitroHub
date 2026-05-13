@@ -1,3 +1,6 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.fsm.context import FSMContext
+from aiogram import Router
 
 from bot.services.github import get_profile, update_profile, get_social_links, update_social_links, get_followers, get_orgs
 from bot.states.flow import ProfileFlow
@@ -82,31 +85,31 @@ async def _save_profile_field(message, state, session, telegram_id, github_field
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back to Edit",callback_data="profile_edit"), InlineKeyboardButton(text="👤 Profile",callback_data="account_profile")]]))
 
 @router.message(ProfileFlow.editing_name)
-async def profile_name(message, state, session, telegram_id): await _save_profile_field(message, state, session, telegram_id, "name")
+async def profile_name(message: Message, state: FSMContext, session: dict, telegram_id: int): await _save_profile_field(message, state, session, telegram_id, "name")
 
 @router.message(ProfileFlow.editing_bio)
-async def profile_bio(message, state, session, telegram_id): await _save_profile_field(message, state, session, telegram_id, "bio")
+async def profile_bio(message: Message, state: FSMContext, session: dict, telegram_id: int): await _save_profile_field(message, state, session, telegram_id, "bio")
 
 @router.message(ProfileFlow.editing_company)
-async def profile_company(message, state, session, telegram_id): await _save_profile_field(message, state, session, telegram_id, "company")
+async def profile_company(message: Message, state: FSMContext, session: dict, telegram_id: int): await _save_profile_field(message, state, session, telegram_id, "company")
 
 @router.message(ProfileFlow.editing_location)
-async def profile_location(message, state, session, telegram_id): await _save_profile_field(message, state, session, telegram_id, "location")
+async def profile_location(message: Message, state: FSMContext, session: dict, telegram_id: int): await _save_profile_field(message, state, session, telegram_id, "location")
 
 @router.message(ProfileFlow.editing_website)
-async def profile_website(message, state, session, telegram_id): await _save_profile_field(message, state, session, telegram_id, "blog")
+async def profile_website(message: Message, state: FSMContext, session: dict, telegram_id: int): await _save_profile_field(message, state, session, telegram_id, "blog")
 
 @router.message(ProfileFlow.editing_twitter)
-async def profile_twitter(message, state, session, telegram_id): await _save_profile_field(message, state, session, telegram_id, "twitter_username")
+async def profile_twitter(message: Message, state: FSMContext, session: dict, telegram_id: int): await _save_profile_field(message, state, session, telegram_id, "twitter_username")
 
 @router.message(ProfileFlow.editing_pronouns)
-async def profile_pronouns(message, state, session, telegram_id): await _save_profile_field(message, state, session, telegram_id, "pronouns")
+async def profile_pronouns(message: Message, state: FSMContext, session: dict, telegram_id: int): await _save_profile_field(message, state, session, telegram_id, "pronouns")
 
 @router.message(ProfileFlow.editing_learning)
-async def profile_learning(message, state, session, telegram_id): await _save_profile_field(message, state, session, telegram_id, "learning")
+async def profile_learning(message: Message, state: FSMContext, session: dict, telegram_id: int): await _save_profile_field(message, state, session, telegram_id, "learning")
 
 @router.message(ProfileFlow.editing_link)
-async def profile_link(message, state, session, telegram_id):
+async def profile_link(message: Message, state: FSMContext, session: dict, telegram_id: int):
     await state.clear()
     links = await get_social_links(session, telegram_id)
     current_urls = [l["value"] for l in links]
@@ -181,3 +184,5 @@ async def show_orgs(msg_or_query, session, telegram_id):
     msg = msg_or_query.message if isinstance(msg_or_query, CallbackQuery) else msg_or_query
     try: await msg.edit_text(f"<pre>{text}</pre>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
     except: await msg.answer(f"<pre>{text}</pre>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+router = Router()

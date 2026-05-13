@@ -1,3 +1,5 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram import Router
 
 import asyncio, os, time as _time
 from config import settings
@@ -83,8 +85,8 @@ async def show_health(msg_or_query, telegram_id):
 
 async def show_changelog(msg_or_query):
     text = panel(f"🧬  GitroHub v{settings.bot_version}", [
-        "---","  CHANGELOG  v2.1.0","---",
-        "  v2.1.0  (debug release)  ─────────────────",
+        "---","  CHANGELOG  v2.2.0","---",
+        "  v2.2.0  (debug release)  ─────────────────",
         "  ✅  Fixed v1 import paths in all handlers",
         "  ✅  Fixed admin create_invite name conflict",
         "  ✅  Fixed system.py handlers.core reference",
@@ -92,7 +94,7 @@ async def show_changelog(msg_or_query):
         "  ✅  Fixed show_accounts() routing",
         "  ✅  sanitize_path inline (no v1 dep)",
         "  ✅  0 syntax errors · 0 import issues",
-        "  v2.0.0  (original)  ──────────────────────",
+        "  v2.1.0  (debug)  ─────────────────────────",
         "  ✅  Migrated to aiogram 3.x",
         "  ✅  uvloop event loop (2-4x faster)",
         "  ✅  asyncpg — async PostgreSQL",
@@ -141,3 +143,5 @@ async def show_help(msg_or_query):
     msg = msg_or_query.message if isinstance(msg_or_query, CallbackQuery) else msg_or_query
     try: await msg.edit_text(f"<pre>{text}</pre>", parse_mode="HTML", reply_markup=kb)
     except: await msg.answer(f"<pre>{text}</pre>", parse_mode="HTML", reply_markup=kb)
+
+router = Router()

@@ -1,3 +1,4 @@
+from typing import Optional, Any
 """
 Auth Handlers — GitroHub v2.0
 OAuth login flow, logout, account switching, disconnect.
@@ -236,7 +237,7 @@ async def cb_disconnect(query: CallbackQuery, telegram_id: int):
 
 @router.callback_query(F.data.startswith("account_disconnect_confirm:"))
 async def cb_disconnect_confirm(query: CallbackQuery, telegram_id: int,
-                                 session: dict | None):
+                                 session: Optional[dict]):
     username = query.data.split(":", 1)[1]
     await query.answer(f"Disconnecting {username}...")
 

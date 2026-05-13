@@ -1,3 +1,6 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.fsm.context import FSMContext
+from aiogram import Router
 
 from bot.services.cache import cache_delete_pattern
 from bot.states.flow import SettingsFlow
@@ -60,7 +63,7 @@ async def prompt_timezone(query, state):
                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="settings_back")]]))
 
 @router.message(SettingsFlow.editing_timezone)
-async def timezone_received(message, state, telegram_id):
+async def timezone_received(message: Message, state: FSMContext, telegram_id: int):
     await state.clear()
     await update_settings(telegram_id, timezone=message.text.strip())
     await message.answer(f"✅ Timezone set to <code>{h(message.text.strip())}</code>", parse_mode="HTML",
@@ -128,14 +131,14 @@ async def show_display_settings(msg_or_query, telegram_id):
 
 # FSM handlers for add flows
 @router.message(SettingsFlow.adding_alias_shortcut)
-async def alias_shortcut(message, state, telegram_id):
+async def alias_shortcut(message: Message, state: FSMContext, telegram_id: int):
     await state.update_data(alias=message.text.strip())
     await state.set_state(SettingsFlow.adding_alias_command)
     await message.answer(f"✅ Shortcut: <code>{h(message.text.strip())}</code>\n\nNow type the full command:", parse_mode="HTML",
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="settings_aliases")]]))
 
 @router.message(SettingsFlow.adding_alias_command)
-async def alias_command(message, state, telegram_id):
+async def alias_command(message: Message, state: FSMContext, telegram_id: int):
     data = await state.get_data()
     await state.clear()
     await add_alias(telegram_id, data["alias"], message.text.strip())
@@ -143,7 +146,7 @@ async def alias_command(message, state, telegram_id):
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Aliases",callback_data="settings_aliases")]]))
 
 @router.message(SettingsFlow.adding_template)
-async def template_text(message, state, session, telegram_id):
+async def template_text(message: Message, state: FSMContext, session: dict, telegram_id: int):
     await state.clear()
     if session:
         await add_template(telegram_id, session["github_username"], session.get("active_repo",""), message.text.strip())
@@ -151,7 +154,7 @@ async def template_text(message, state, session, telegram_id):
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Templates",callback_data="settings_templates")]]))
 
 @router.message(SettingsFlow.adding_savedpath)
-async def savedpath_text(message, state, session, telegram_id):
+async def savedpath_text(message: Message, state: FSMContext, session: dict, telegram_id: int):
     await state.clear()
     if session:
         clean = message.text.strip().lstrip("/")
@@ -160,21 +163,23 @@ async def savedpath_text(message, state, session, telegram_id):
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Saved Paths",callback_data="settings_savedpaths")]]))
 
 @router.message(SettingsFlow.editing_pm_message)
-async def pm_message_text(message, state, telegram_id):
+async def pm_message_text(message: Message, state: FSMContext, telegram_id: int):
     await state.clear()
     await update_settings(telegram_id, private_message=message.text.strip())
     await message.answer("✅ Private message updated!",
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back",callback_data="settings_pm")]]))
 
 @router.message(SettingsFlow.editing_pm_owner)
-async def pm_owner_text(message, state, telegram_id):
+async def pm_owner_text(message: Message, state: FSMContext, telegram_id: int):
     await state.clear()
     await update_settings(telegram_id, pm_owner=message.text.strip())
     await message.answer(f"✅ Owner set to <code>{h(message.text.strip())}</code>", parse_mode="HTML",
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back",callback_data="settings_pm")]]))
 
 @router.message(SettingsFlow.editing_pm_link)
-async def pm_link_text(message, state, telegram_id):
+async def pm_link_text(message: Message, state: FSMContext, telegram_id: int):
     await state.clear()
     await update_settings(telegram_id, pm_link=message.text.strip())
     await message.answer(f"✅ Link set!", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⬅️ Back",callback_data="settings_pm")]]))
+
+router = Router()

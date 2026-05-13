@@ -1,3 +1,5 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram import Router
 
 from bot.services.github import get_dependabot_alerts, get_repo_webhooks, create_repo_webhook, delete_repo_webhook
 from bot.ui.keyboards import security_kb
@@ -43,3 +45,5 @@ async def show_webhooks(msg_or_query, session, telegram_id, repo_name):
     kb.append([InlineKeyboardButton(text="⬅️ Back",callback_data=f"security:{repo_name}"), InlineKeyboardButton(text="🏠 Home",callback_data="home")])
     text = panel("🔗  Webhooks", lines)
     await pm.update(telegram_id, chat_id, "security", f"<pre>{text}</pre>", InlineKeyboardMarkup(inline_keyboard=kb))
+
+router = Router()

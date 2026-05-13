@@ -1,3 +1,6 @@
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram import Router
 
 from bot.services.github import get_releases, create_release, delete_release
 from bot.states.flow import ReleaseFlow
@@ -85,3 +88,5 @@ async def do_delete_release(query, session, telegram_id, repo_name, release_id):
                                        InlineKeyboardButton(text="✅ Yes, delete",callback_data=f"release_delete_confirm:{repo_name}:{release_id}"),
                                        InlineKeyboardButton(text="❌ Cancel",callback_data=f"release_view:{repo_name}:{release_id}"),
                                    ]]))
+
+router = Router()

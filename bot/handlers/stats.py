@@ -1,3 +1,5 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram import Router
 
 from bot.services.github import get_repo_stats, get_contributors, get_stargazers, get_repo_traffic
 from bot.ui.panel import CTX_RELEASES, PanelManager
@@ -43,3 +45,5 @@ async def show_repo_stats(msg_or_query, session, telegram_id, repo_name):
                         InlineKeyboardButton(text="⬅️ Back to Repo",callback_data=f"repo_open:{repo_name}"),
                         InlineKeyboardButton(text="🏠 Home",callback_data="home"),
                     ]]))
+
+router = Router()

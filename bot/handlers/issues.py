@@ -1,3 +1,6 @@
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram import Router
 
 from bot.services.github import get_issues, create_issue, close_issue, reopen_issue, comment_on_issue, get_labels
 from bot.states.flow import IssueFlow
@@ -111,3 +114,5 @@ async def show_label_picker(query, session, telegram_id, repo_name, issue_number
     for l in labels: lines.append(f"  🏷️  {h(l['name'])}  #{l['color']}")
     text = panel("🏷️  Labels", lines)
     await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+router = Router()

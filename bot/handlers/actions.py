@@ -1,3 +1,5 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram import Router
 
 from bot.services.github import get_workflows, get_workflow_runs, trigger_workflow as gh_trigger, cancel_workflow_run
 from bot.ui.keyboards import actions_kb, workflow_detail_kb
@@ -53,3 +55,5 @@ async def trigger_workflow(query, session, telegram_id, repo_name, workflow_id):
 async def cancel_run(query, session, telegram_id, repo_name, run_id):
     ok = await cancel_workflow_run(session, telegram_id, repo_name, run_id)
     await query.answer("⛔ Run cancelled." if ok else "❌ Failed", show_alert=True)
+
+router = Router()

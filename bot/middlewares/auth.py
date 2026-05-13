@@ -4,7 +4,7 @@ Auth check, debounce, activity tracking, alias resolution.
 """
 import logging
 import time
-from typing import Any, Awaitable, Callable, Dict
+from typing import Any, Awaitable, Callable, Dict, Optional, Any
 
 from aiogram import BaseMiddleware
 from aiogram.types import (
@@ -45,7 +45,7 @@ class AuthMiddleware(BaseMiddleware):
         data: Dict[str, Any],
     ) -> Any:
         # Extract user ID from any event type
-        telegram_id: int | None = None
+        telegram_id: Optional[int] = None
         is_callback = False
         message_text = ""
 

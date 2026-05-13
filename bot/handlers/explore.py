@@ -1,8 +1,11 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.fsm.context import FSMContext
+from aiogram import Router
 
 from bot.services.github import search_users
 from bot.states.flow import ExploreFlow
 from bot.ui.panel import CTX_EXPLORE, PanelManager
-from utils.formatters import format_size
+from utils.formatters import h, panel, format_size
 from utils.formatters import h, panel
 
 async def start_search(msg_or_query, state):
@@ -13,7 +16,7 @@ async def start_search(msg_or_query, state):
     except: await msg.answer(f"<pre>{text}</pre>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="home")]]))
 
 @router.message(ExploreFlow.searching)
-async def search_received(message, state, session, telegram_id):
+async def search_received(message: Message, state: FSMContext, session: dict, telegram_id: int):
     await state.clear()
     from bot.services.github import _http, _token_from_session
     token = _token_from_session(session) if session else None
@@ -46,7 +49,7 @@ async def start_download_url(msg_or_query, state):
     except: await msg.answer(f"<pre>{text}</pre>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="home")]]))
 
 @router.message(ExploreFlow.downloading)
-async def download_url_received(message, state, session, telegram_id):
+async def download_url_received(message: Message, state: FSMContext, session: dict, telegram_id: int):
     await state.clear()
     url = message.text.strip()
     repo_name = url.replace("https://github.com/","").replace("http://github.com/","").rstrip("/")
@@ -106,7 +109,7 @@ async def start_find_user(msg_or_query, state):
     except: await msg.answer(f"<pre>{text}</pre>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="home")]]))
 
 @router.message(ExploreFlow.finding_user)
-async def find_user_received(message, state, session, telegram_id):
+async def find_user_received(message: Message, state: FSMContext, session: dict, telegram_id: int):
     await state.clear()
     results = await search_users(session, message.text.strip())
     lines = ["---", f"  Results for: {h(message.text.strip())}", "---"]
@@ -166,3 +169,5 @@ async def start_search_code(msg_or_query, state, session):
     msg = msg_or_query.message if isinstance(msg_or_query, CallbackQuery) else msg_or_query
     try: await msg.edit_text(f"<pre>{text}</pre>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="home")]]))
     except: await msg.answer(f"<pre>{text}</pre>", parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="home")]]))
+
+router = Router()

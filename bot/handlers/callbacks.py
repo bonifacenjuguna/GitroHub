@@ -1,3 +1,4 @@
+from typing import Optional, Any
 """
 Central Callback Router — GitroHub v2.0
 Routes all 211 callbacks to their handlers.
@@ -31,7 +32,7 @@ async def _answer(query: CallbackQuery):
 # ── Repos ─────────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("repos:"))
-async def cb_repos(query: CallbackQuery, session: dict | None,
+async def cb_repos(query: CallbackQuery, session: Optional[dict],
                     telegram_id: int):
     await _answer(query)
     parts = query.data.split(":")
@@ -42,7 +43,7 @@ async def cb_repos(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("repos_page:"))
-async def cb_repos_page(query: CallbackQuery, session: dict | None,
+async def cb_repos_page(query: CallbackQuery, session: Optional[dict],
                          telegram_id: int):
     await _answer(query)
     _, page, sort = query.data.split(":")
@@ -52,7 +53,7 @@ async def cb_repos_page(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("repos_sort:"))
-async def cb_repos_sort(query: CallbackQuery, session: dict | None,
+async def cb_repos_sort(query: CallbackQuery, session: Optional[dict],
                          telegram_id: int):
     await _answer(query)
     sort = query.data.split(":", 1)[1]
@@ -61,7 +62,7 @@ async def cb_repos_sort(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("repo_open:"))
-async def cb_repo_open(query: CallbackQuery, session: dict | None,
+async def cb_repo_open(query: CallbackQuery, session: Optional[dict],
                         telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -70,7 +71,7 @@ async def cb_repo_open(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data == "repo_open_active")
-async def cb_repo_open_active(query: CallbackQuery, session: dict | None,
+async def cb_repo_open_active(query: CallbackQuery, session: Optional[dict],
                                telegram_id: int):
     await _answer(query)
     if not session or not session.get("active_repo"):
@@ -88,7 +89,7 @@ async def cb_repo_create(query: CallbackQuery, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("repo_settings:"))
-async def cb_repo_settings(query: CallbackQuery, session: dict | None,
+async def cb_repo_settings(query: CallbackQuery, session: Optional[dict],
                              telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -97,7 +98,7 @@ async def cb_repo_settings(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("repo_pin:"))
-async def cb_repo_pin(query: CallbackQuery, session: dict | None,
+async def cb_repo_pin(query: CallbackQuery, session: Optional[dict],
                        telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -112,7 +113,7 @@ async def cb_repo_pin(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("repo_unpin:"))
-async def cb_repo_unpin(query: CallbackQuery, session: dict | None,
+async def cb_repo_unpin(query: CallbackQuery, session: Optional[dict],
                          telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -125,7 +126,7 @@ async def cb_repo_unpin(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("repo_star:"))
-async def cb_repo_star(query: CallbackQuery, session: dict | None,
+async def cb_repo_star(query: CallbackQuery, session: Optional[dict],
                         telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -135,7 +136,7 @@ async def cb_repo_star(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("repo_fork:"))
-async def cb_repo_fork(query: CallbackQuery, session: dict | None,
+async def cb_repo_fork(query: CallbackQuery, session: Optional[dict],
                         telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -145,7 +146,7 @@ async def cb_repo_fork(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("repo_rename:"))
 async def cb_repo_rename(query: CallbackQuery, state: FSMContext,
-                          session: dict | None, telegram_id: int):
+                          session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.repos import start_rename_repo
@@ -154,7 +155,7 @@ async def cb_repo_rename(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data.startswith("repo_delete:"))
 async def cb_repo_delete(query: CallbackQuery, state: FSMContext,
-                          session: dict | None, telegram_id: int):
+                          session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.repos import start_delete_repo
@@ -164,7 +165,7 @@ async def cb_repo_delete(query: CallbackQuery, state: FSMContext,
 @router.callback_query(F.data == "repo_delete_confirmed")
 async def cb_repo_delete_confirmed(query: CallbackQuery,
                                     state: FSMContext,
-                                    session: dict | None,
+                                    session: Optional[dict],
                                     telegram_id: int):
     await _answer(query)
     from bot.handlers.repos import confirm_delete_repo
@@ -172,7 +173,7 @@ async def cb_repo_delete_confirmed(query: CallbackQuery,
 
 
 @router.callback_query(F.data.startswith("repo_visibility:"))
-async def cb_repo_visibility(query: CallbackQuery, session: dict | None,
+async def cb_repo_visibility(query: CallbackQuery, session: Optional[dict],
                               telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -182,7 +183,7 @@ async def cb_repo_visibility(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("repo_visibility_confirm:"))
 async def cb_repo_visibility_confirm(query: CallbackQuery,
-                                      session: dict | None,
+                                      session: Optional[dict],
                                       telegram_id: int):
     await _answer(query)
     _, repo_name, vis = query.data.split(":")
@@ -193,7 +194,7 @@ async def cb_repo_visibility_confirm(query: CallbackQuery,
 
 @router.callback_query(F.data.startswith("repo_topics:"))
 async def cb_repo_topics(query: CallbackQuery, state: FSMContext,
-                          session: dict | None, telegram_id: int):
+                          session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.repos import start_edit_topics
@@ -202,7 +203,7 @@ async def cb_repo_topics(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data.startswith("repo_description:"))
 async def cb_repo_description(query: CallbackQuery, state: FSMContext,
-                               session: dict | None, telegram_id: int):
+                               session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.repos import start_edit_description
@@ -211,7 +212,7 @@ async def cb_repo_description(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data.startswith("repo_website:"))
 async def cb_repo_website(query: CallbackQuery, state: FSMContext,
-                           session: dict | None, telegram_id: int):
+                           session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.repos import start_edit_website
@@ -219,7 +220,7 @@ async def cb_repo_website(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("repo_template:"))
-async def cb_repo_template(query: CallbackQuery, session: dict | None,
+async def cb_repo_template(query: CallbackQuery, session: Optional[dict],
                             telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -232,7 +233,7 @@ async def cb_repo_template(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("repo_archive:"))
-async def cb_repo_archive(query: CallbackQuery, session: dict | None,
+async def cb_repo_archive(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -242,7 +243,7 @@ async def cb_repo_archive(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("repo_transfer:"))
 async def cb_repo_transfer(query: CallbackQuery, state: FSMContext,
-                            session: dict | None, telegram_id: int):
+                            session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.repos import start_transfer_repo
@@ -280,7 +281,7 @@ async def cb_repo_create_gi(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data.startswith("repo_create_license:"))
 async def cb_repo_create_license(query: CallbackQuery, state: FSMContext,
-                                  session: dict | None, telegram_id: int):
+                                  session: Optional[dict], telegram_id: int):
     await _answer(query)
     lic = query.data.split(":", 1)[1]
     from bot.handlers.repos import repo_create_finish
@@ -290,7 +291,7 @@ async def cb_repo_create_license(query: CallbackQuery, state: FSMContext,
 # ── Files ─────────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("browse:"))
-async def cb_browse(query: CallbackQuery, session: dict | None,
+async def cb_browse(query: CallbackQuery, session: Optional[dict],
                      telegram_id: int):
     await _answer(query)
     parts = query.data.split(":", 2)
@@ -301,7 +302,7 @@ async def cb_browse(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("file_read:"))
-async def cb_file_read(query: CallbackQuery, session: dict | None,
+async def cb_file_read(query: CallbackQuery, session: Optional[dict],
                         telegram_id: int):
     await _answer(query)
     _, repo_name, path = query.data.split(":", 2)
@@ -311,7 +312,7 @@ async def cb_file_read(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("file_edit:"))
 async def cb_file_edit(query: CallbackQuery, state: FSMContext,
-                        session: dict | None, telegram_id: int):
+                        session: Optional[dict], telegram_id: int):
     await _answer(query)
     _, repo_name, path = query.data.split(":", 2)
     from bot.handlers.files import start_file_edit
@@ -319,7 +320,7 @@ async def cb_file_edit(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("file_delete:"))
-async def cb_file_delete(query: CallbackQuery, session: dict | None,
+async def cb_file_delete(query: CallbackQuery, session: Optional[dict],
                           telegram_id: int):
     await _answer(query)
     _, repo_name, path = query.data.split(":", 2)
@@ -328,7 +329,7 @@ async def cb_file_delete(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("file_delete_confirm:"))
-async def cb_file_delete_confirm(query: CallbackQuery, session: dict | None,
+async def cb_file_delete_confirm(query: CallbackQuery, session: Optional[dict],
                                   telegram_id: int):
     await _answer(query)
     _, repo_name, path = query.data.split(":", 2)
@@ -338,7 +339,7 @@ async def cb_file_delete_confirm(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("file_move:"))
 async def cb_file_move(query: CallbackQuery, state: FSMContext,
-                        session: dict | None, telegram_id: int):
+                        session: Optional[dict], telegram_id: int):
     await _answer(query)
     _, repo_name, path = query.data.split(":", 2)
     from bot.handlers.files import start_move_file
@@ -347,7 +348,7 @@ async def cb_file_move(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data.startswith("file_rename:"))
 async def cb_file_rename(query: CallbackQuery, state: FSMContext,
-                          session: dict | None, telegram_id: int):
+                          session: Optional[dict], telegram_id: int):
     await _answer(query)
     _, repo_name, path = query.data.split(":", 2)
     from bot.handlers.files import start_rename_file
@@ -356,7 +357,7 @@ async def cb_file_rename(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data.startswith("file_create:"))
 async def cb_file_create(query: CallbackQuery, state: FSMContext,
-                          session: dict | None, telegram_id: int):
+                          session: Optional[dict], telegram_id: int):
     await _answer(query)
     parts = query.data.split(":", 2)
     repo_name = parts[1]
@@ -366,7 +367,7 @@ async def cb_file_create(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("file_download:"))
-async def cb_file_download(query: CallbackQuery, session: dict | None,
+async def cb_file_download(query: CallbackQuery, session: Optional[dict],
                             telegram_id: int):
     await _answer(query)
     _, repo_name, path = query.data.split(":", 2)
@@ -375,7 +376,7 @@ async def cb_file_download(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("file_history:"))
-async def cb_file_history(query: CallbackQuery, session: dict | None,
+async def cb_file_history(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     _, repo_name, path = query.data.split(":", 2)
@@ -384,7 +385,7 @@ async def cb_file_history(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("file_blame:"))
-async def cb_file_blame(query: CallbackQuery, session: dict | None,
+async def cb_file_blame(query: CallbackQuery, session: Optional[dict],
                          telegram_id: int):
     await _answer(query)
     _, repo_name, path = query.data.split(":", 2)
@@ -393,7 +394,7 @@ async def cb_file_blame(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("file_url:"))
-async def cb_file_url(query: CallbackQuery, session: dict | None,
+async def cb_file_url(query: CallbackQuery, session: Optional[dict],
                        telegram_id: int):
     await _answer(query)
     parts = query.data.split(":", 3)
@@ -421,7 +422,7 @@ async def cb_file_url(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("file_search:"))
 async def cb_file_search(query: CallbackQuery, state: FSMContext,
-                          session: dict | None, telegram_id: int):
+                          session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.files import start_search
@@ -431,7 +432,7 @@ async def cb_file_search(query: CallbackQuery, state: FSMContext,
 # ── Upload / Commit ────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "upload_menu")
-async def cb_upload_menu(query: CallbackQuery, session: dict | None,
+async def cb_upload_menu(query: CallbackQuery, session: Optional[dict],
                           telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import show_upload_menu
@@ -440,7 +441,7 @@ async def cb_upload_menu(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data == "commit_single")
 async def cb_commit_single(query: CallbackQuery, state: FSMContext,
-                            session: dict | None, telegram_id: int):
+                            session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import start_single_commit
     await start_single_commit(query, state, session, telegram_id)
@@ -448,7 +449,7 @@ async def cb_commit_single(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "commit_batch")
 async def cb_commit_batch(query: CallbackQuery, state: FSMContext,
-                           session: dict | None, telegram_id: int):
+                           session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import start_batch_commit
     await start_batch_commit(query, state, session, telegram_id)
@@ -456,7 +457,7 @@ async def cb_commit_batch(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "commit_zip_mirror")
 async def cb_commit_zip_mirror(query: CallbackQuery, state: FSMContext,
-                                session: dict | None, telegram_id: int):
+                                session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import start_zip_commit
     await start_zip_commit(query, state, session, telegram_id, is_mirror=True)
@@ -464,7 +465,7 @@ async def cb_commit_zip_mirror(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "commit_zip_sync")
 async def cb_commit_zip_sync(query: CallbackQuery, state: FSMContext,
-                              session: dict | None, telegram_id: int):
+                              session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import start_zip_commit
     await start_zip_commit(query, state, session, telegram_id, is_mirror=False)
@@ -488,7 +489,7 @@ async def cb_commit_auto_msg(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "commit_recent_msg")
 async def cb_commit_recent_msg(query: CallbackQuery, state: FSMContext,
-                                session: dict | None, telegram_id: int):
+                                session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import show_recent_messages
     await show_recent_messages(query, state, session, telegram_id)
@@ -496,7 +497,7 @@ async def cb_commit_recent_msg(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "commit_template_msg")
 async def cb_commit_template_msg(query: CallbackQuery, state: FSMContext,
-                                  session: dict | None, telegram_id: int):
+                                  session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import show_template_messages
     await show_template_messages(query, state, session, telegram_id)
@@ -504,7 +505,7 @@ async def cb_commit_template_msg(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "commit_preview_tree")
 async def cb_commit_preview_tree(query: CallbackQuery, state: FSMContext,
-                                  session: dict | None, telegram_id: int):
+                                  session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import preview_tree
     await preview_tree(query, state, session, telegram_id)
@@ -512,7 +513,7 @@ async def cb_commit_preview_tree(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "commit_confirm")
 async def cb_commit_confirm(query: CallbackQuery, state: FSMContext,
-                             session: dict | None, telegram_id: int):
+                             session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import do_commit
     await do_commit(query, state, session, telegram_id)
@@ -520,7 +521,7 @@ async def cb_commit_confirm(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data.startswith("commit_use_msg:"))
 async def cb_commit_use_msg(query: CallbackQuery, state: FSMContext,
-                             session: dict | None, telegram_id: int):
+                             session: Optional[dict], telegram_id: int):
     await _answer(query)
     msg = query.data.split(":", 1)[1]
     from bot.handlers.upload import commit_with_message
@@ -529,7 +530,7 @@ async def cb_commit_use_msg(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data.startswith("commit_use_template:"))
 async def cb_commit_use_template(query: CallbackQuery, state: FSMContext,
-                                  session: dict | None, telegram_id: int):
+                                  session: Optional[dict], telegram_id: int):
     await _answer(query)
     tmpl_id = query.data.split(":", 1)[1]
     from bot.handlers.upload import use_template_message
@@ -538,7 +539,7 @@ async def cb_commit_use_template(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "commit_sensitive_confirm")
 async def cb_sensitive_confirm(query: CallbackQuery, state: FSMContext,
-                                session: dict | None, telegram_id: int):
+                                session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import sensitive_confirmed
     await sensitive_confirmed(query, state, session, telegram_id)
@@ -554,7 +555,7 @@ async def cb_sensitive_skip(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "mismatch_use_path")
 async def cb_mismatch_use_path(query: CallbackQuery, state: FSMContext,
-                                session: dict | None, telegram_id: int):
+                                session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import mismatch_use_path
     await mismatch_use_path(query, state, session, telegram_id)
@@ -562,7 +563,7 @@ async def cb_mismatch_use_path(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "mismatch_use_file")
 async def cb_mismatch_use_file(query: CallbackQuery, state: FSMContext,
-                                session: dict | None, telegram_id: int):
+                                session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import mismatch_use_file
     await mismatch_use_file(query, state, session, telegram_id)
@@ -587,7 +588,7 @@ async def cb_batch_paths_done(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "batch_review")
 async def cb_batch_review(query: CallbackQuery, state: FSMContext,
-                           session: dict | None, telegram_id: int):
+                           session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.upload import batch_review
     await batch_review(query, state, session, telegram_id)
@@ -596,7 +597,7 @@ async def cb_batch_review(query: CallbackQuery, state: FSMContext,
 # ── Download ──────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("dl_repo:"))
-async def cb_dl_repo(query: CallbackQuery, session: dict | None,
+async def cb_dl_repo(query: CallbackQuery, session: Optional[dict],
                       telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -607,7 +608,7 @@ async def cb_dl_repo(query: CallbackQuery, session: dict | None,
 # ── Branches ──────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("branches:"))
-async def cb_branches(query: CallbackQuery, session: dict | None,
+async def cb_branches(query: CallbackQuery, session: Optional[dict],
                        telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -616,7 +617,7 @@ async def cb_branches(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("branch_checkout:"))
-async def cb_branch_checkout(query: CallbackQuery, session: dict | None,
+async def cb_branch_checkout(query: CallbackQuery, session: Optional[dict],
                               telegram_id: int):
     await _answer(query)
     _, repo_name, branch = query.data.split(":")
@@ -626,7 +627,7 @@ async def cb_branch_checkout(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("branch_create:"))
 async def cb_branch_create(query: CallbackQuery, state: FSMContext,
-                            session: dict | None, telegram_id: int):
+                            session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.branches import start_create_branch
@@ -634,7 +635,7 @@ async def cb_branch_create(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("branch_delete:"))
-async def cb_branch_delete(query: CallbackQuery, session: dict | None,
+async def cb_branch_delete(query: CallbackQuery, session: Optional[dict],
                             telegram_id: int):
     await _answer(query)
     _, repo_name, branch = query.data.split(":")
@@ -643,7 +644,7 @@ async def cb_branch_delete(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("branch_delete_confirm:"))
-async def cb_branch_delete_confirm(query: CallbackQuery, session: dict | None,
+async def cb_branch_delete_confirm(query: CallbackQuery, session: Optional[dict],
                                     telegram_id: int):
     await _answer(query)
     _, repo_name, branch = query.data.split(":")
@@ -652,7 +653,7 @@ async def cb_branch_delete_confirm(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("branch_merge:"))
-async def cb_branch_merge(query: CallbackQuery, session: dict | None,
+async def cb_branch_merge(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     _, repo_name, branch = query.data.split(":")
@@ -661,7 +662,7 @@ async def cb_branch_merge(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("branch_merge_confirm:"))
-async def cb_branch_merge_confirm(query: CallbackQuery, session: dict | None,
+async def cb_branch_merge_confirm(query: CallbackQuery, session: Optional[dict],
                                    telegram_id: int):
     await _answer(query)
     _, repo_name, branch = query.data.split(":")
@@ -671,7 +672,7 @@ async def cb_branch_merge_confirm(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("branch_rename:"))
 async def cb_branch_rename(query: CallbackQuery, state: FSMContext,
-                            session: dict | None, telegram_id: int):
+                            session: Optional[dict], telegram_id: int):
     await _answer(query)
     _, repo_name, branch = query.data.split(":")
     from bot.handlers.branches import start_rename_branch
@@ -679,7 +680,7 @@ async def cb_branch_rename(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("branch_protect:"))
-async def cb_branch_protect(query: CallbackQuery, session: dict | None,
+async def cb_branch_protect(query: CallbackQuery, session: Optional[dict],
                              telegram_id: int):
     await _answer(query)
     _, repo_name, branch = query.data.split(":")
@@ -689,7 +690,7 @@ async def cb_branch_protect(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("branch_compare:"))
 async def cb_branch_compare(query: CallbackQuery, state: FSMContext,
-                             session: dict | None, telegram_id: int):
+                             session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.branches import start_compare_branches
@@ -697,7 +698,7 @@ async def cb_branch_compare(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("branch_set_default:"))
-async def cb_branch_set_default(query: CallbackQuery, session: dict | None,
+async def cb_branch_set_default(query: CallbackQuery, session: Optional[dict],
                                  telegram_id: int):
     await _answer(query)
     _, repo_name, branch = query.data.split(":")
@@ -712,7 +713,7 @@ async def cb_branch_set_default(query: CallbackQuery, session: dict | None,
 # ── Commits ───────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("commits:"))
-async def cb_commits(query: CallbackQuery, session: dict | None,
+async def cb_commits(query: CallbackQuery, session: Optional[dict],
                       telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -722,7 +723,7 @@ async def cb_commits(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("commits_page:"))
-async def cb_commits_page(query: CallbackQuery, session: dict | None,
+async def cb_commits_page(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     _, repo_name, branch, page = query.data.split(":")
@@ -732,7 +733,7 @@ async def cb_commits_page(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("commit_view:"))
-async def cb_commit_view(query: CallbackQuery, session: dict | None,
+async def cb_commit_view(query: CallbackQuery, session: Optional[dict],
                           telegram_id: int):
     await _answer(query)
     _, repo_name, sha = query.data.split(":", 2)
@@ -742,7 +743,7 @@ async def cb_commit_view(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("commit_revert_last:"))
 async def cb_commit_revert_last(query: CallbackQuery, state: FSMContext,
-                                 session: dict | None, telegram_id: int):
+                                 session: Optional[dict], telegram_id: int):
     await _answer(query)
     _, repo_name, branch = query.data.split(":")
     from bot.handlers.history import confirm_revert_last
@@ -750,7 +751,7 @@ async def cb_commit_revert_last(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("commit_revert:"))
-async def cb_commit_revert(query: CallbackQuery, session: dict | None,
+async def cb_commit_revert(query: CallbackQuery, session: Optional[dict],
                             telegram_id: int):
     await _answer(query)
     _, repo_name, branch, sha = query.data.split(":")
@@ -759,7 +760,7 @@ async def cb_commit_revert(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("commit_reset:"))
-async def cb_commit_reset(query: CallbackQuery, session: dict | None,
+async def cb_commit_reset(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     _, repo_name, branch, sha = query.data.split(":")
@@ -769,7 +770,7 @@ async def cb_commit_reset(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("commit_reset_confirm:"))
-async def cb_commit_reset_confirm(query: CallbackQuery, session: dict | None,
+async def cb_commit_reset_confirm(query: CallbackQuery, session: Optional[dict],
                                    telegram_id: int):
     await _answer(query)
     _, repo_name, branch, sha = query.data.split(":")
@@ -780,7 +781,7 @@ async def cb_commit_reset_confirm(query: CallbackQuery, session: dict | None,
 # ── Pull Requests ─────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("pulls:"))
-async def cb_pulls(query: CallbackQuery, session: dict | None,
+async def cb_pulls(query: CallbackQuery, session: Optional[dict],
                     telegram_id: int):
     await _answer(query)
     parts = query.data.split(":")
@@ -792,7 +793,7 @@ async def cb_pulls(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("pull_view:"))
-async def cb_pull_view(query: CallbackQuery, session: dict | None,
+async def cb_pull_view(query: CallbackQuery, session: Optional[dict],
                         telegram_id: int):
     await _answer(query)
     _, repo_name, pr_num = query.data.split(":")
@@ -802,7 +803,7 @@ async def cb_pull_view(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("pull_create:"))
 async def cb_pull_create(query: CallbackQuery, state: FSMContext,
-                          session: dict | None, telegram_id: int):
+                          session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.pulls import start_create_pull
@@ -810,7 +811,7 @@ async def cb_pull_create(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("pull_merge:"))
-async def cb_pull_merge(query: CallbackQuery, session: dict | None,
+async def cb_pull_merge(query: CallbackQuery, session: Optional[dict],
                          telegram_id: int):
     await _answer(query)
     _, repo_name, pr_num, method = query.data.split(":")
@@ -820,7 +821,7 @@ async def cb_pull_merge(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("pull_close:"))
-async def cb_pull_close(query: CallbackQuery, session: dict | None,
+async def cb_pull_close(query: CallbackQuery, session: Optional[dict],
                          telegram_id: int):
     await _answer(query)
     _, repo_name, pr_num = query.data.split(":")
@@ -829,7 +830,7 @@ async def cb_pull_close(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("pull_approve:"))
-async def cb_pull_approve(query: CallbackQuery, session: dict | None,
+async def cb_pull_approve(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     _, repo_name, pr_num = query.data.split(":")
@@ -838,7 +839,7 @@ async def cb_pull_approve(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("pull_diff:"))
-async def cb_pull_diff(query: CallbackQuery, session: dict | None,
+async def cb_pull_diff(query: CallbackQuery, session: Optional[dict],
                         telegram_id: int):
     await _answer(query)
     _, repo_name, pr_num = query.data.split(":")
@@ -847,7 +848,7 @@ async def cb_pull_diff(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("pull_commits:"))
-async def cb_pull_commits(query: CallbackQuery, session: dict | None,
+async def cb_pull_commits(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     _, repo_name, pr_num = query.data.split(":")
@@ -858,7 +859,7 @@ async def cb_pull_commits(query: CallbackQuery, session: dict | None,
 # ── Issues ────────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("issues:"))
-async def cb_issues(query: CallbackQuery, session: dict | None,
+async def cb_issues(query: CallbackQuery, session: Optional[dict],
                      telegram_id: int):
     await _answer(query)
     parts = query.data.split(":")
@@ -870,7 +871,7 @@ async def cb_issues(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("issue_view:"))
-async def cb_issue_view(query: CallbackQuery, session: dict | None,
+async def cb_issue_view(query: CallbackQuery, session: Optional[dict],
                          telegram_id: int):
     await _answer(query)
     _, repo_name, issue_num = query.data.split(":")
@@ -881,7 +882,7 @@ async def cb_issue_view(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("issue_create:"))
 async def cb_issue_create(query: CallbackQuery, state: FSMContext,
-                           session: dict | None, telegram_id: int):
+                           session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.issues import start_create_issue
@@ -889,7 +890,7 @@ async def cb_issue_create(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("issue_close:"))
-async def cb_issue_close(query: CallbackQuery, session: dict | None,
+async def cb_issue_close(query: CallbackQuery, session: Optional[dict],
                           telegram_id: int):
     await _answer(query)
     _, repo_name, issue_num = query.data.split(":")
@@ -898,7 +899,7 @@ async def cb_issue_close(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("issue_reopen:"))
-async def cb_issue_reopen(query: CallbackQuery, session: dict | None,
+async def cb_issue_reopen(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     _, repo_name, issue_num = query.data.split(":")
@@ -909,7 +910,7 @@ async def cb_issue_reopen(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("issue_comment:"))
 async def cb_issue_comment(query: CallbackQuery, state: FSMContext,
-                            session: dict | None, telegram_id: int):
+                            session: Optional[dict], telegram_id: int):
     await _answer(query)
     _, repo_name, issue_num = query.data.split(":")
     from bot.handlers.issues import start_comment_issue
@@ -917,7 +918,7 @@ async def cb_issue_comment(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("issue_label:"))
-async def cb_issue_label(query: CallbackQuery, session: dict | None,
+async def cb_issue_label(query: CallbackQuery, session: Optional[dict],
                           telegram_id: int):
     await _answer(query)
     _, repo_name, issue_num = query.data.split(":")
@@ -929,7 +930,7 @@ async def cb_issue_label(query: CallbackQuery, session: dict | None,
 # ── Releases ──────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("releases:"))
-async def cb_releases(query: CallbackQuery, session: dict | None,
+async def cb_releases(query: CallbackQuery, session: Optional[dict],
                        telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -938,7 +939,7 @@ async def cb_releases(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("release_view:"))
-async def cb_release_view(query: CallbackQuery, session: dict | None,
+async def cb_release_view(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     _, repo_name, release_id = query.data.split(":")
@@ -949,7 +950,7 @@ async def cb_release_view(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("release_create:"))
 async def cb_release_create(query: CallbackQuery, state: FSMContext,
-                             session: dict | None, telegram_id: int):
+                             session: Optional[dict], telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
     from bot.handlers.releases import start_create_release
@@ -957,7 +958,7 @@ async def cb_release_create(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("release_delete:"))
-async def cb_release_delete(query: CallbackQuery, session: dict | None,
+async def cb_release_delete(query: CallbackQuery, session: Optional[dict],
                              telegram_id: int):
     await _answer(query)
     _, repo_name, release_id = query.data.split(":")
@@ -969,7 +970,7 @@ async def cb_release_delete(query: CallbackQuery, session: dict | None,
 # ── Actions ───────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("actions:"))
-async def cb_actions(query: CallbackQuery, session: dict | None,
+async def cb_actions(query: CallbackQuery, session: Optional[dict],
                       telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -978,7 +979,7 @@ async def cb_actions(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("action_workflow_view:"))
-async def cb_action_workflow_view(query: CallbackQuery, session: dict | None,
+async def cb_action_workflow_view(query: CallbackQuery, session: Optional[dict],
                                    telegram_id: int):
     await _answer(query)
     _, repo_name, workflow_id = query.data.split(":")
@@ -988,7 +989,7 @@ async def cb_action_workflow_view(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("action_run:"))
-async def cb_action_run(query: CallbackQuery, session: dict | None,
+async def cb_action_run(query: CallbackQuery, session: Optional[dict],
                          telegram_id: int):
     await _answer(query)
     _, repo_name, workflow_id = query.data.split(":")
@@ -998,7 +999,7 @@ async def cb_action_run(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("action_cancel_run:"))
-async def cb_action_cancel_run(query: CallbackQuery, session: dict | None,
+async def cb_action_cancel_run(query: CallbackQuery, session: Optional[dict],
                                 telegram_id: int):
     await _answer(query)
     _, repo_name, run_id = query.data.split(":")
@@ -1007,7 +1008,7 @@ async def cb_action_cancel_run(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("action_logs:"))
-async def cb_action_logs(query: CallbackQuery, session: dict | None,
+async def cb_action_logs(query: CallbackQuery, session: Optional[dict],
                           telegram_id: int):
     await _answer(query)
     _, repo_name, run_id = query.data.split(":")
@@ -1025,7 +1026,7 @@ async def cb_action_logs(query: CallbackQuery, session: dict | None,
 # ── Stats ─────────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data.startswith("stats:"))
-async def cb_stats(query: CallbackQuery, session: dict | None,
+async def cb_stats(query: CallbackQuery, session: Optional[dict],
                     telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -1034,7 +1035,7 @@ async def cb_stats(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data == "stats")
-async def cb_stats_active(query: CallbackQuery, session: dict | None,
+async def cb_stats_active(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     if not session or not session.get("active_repo"):
@@ -1047,7 +1048,7 @@ async def cb_stats_active(query: CallbackQuery, session: dict | None,
 # ── Forks ─────────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "forks")
-async def cb_forks(query: CallbackQuery, session: dict | None,
+async def cb_forks(query: CallbackQuery, session: Optional[dict],
                     telegram_id: int):
     await _answer(query)
     from bot.handlers.forks import show_forks
@@ -1055,7 +1056,7 @@ async def cb_forks(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("fork_view:"))
-async def cb_fork_view(query: CallbackQuery, session: dict | None,
+async def cb_fork_view(query: CallbackQuery, session: Optional[dict],
                         telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -1064,7 +1065,7 @@ async def cb_fork_view(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("fork_sync:"))
-async def cb_fork_sync(query: CallbackQuery, session: dict | None,
+async def cb_fork_sync(query: CallbackQuery, session: Optional[dict],
                         telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -1074,7 +1075,7 @@ async def cb_fork_sync(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("fork_contribute:"))
 async def cb_fork_contribute(query: CallbackQuery, state: FSMContext,
-                              session: dict | None, telegram_id: int):
+                              session: Optional[dict], telegram_id: int):
     await _answer(query)
     _, fork_name, parent_name = query.data.split(":", 2)
     from bot.handlers.forks import start_contribute_pr
@@ -1083,7 +1084,7 @@ async def cb_fork_contribute(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data.startswith("fork_delete:"))
-async def cb_fork_delete(query: CallbackQuery, session: dict | None,
+async def cb_fork_delete(query: CallbackQuery, session: Optional[dict],
                           telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -1092,7 +1093,7 @@ async def cb_fork_delete(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("fork_to_personal:"))
-async def cb_fork_to_personal(query: CallbackQuery, session: dict | None,
+async def cb_fork_to_personal(query: CallbackQuery, session: Optional[dict],
                                telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -1101,7 +1102,7 @@ async def cb_fork_to_personal(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("fork_to_org:"))
-async def cb_fork_to_org(query: CallbackQuery, session: dict | None,
+async def cb_fork_to_org(query: CallbackQuery, session: Optional[dict],
                           telegram_id: int):
     await _answer(query)
     _, repo_name, org = query.data.split(":", 2)
@@ -1112,7 +1113,7 @@ async def cb_fork_to_org(query: CallbackQuery, session: dict | None,
 # ── Notifications ─────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "notifs_all")
-async def cb_notifs_all(query: CallbackQuery, session: dict | None,
+async def cb_notifs_all(query: CallbackQuery, session: Optional[dict],
                          telegram_id: int):
     await _answer(query)
     from bot.handlers.notifications import show_notifications
@@ -1120,7 +1121,7 @@ async def cb_notifs_all(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("notifs_page:"))
-async def cb_notifs_page(query: CallbackQuery, session: dict | None,
+async def cb_notifs_page(query: CallbackQuery, session: Optional[dict],
                           telegram_id: int):
     await _answer(query)
     page = int(query.data.split(":", 1)[1])
@@ -1183,7 +1184,7 @@ async def cb_notifs_quiet(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "notifs_mute_repo")
 async def cb_notifs_mute_repo(query: CallbackQuery, state: FSMContext,
-                               session: dict | None, telegram_id: int):
+                               session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.notifications import start_mute_repo
     await start_mute_repo(query, state, session)
@@ -1268,7 +1269,7 @@ async def cb_settings_pm(query: CallbackQuery, telegram_id: int):
 
 
 @router.callback_query(F.data == "settings_aliases")
-async def cb_settings_aliases(query: CallbackQuery, session: dict | None,
+async def cb_settings_aliases(query: CallbackQuery, session: Optional[dict],
                                 telegram_id: int):
     await _answer(query)
     from bot.handlers.settings import show_aliases
@@ -1276,7 +1277,7 @@ async def cb_settings_aliases(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data == "settings_templates")
-async def cb_settings_templates(query: CallbackQuery, session: dict | None,
+async def cb_settings_templates(query: CallbackQuery, session: Optional[dict],
                                   telegram_id: int):
     await _answer(query)
     from bot.handlers.settings import show_templates
@@ -1284,7 +1285,7 @@ async def cb_settings_templates(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data == "settings_savedpaths")
-async def cb_settings_savedpaths(query: CallbackQuery, session: dict | None,
+async def cb_settings_savedpaths(query: CallbackQuery, session: Optional[dict],
                                    telegram_id: int):
     await _answer(query)
     from bot.handlers.settings import show_saved_paths
@@ -1323,7 +1324,7 @@ async def cb_settings_reset_confirm(query: CallbackQuery, telegram_id: int):
 
 
 @router.callback_query(F.data.startswith("alias_remove:"))
-async def cb_alias_remove(query: CallbackQuery, session: dict | None,
+async def cb_alias_remove(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     alias = query.data.split(":", 1)[1]
@@ -1334,7 +1335,7 @@ async def cb_alias_remove(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("template_remove:"))
-async def cb_template_remove(query: CallbackQuery, session: dict | None,
+async def cb_template_remove(query: CallbackQuery, session: Optional[dict],
                                telegram_id: int):
     await _answer(query)
     tmpl_id = int(query.data.split(":", 1)[1])
@@ -1345,7 +1346,7 @@ async def cb_template_remove(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("savedpath_remove:"))
-async def cb_savedpath_remove(query: CallbackQuery, session: dict | None,
+async def cb_savedpath_remove(query: CallbackQuery, session: Optional[dict],
                                telegram_id: int):
     await _answer(query)
     path = query.data.split(":", 1)[1]
@@ -1359,7 +1360,7 @@ async def cb_savedpath_remove(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data.startswith("savedpath_use:"))
 async def cb_savedpath_use(query: CallbackQuery, state: FSMContext,
-                            session: dict | None, telegram_id: int):
+                            session: Optional[dict], telegram_id: int):
     await _answer(query)
     path = query.data.split(":", 1)[1]
     from bot.handlers.upload import start_single_commit_at_path
@@ -1369,7 +1370,7 @@ async def cb_savedpath_use(query: CallbackQuery, state: FSMContext,
 # ── Profile ───────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "account_profile")
-async def cb_account_profile(query: CallbackQuery, session: dict | None,
+async def cb_account_profile(query: CallbackQuery, session: Optional[dict],
                                telegram_id: int):
     await _answer(query)
     from bot.handlers.account import show_profile
@@ -1385,7 +1386,7 @@ async def cb_profile_edit(query: CallbackQuery, telegram_id: int):
 
 @router.callback_query(F.data.startswith("profile_edit_"))
 async def cb_profile_edit_field(query: CallbackQuery, state: FSMContext,
-                                 session: dict | None, telegram_id: int):
+                                 session: Optional[dict], telegram_id: int):
     await _answer(query)
     field = query.data[len("profile_edit_"):]
     from bot.handlers.account import start_edit_profile_field
@@ -1393,7 +1394,7 @@ async def cb_profile_edit_field(query: CallbackQuery, state: FSMContext,
 
 
 @router.callback_query(F.data == "profile_hireable")
-async def cb_profile_hireable(query: CallbackQuery, session: dict | None,
+async def cb_profile_hireable(query: CallbackQuery, session: Optional[dict],
                                telegram_id: int):
     await _answer(query)
     from bot.handlers.account import toggle_hireable
@@ -1401,7 +1402,7 @@ async def cb_profile_hireable(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data == "profile_pinned")
-async def cb_profile_pinned(query: CallbackQuery, session: dict | None,
+async def cb_profile_pinned(query: CallbackQuery, session: Optional[dict],
                              telegram_id: int):
     await _answer(query)
     from bot.handlers.account import show_pinned_manager
@@ -1409,7 +1410,7 @@ async def cb_profile_pinned(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("profile_pin_remove:"))
-async def cb_profile_pin_remove(query: CallbackQuery, session: dict | None,
+async def cb_profile_pin_remove(query: CallbackQuery, session: Optional[dict],
                                  telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -1423,7 +1424,7 @@ async def cb_profile_pin_remove(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data == "profile_following")
-async def cb_profile_following(query: CallbackQuery, session: dict | None,
+async def cb_profile_following(query: CallbackQuery, session: Optional[dict],
                                 telegram_id: int):
     await _answer(query)
     from bot.handlers.account import show_following
@@ -1431,7 +1432,7 @@ async def cb_profile_following(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data == "profile_followers")
-async def cb_profile_followers(query: CallbackQuery, session: dict | None,
+async def cb_profile_followers(query: CallbackQuery, session: Optional[dict],
                                 telegram_id: int):
     await _answer(query)
     from bot.handlers.account import show_followers
@@ -1439,7 +1440,7 @@ async def cb_profile_followers(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data == "profile_orgs")
-async def cb_profile_orgs(query: CallbackQuery, session: dict | None,
+async def cb_profile_orgs(query: CallbackQuery, session: Optional[dict],
                            telegram_id: int):
     await _answer(query)
     from bot.handlers.account import show_orgs
@@ -1450,7 +1451,7 @@ async def cb_profile_orgs(query: CallbackQuery, session: dict | None,
 
 @router.callback_query(F.data == "explore_search")
 async def cb_explore_search(query: CallbackQuery, state: FSMContext,
-                             session: dict | None, telegram_id: int):
+                             session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.explore import start_search
     await start_search(query, state)
@@ -1458,7 +1459,7 @@ async def cb_explore_search(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "explore_download_url")
 async def cb_explore_dl_url(query: CallbackQuery, state: FSMContext,
-                             session: dict | None, telegram_id: int):
+                             session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.explore import start_download_url
     await start_download_url(query, state)
@@ -1466,7 +1467,7 @@ async def cb_explore_dl_url(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "explore_find_user")
 async def cb_explore_find_user(query: CallbackQuery, state: FSMContext,
-                                session: dict | None, telegram_id: int):
+                                session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.explore import start_find_user
     await start_find_user(query, state)
@@ -1474,7 +1475,7 @@ async def cb_explore_find_user(query: CallbackQuery, state: FSMContext,
 
 @router.callback_query(F.data == "explore_search_code")
 async def cb_explore_search_code(query: CallbackQuery, state: FSMContext,
-                                  session: dict | None, telegram_id: int):
+                                  session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.explore import start_search_code
     await start_search_code(query, state, session)
@@ -1524,7 +1525,7 @@ async def cb_project_view_files(query: CallbackQuery, telegram_id: int):
 
 @router.callback_query(F.data.startswith("project_push:"))
 async def cb_project_push(query: CallbackQuery, state: FSMContext,
-                           session: dict | None, telegram_id: int):
+                           session: Optional[dict], telegram_id: int):
     await _answer(query)
     name = query.data.split(":", 1)[1]
     from bot.handlers.projects import start_push_project
@@ -1580,7 +1581,7 @@ async def cb_health_clear_queue(query: CallbackQuery, telegram_id: int,
 # ── Security ──────────────────────────────────────────────────────────────────
 
 @router.callback_query(F.data == "security")
-async def cb_security(query: CallbackQuery, session: dict | None,
+async def cb_security(query: CallbackQuery, session: Optional[dict],
                        telegram_id: int):
     await _answer(query)
     if not session or not session.get("active_repo"):
@@ -1591,7 +1592,7 @@ async def cb_security(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("security_alerts:"))
-async def cb_security_alerts(query: CallbackQuery, session: dict | None,
+async def cb_security_alerts(query: CallbackQuery, session: Optional[dict],
                                telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -1600,7 +1601,7 @@ async def cb_security_alerts(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("security_webhooks:"))
-async def cb_security_webhooks(query: CallbackQuery, session: dict | None,
+async def cb_security_webhooks(query: CallbackQuery, session: Optional[dict],
                                 telegram_id: int):
     await _answer(query)
     repo_name = query.data.split(":", 1)[1]
@@ -1658,16 +1659,23 @@ async def cb_invite_cancel(query: CallbackQuery, telegram_id: int,
 
 # ── Gists ─────────────────────────────────────────────────────────────────────
 
+
+@router.callback_query(F.data == "gist_list")
+async def cb_gist_list(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    from bot.handlers.gists import show_gists
+    await show_gists(query, session, telegram_id)
+
 @router.callback_query(F.data == "gist_create")
 async def cb_gist_create(query: CallbackQuery, state: FSMContext,
-                          session: dict | None, telegram_id: int):
+                          session: Optional[dict], telegram_id: int):
     await _answer(query)
     from bot.handlers.gists import start_create_gist
     await start_create_gist(query, state)
 
 
 @router.callback_query(F.data.startswith("gist_delete:"))
-async def cb_gist_delete(query: CallbackQuery, session: dict | None,
+async def cb_gist_delete(query: CallbackQuery, session: Optional[dict],
                           telegram_id: int):
     await _answer(query)
     gist_id = query.data.split(":", 1)[1]
@@ -1676,7 +1684,7 @@ async def cb_gist_delete(query: CallbackQuery, session: dict | None,
 
 
 @router.callback_query(F.data.startswith("gist_delete_confirm:"))
-async def cb_gist_delete_confirm(query: CallbackQuery, session: dict | None,
+async def cb_gist_delete_confirm(query: CallbackQuery, session: Optional[dict],
                                   telegram_id: int):
     await _answer(query)
     gist_id = query.data.split(":", 1)[1]
@@ -1686,3 +1694,432 @@ async def cb_gist_delete_confirm(query: CallbackQuery, session: dict | None,
                         show_alert=True)
     from bot.handlers.gists import show_gists
     await show_gists(query, session, telegram_id)
+
+# ── Additional missing static callbacks ──────────────────────────────────────
+
+@router.callback_query(F.data == "branches")
+async def cb_branches_active(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    if not session or not session.get("active_repo"):
+        await query.answer("No active repository.", show_alert=True)
+        return
+    from bot.handlers.branches import show_branches
+    await show_branches(query, session, telegram_id, session["active_repo"])
+
+
+@router.callback_query(F.data == "commits")
+async def cb_commits_active(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    if not session or not session.get("active_repo"):
+        await query.answer("No active repository.", show_alert=True)
+        return
+    from bot.handlers.history import show_commits
+    branch = session.get("active_branch", "main")
+    await show_commits(query, session, telegram_id, session["active_repo"], branch, 0)
+
+
+@router.callback_query(F.data.startswith("profile_edit_"))
+async def cb_profile_edit_field_generic(query: CallbackQuery, state: FSMContext,
+                                         session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    field = query.data[len("profile_edit_"):]
+    from bot.handlers.account import start_edit_profile_field
+    await start_edit_profile_field(query, state, session, telegram_id, field)
+
+
+@router.callback_query(F.data == "unfollow")
+async def cb_unfollow_noop(query: CallbackQuery):
+    await query.answer()
+
+
+@router.callback_query(F.data.startswith("unfollow:"))
+async def cb_unfollow_user(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    username = query.data.split(":", 1)[1]
+    from bot.services.github import unfollow_user
+    ok = await unfollow_user(session, username)
+    await query.answer("✅ Unfollowed." if ok else "❌ Failed", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("follow_user:"))
+async def cb_follow_user(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    username = query.data.split(":", 1)[1]
+    from bot.services.github import follow_user
+    ok = await follow_user(session, username)
+    await query.answer("✅ Following!" if ok else "❌ Failed", show_alert=True)
+
+
+@router.callback_query(F.data == "show_saved_paths")
+async def cb_show_saved_paths(query: CallbackQuery, state: FSMContext,
+                               session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    if not session or not session.get("active_repo"):
+        await query.answer("No active repository.", show_alert=True)
+        return
+    from database.pool import get_saved_paths
+    paths = await get_saved_paths(telegram_id, session["github_username"], session["active_repo"])
+    if not paths:
+        await query.answer("No saved paths yet. Use Settings → Saved Paths.", show_alert=True)
+        return
+    from utils.formatters import h
+    kb = [[InlineKeyboardButton(text=p, callback_data=f"batch_add_path:{p}")] for p in paths]
+    kb.append([InlineKeyboardButton(text="✅ Done", callback_data="batch_paths_done"),
+               InlineKeyboardButton(text="❌ Cancel", callback_data="cancel")])
+    await query.message.edit_text(
+        "<pre>⭐  Select a saved path:</pre>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=kb)
+    )
+
+
+@router.callback_query(F.data == "alias_add")
+async def cb_alias_add(query: CallbackQuery, state: FSMContext, telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import SettingsFlow
+    await state.set_state(SettingsFlow.adding_alias_shortcut)
+    from utils.formatters import h, panel
+    text = panel("⌨️  New Alias", ["---", "  Type the shortcut:", "  e.g.  /up"])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="❌ Cancel", callback_data="settings_aliases")]]))
+
+
+@router.callback_query(F.data == "template_add")
+async def cb_template_add(query: CallbackQuery, state: FSMContext, telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import SettingsFlow
+    await state.set_state(SettingsFlow.adding_template)
+    from utils.formatters import h, panel
+    text = panel("📝  New Template", ["---", "  Type the commit template:", "  e.g.  feat: {description}"])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="❌ Cancel", callback_data="settings_templates")]]))
+
+
+@router.callback_query(F.data == "savedpath_add")
+async def cb_savedpath_add(query: CallbackQuery, state: FSMContext, telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import SettingsFlow
+    await state.set_state(SettingsFlow.adding_savedpath)
+    from utils.formatters import h, panel
+    text = panel("⭐  Save a Path", ["---", "  Type the file path:", "  e.g.  src/app.py"])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="❌ Cancel", callback_data="settings_savedpaths")]]))
+
+
+@router.callback_query(F.data == "pm_edit_message")
+async def cb_pm_edit_message(query: CallbackQuery, state: FSMContext, telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import SettingsFlow
+    await state.set_state(SettingsFlow.editing_pm_message)
+    from utils.formatters import panel
+    text = panel("💬  Edit Private Message", ["---",
+        "  Type your custom message:", "---",
+        "  Variables you can use:", "  {owner} {botname} {date} {link}"])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="❌ Cancel", callback_data="settings_pm")]]))
+
+
+@router.callback_query(F.data == "pm_edit_owner")
+async def cb_pm_edit_owner(query: CallbackQuery, state: FSMContext, telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import SettingsFlow
+    await state.set_state(SettingsFlow.editing_pm_owner)
+    from utils.formatters import panel
+    text = panel("👤  Edit Owner", ["---", "  Type the owner username:","  e.g.  @yourhandle"])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="❌ Cancel", callback_data="settings_pm")]]))
+
+
+@router.callback_query(F.data == "pm_edit_link")
+async def cb_pm_edit_link(query: CallbackQuery, state: FSMContext, telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import SettingsFlow
+    await state.set_state(SettingsFlow.editing_pm_link)
+    from utils.formatters import panel
+    text = panel("🔗  Set Link", ["---", "  Type the URL to include:"])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="❌ Cancel", callback_data="settings_pm")]]))
+
+
+@router.callback_query(F.data == "pm_preview")
+async def cb_pm_preview(query: CallbackQuery, telegram_id: int):
+    await _answer(query)
+    from database.pool import get_settings
+    from datetime import datetime
+    from utils.formatters import h
+    s = await get_settings(telegram_id)
+    custom = s.get("private_message")
+    owner = s.get("pm_owner") or "@GitroHubBot"
+    link = s.get("pm_link") or ""
+    if custom:
+        msg = custom.replace("{owner}", owner).replace("{botname}", "GitroHub")\
+                    .replace("{date}", datetime.now().strftime("%b %d %Y")).replace("{link}", link)
+    else:
+        msg = f"🔒 GitroHub — Private Bot\n\nOwner: {owner}\n\nThis bot is privately owned."
+    await query.message.edit_text(
+        f"<pre>👁  Preview:\n\n{h(msg)}</pre>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="⬅️ Back", callback_data="settings_pm")]])
+    )
+
+
+@router.callback_query(F.data == "pm_reset")
+async def cb_pm_reset(query: CallbackQuery, telegram_id: int):
+    await _answer(query)
+    from database.pool import update_settings
+    await update_settings(telegram_id, private_message=None, pm_owner=None, pm_link=None)
+    await query.answer("✅ Private message reset to default.", show_alert=True)
+    from bot.handlers.settings import show_private_msg
+    await show_private_msg(query, telegram_id)
+
+
+@router.callback_query(F.data.startswith("repo_archive_confirm:"))
+async def cb_repo_archive_confirm(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    repo_name = query.data.split(":", 1)[1]
+    from bot.services.github import archive_repo
+    ok = await archive_repo(session, telegram_id, repo_name)
+    await query.answer("✅ Repository archived." if ok else "❌ Failed", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("webhook_delete:"))
+async def cb_webhook_delete(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    _, repo_name, hook_id = query.data.split(":")
+    from bot.services.github import delete_repo_webhook
+    ok = await delete_repo_webhook(session, repo_name, int(hook_id))
+    await query.answer("✅ Webhook deleted." if ok else "❌ Failed", show_alert=True)
+
+
+@router.callback_query(F.data.startswith("webhook_add:"))
+async def cb_webhook_add(query: CallbackQuery, telegram_id: int):
+    await _answer(query)
+    repo_name = query.data.split(":", 1)[1]
+    from config import settings as cfg
+    from utils.formatters import h, panel
+    webhook_url = f"{cfg.webhook_url}/github-events" if cfg.webhook_url else "Set WEBHOOK_URL in env"
+    text = panel("🔗  Add Webhook", [
+        "---", f"  Repository: {h(repo_name)}", "---",
+        "  Add this URL to your GitHub repo:", "···",
+        f"  {h(webhook_url)}", "---",
+        "  Go to: Repo → Settings → Webhooks", "  → Add webhook → paste URL above",
+        "  → Content type: application/json",
+        "  → Select events you want",
+    ])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="🌐 Open GitHub Webhooks",
+                                           url=f"https://github.com/{repo_name}/settings/hooks"),
+                                       InlineKeyboardButton(text="⬅️ Back",
+                                           callback_data=f"security_webhooks:{repo_name}"),
+                                   ]]))
+
+
+@router.callback_query(F.data.startswith("stats_traffic:"))
+async def cb_stats_traffic(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    repo_name = query.data.split(":", 1)[1]
+    from bot.services.github import get_repo_traffic
+    from utils.formatters import h, panel
+    data = await get_repo_traffic(session, telegram_id, repo_name)
+    lines = ["---", f"  {h(repo_name.split('/')[-1])}", "---",
+             f"  👁  Views    {data.get('views_count',0)} total  ·  {data.get('views_uniques',0)} unique",
+             f"  📦  Clones   {data.get('clones_count',0)} total  ·  {data.get('clones_uniques',0)} unique"]
+    text = panel("👁  Traffic", lines)
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="⬅️ Back", callback_data=f"stats:{repo_name}"),
+                                       InlineKeyboardButton(text="🏠 Home", callback_data="home"),
+                                   ]]))
+
+
+@router.callback_query(F.data.startswith("stats_stargazers:"))
+async def cb_stats_stargazers(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    repo_name = query.data.split(":", 1)[1]
+    from bot.services.github import get_stargazers
+    from utils.formatters import h, panel
+    data = await get_stargazers(session, telegram_id, repo_name)
+    total = data.get("total", 0)
+    users = data.get("users", [])
+    lines = ["---", f"  {h(repo_name.split('/')[-1])}  ·  ⭐ {total}", "---"]
+    for u in users:
+        lines.append(f"  ⭐  {h(u['login'])}")
+    if total > 10:
+        lines.append(f"  ... and {total - 10} more")
+    text = panel("⭐  Stargazers", lines)
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="⬅️ Back", callback_data=f"stats:{repo_name}"),
+                                       InlineKeyboardButton(text="🏠 Home", callback_data="home"),
+                                   ]]))
+
+
+@router.callback_query(F.data.startswith("stats_contributors:"))
+async def cb_stats_contributors(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    repo_name = query.data.split(":", 1)[1]
+    from bot.services.github import get_contributors
+    from utils.formatters import h, panel
+    contribs = await get_contributors(session, telegram_id, repo_name)
+    lines = ["---", f"  {h(repo_name.split('/')[-1])}", "---"]
+    for i, c in enumerate(contribs, 1):
+        lines.append(f"  {i}.  {h(c['login'])}   {c['contributions']} commits")
+    text = panel("👥  Contributors", lines)
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="⬅️ Back", callback_data=f"stats:{repo_name}"),
+                                       InlineKeyboardButton(text="🏠 Home", callback_data="home"),
+                                   ]]))
+
+
+@router.callback_query(F.data.startswith("release_delete_confirm:"))
+async def cb_release_delete_confirm(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    _, repo_name, release_id = query.data.split(":")
+    from bot.services.github import delete_release
+    ok = await delete_release(session, telegram_id, repo_name, int(release_id))
+    await query.answer("🗑️ Release deleted." if ok else "❌ Failed", show_alert=True)
+    if ok:
+        from bot.handlers.releases import show_releases
+        await show_releases(query, session, telegram_id, repo_name)
+
+
+@router.callback_query(F.data == "gist_skip_desc")
+async def cb_gist_skip_desc(query: CallbackQuery, state: FSMContext):
+    await _answer(query)
+    from bot.states.flow import GistFlow
+    await state.update_data(description="")
+    await state.set_state(GistFlow.creating_content)
+    from utils.formatters import panel
+    text = panel("📄  Gist Content", ["---", "  Type or paste the content:"])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="❌ Cancel", callback_data="cancel")]]))
+
+
+@router.callback_query(F.data == "project_skip_desc")
+async def cb_project_skip_desc(query: CallbackQuery, state: FSMContext, telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import ProjectFlow
+    data = await state.get_data()
+    await state.clear()
+    from database.pool import create_project
+    await create_project(telegram_id, data.get("name", "project"), "")
+    await query.message.edit_text(
+        f"<pre>✅  Project created!</pre>",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(text="📂 Open", callback_data=f"project_open:{data.get('name','')}"),
+            InlineKeyboardButton(text="🗂️ Projects", callback_data="projects"),
+        ]])
+    )
+
+
+@router.callback_query(F.data == "project_empty_file")
+async def cb_project_empty_file(query: CallbackQuery, state: FSMContext, telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import ProjectFlow
+    data = await state.get_data()
+    await state.clear()
+    from database.pool import get_project, update_project_files
+    project = await get_project(telegram_id, data.get("project_name", ""))
+    if project:
+        files = dict(project.get("files") or {})
+        files[data.get("file_name", "file.txt")] = ""
+        await update_project_files(telegram_id, data["project_name"], files)
+    await query.answer("✅ Empty file added.", show_alert=False)
+    from bot.handlers.projects import show_project_detail
+    await show_project_detail(query, telegram_id, data.get("project_name", ""))
+
+
+@router.callback_query(F.data == "pull_skip_body")
+async def cb_pull_skip_body(query: CallbackQuery, state: FSMContext, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import PullFlow
+    data = await state.get_data()
+    await state.clear()
+    from bot.services.github import create_pull
+    branch = session.get("active_branch", "main") if session else "main"
+    result = await create_pull(session, telegram_id, data.get("repo_name", ""), data.get("title", ""), branch, "main", "")
+    ok = "error" not in result
+    from utils.formatters import h, panel
+    text = panel("✅  Pull Request Created" if ok else "❌  Failed", [
+        "---", f"  #{result.get('number','')} {h(data.get('title',''))}" if ok else f"  Error {result.get('error','')}"])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="⬅️ Back", callback_data=f"pulls:{data.get('repo_name','')}:open:0"),
+                                   ]]))
+
+
+@router.callback_query(F.data == "issue_skip_body")
+async def cb_issue_skip_body(query: CallbackQuery, state: FSMContext, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import IssueFlow
+    data = await state.get_data()
+    await state.clear()
+    from bot.services.github import create_issue
+    result = await create_issue(session, telegram_id, data.get("repo_name", ""), data.get("title", ""), "")
+    ok = "error" not in result
+    from utils.formatters import h, panel
+    text = panel("✅  Issue Created" if ok else "❌  Failed", [
+        "---", f"  #{result.get('number','')} {h(data.get('title',''))}" if ok else f"  Error {result.get('error','')}"])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="⬅️ Back", callback_data=f"issues:{data.get('repo_name','')}:open:0"),
+                                   ]]))
+
+
+@router.callback_query(F.data == "release_skip_notes")
+async def cb_release_skip_notes(query: CallbackQuery, state: FSMContext, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    from bot.states.flow import ReleaseFlow
+    data = await state.get_data()
+    await state.clear()
+    from bot.services.github import create_release
+    result = await create_release(session, telegram_id, data.get("repo_name", ""), data.get("tag", ""), data.get("title", ""), "")
+    ok = "error" not in result
+    from utils.formatters import h, panel
+    text = panel("🚀  Release Published!" if ok else "❌  Failed", [
+        "---", f"  {h(data.get('tag',''))}  {h(data.get('title',''))}" if ok else f"  Error {result.get('error','')}"])
+    await query.message.edit_text(f"<pre>{text}</pre>", parse_mode="HTML",
+                                   reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
+                                       InlineKeyboardButton(text="⬅️ Back", callback_data=f"releases:{data.get('repo_name','')}"),
+                                   ]]))
+
+
+@router.callback_query(F.data.startswith("issue_apply_label:"))
+async def cb_issue_apply_label(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    _, repo_name, issue_num, label = query.data.split(":", 3)
+    from bot.services.github import _http, _token_from_session
+    token = _token_from_session(session)
+    async with _http().post(
+        f"https://api.github.com/repos/{repo_name}/issues/{issue_num}/labels",
+        headers={"Authorization": f"token {token}"},
+        json={"labels": [label]},
+    ) as resp:
+        ok = resp.status in (200, 201)
+    await query.answer(f"✅ Label '{label}' applied." if ok else "❌ Failed", show_alert=True)
+
+
+@router.callback_query(F.data == "profile_following")
+async def cb_profile_following_dup(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    from bot.handlers.account import show_following
+    await show_following(query, session, telegram_id)
+
+
+@router.callback_query(F.data == "profile_followers")
+async def cb_profile_followers_dup(query: CallbackQuery, session: Optional[dict], telegram_id: int):
+    await _answer(query)
+    from bot.handlers.account import show_followers
+    await show_followers(query, session, telegram_id)
+

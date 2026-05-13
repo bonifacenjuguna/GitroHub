@@ -1,3 +1,6 @@
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.fsm.context import FSMContext
+from aiogram import Router
 
 from bot.services.github import get_gists, create_gist
 from bot.states.flow import GistFlow
@@ -23,21 +26,21 @@ async def start_create_gist(query, state):
                                    reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="gist_list")]]))
 
 @router.message(GistFlow.creating_filename)
-async def gist_filename_received(message, state):
+async def gist_filename_received(message: Message, state: FSMContext):
     await state.update_data(filename=message.text.strip())
     await state.set_state(GistFlow.creating_description)
     await message.answer("<pre>" + panel("📝  Gist Description",["---","  Type description (or /skip):"]) + "</pre>", parse_mode="HTML",
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="⏭️ Skip",callback_data="gist_skip_desc"), InlineKeyboardButton(text="❌ Cancel",callback_data="cancel")]]))
 
 @router.message(GistFlow.creating_description)
-async def gist_desc_received(message, state):
+async def gist_desc_received(message: Message, state: FSMContext):
     await state.update_data(description=message.text.strip())
     await state.set_state(GistFlow.creating_content)
     await message.answer("<pre>" + panel("📄  Gist Content",["---","  Type or paste the content:"]) + "</pre>", parse_mode="HTML",
                           reply_markup=InlineKeyboardMarkup(inline_keyboard=[[InlineKeyboardButton(text="❌ Cancel",callback_data="cancel")]]))
 
 @router.message(GistFlow.creating_content)
-async def gist_content_received(message, state, session, telegram_id):
+async def gist_content_received(message: Message, state: FSMContext, session: dict, telegram_id: int):
     data = await state.get_data()
     await state.clear()
     result = await create_gist(session, telegram_id, data.get("filename","file.txt"), message.text or "", data.get("description",""))
@@ -56,3 +59,5 @@ async def confirm_delete_gist(query, session, telegram_id, gist_id):
                                        InlineKeyboardButton(text="✅ Yes, delete",callback_data=f"gist_delete_confirm:{gist_id}"),
                                        InlineKeyboardButton(text="❌ Cancel",callback_data="gist_list"),
                                    ]]))
+
+router = Router()
