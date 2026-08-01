@@ -1,6 +1,6 @@
 {
   "name": "gitrohub",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "GitroHub — Your complete GitHub workspace in Telegram. Manage, automate, and enhance your GitHub workflow without leaving Telegram.",
   "main": "src/index.js",
   "type": "commonjs",

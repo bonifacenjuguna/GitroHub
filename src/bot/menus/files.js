@@ -53,11 +53,13 @@ function registerFiles(bot) {
     await ctx.answerCallbackQuery();
   });
 
-  bot.callbackQuery(/^file:(.+):(.+)$/, async (ctx) => {
-    if (['edit', 'download', 'delete'].some((s) => ctx.match[2].endsWith(`:${s}`) || ctx.match[2].endsWith(`:${s}:confirm`))) return; // handled below
-    await renderFileView(ctx, decodeURIComponent(ctx.match[1]), decodeURIComponent(ctx.match[2]));
-    await ctx.answerCallbackQuery();
-  });
+  // NOTE: the more specific :edit / :download / :delete patterns are
+  // registered further below and MUST come before the generic file-view
+  // matcher, since grammY tries patterns in registration order and the
+  // first regex match wins. A generic `/^file:(.+):(.+)$/` here would
+  // also match `file:<repo>:<path>:edit` (greedy `.+` swallows the path
+  // into group 1, leaving "edit" in group 2), silently breaking those
+  // actions. Exact suffix patterns first, generic catch-all last.
 
   bot.callbackQuery(/^file:upload_here:(.+):(.*)$/, async (ctx) => {
     const { startUploadHere } = require('./upload');
@@ -93,7 +95,9 @@ function registerFiles(bot) {
   });
 
   bot.callbackQuery(/^file:(.+):(.+):delete:confirm$/, async (ctx) => {
-    const kb = new InlineKeyboard().text('✅ Delete', `file:${ctx.match[1]}:${ctx.match[2]}:delete:execute`).text('❌ Cancel', `file:${ctx.match[1]}:${ctx.match[2]}`);
+    const fullName = ctx.match[1];
+    const filePath = ctx.match[2];
+    const kb = new InlineKeyboard().text('✅ Delete', `file:${fullName}:${filePath}:delete:execute`).text('❌ Cancel', `file:${fullName}:${filePath}`);
     await ctx.editOrReply('⚠️ Delete this file? This cannot be undone.', { reply_markup: kb });
     await ctx.answerCallbackQuery();
   });
@@ -106,6 +110,13 @@ function registerFiles(bot) {
     await filesApi.deleteFile(ctx.from.id, owner, repoName, { path: filePath, branch: ctx.session.activeBranch, message: `Delete ${filePath} via GitroHub`, sha: file.sha });
     await ctx.answerCallbackQuery('Deleted');
     await renderFolder(ctx, fullName, filePath.split('/').slice(0, -1).join('/'));
+  });
+
+  // Generic file-view matcher — MUST be last so the specific :edit/:download/
+  // :delete patterns above get first refusal on matching callback_data.
+  bot.callbackQuery(/^file:(.+):(.+)$/, async (ctx) => {
+    await renderFileView(ctx, decodeURIComponent(ctx.match[1]), decodeURIComponent(ctx.match[2]));
+    await ctx.answerCallbackQuery();
   });
 
   bot.callbackQuery(/^repo:(.+):download$/, async (ctx) => {
