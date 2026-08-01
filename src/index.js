@@ -23,22 +23,20 @@ async function main() {
   }
 
   const bot = createBot();
-  await bot.init(); // fetches bot info (username, id) before setting the webhook
-
   const app = createServer(bot);
+
+  // Start listening FIRST, before touching the Telegram API. Railway's
+  // healthcheck hits /health as soon as the process is up — if we block
+  // on bot.init() (a network call to Telegram) before binding the port,
+  // a slow or briefly-unreachable Telegram API can cause Railway to see
+  // the deploy as unhealthy and send SIGTERM before we ever get a chance
+  // to respond. Binding the port first guarantees /health answers
+  // immediately regardless of Telegram's reachability.
   const server = app.listen(env.PORT, () => {
     logger.info(`🌐 Web server listening on port ${env.PORT}`);
   });
 
-  const webhookUrl = `${env.DOMAIN}/telegram/webhook`;
-  await bot.api.setWebhook(webhookUrl, { secret_token: env.WEBHOOK_SECRET });
-  logger.info(`✅ Telegram webhook set: ${webhookUrl}`);
-
-  startScheduler(bot);
-
-  logger.info(`✅ GitroHub is live as @${bot.botInfo.username}, owner-only mode (BOT_OWNER_ID=${env.BOT_OWNER_ID})`);
-
-  // --- Graceful shutdown ---
+  // --- Graceful shutdown (registered early so a slow init below can still shut down cleanly) ---
   const shutdown = async (signal) => {
     logger.info(`Received ${signal}, shutting down gracefully...`);
     server.close();
@@ -48,6 +46,38 @@ async function main() {
   };
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
+
+  try {
+    await bot.init(); // fetches bot info (username, id) from Telegram
+
+    const webhookUrl = `${env.DOMAIN}/telegram/webhook`;
+    await bot.api.setWebhook(webhookUrl, { secret_token: env.WEBHOOK_SECRET });
+    logger.info(`✅ Telegram webhook set: ${webhookUrl}`);
+
+    // Self-check: confirm Telegram actually accepted the webhook URL we
+    // think we set. If DOMAIN doesn't match Railway's real public URL,
+    // this will show the mismatch clearly in logs instead of the bot
+    // just silently never receiving updates.
+    const info = await bot.api.getWebhookInfo();
+    if (info.url !== webhookUrl) {
+      logger.warn(
+        { expected: webhookUrl, actual: info.url },
+        '⚠️ Webhook URL mismatch — DOMAIN env var likely does not match your real public URL'
+      );
+    }
+    if (info.last_error_message) {
+      logger.warn({ lastError: info.last_error_message }, '⚠️ Telegram reported a previous webhook delivery error');
+    }
+
+    startScheduler(bot);
+    logger.info(`✅ GitroHub is live as @${bot.botInfo.username}, owner-only mode (BOT_OWNER_ID=${env.BOT_OWNER_ID})`);
+  } catch (err) {
+    // Do NOT exit here — the web server (and /health) stays up so Railway
+    // doesn't kill the whole deploy. But this is loud and specific about
+    // what failed, since "active but not responding" with no error is the
+    // worst failure mode to debug.
+    logger.error({ err }, '❌ Telegram bot failed to initialize — web server is still running, but the bot will NOT respond until this is fixed and the service is redeployed.');
+  }
 }
 
 main().catch((err) => {

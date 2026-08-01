@@ -1,6 +1,6 @@
 {
   "name": "gitrohub",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "GitroHub — Your complete GitHub workspace in Telegram. Manage, automate, and enhance your GitHub workflow without leaving Telegram.",
   "main": "src/index.js",
   "type": "commonjs",
@@ -11,7 +11,11 @@
     "start": "node src/index.js",
     "dev": "node --watch src/index.js",
     "migrate": "node src/db/postgres/migrate.js",
-    "healthcheck": "node scripts/healthcheck.js"
+    "healthcheck": "node scripts/healthcheck.js",
+    "release:patch": "node scripts/bump-version.js patch",
+    "release:minor": "node scripts/bump-version.js minor",
+    "release:major": "node scripts/bump-version.js major",
+    "export:zip": "node scripts/export-zip.js"
   },
   "license": "UNLICENSED",
   "private": true,

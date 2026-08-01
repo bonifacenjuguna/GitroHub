@@ -54,7 +54,6 @@ ignored — no reply, no logging beyond a debug trace, zero backend cost.
 <td width="50%" valign="top">
 
 ### 📦 Repositories
-
 - Create · Delete · Rename · Fork
 - Star / Watch / Archive
 - Visibility, topics, description, homepage
@@ -63,7 +62,6 @@ ignored — no reply, no logging beyond a debug trace, zero backend cost.
 - 📊 Insights (commits, contributors, traffic)
 
 ### 🌿 Git Operations
-
 - Branches — create, delete, compare, rename
 - Commits — history, diff, revert, cherry-pick
 - Bulk-delete merged branches
@@ -72,7 +70,6 @@ ignored — no reply, no logging beyond a debug trace, zero backend cost.
 <td width="50%" valign="top">
 
 ### 📁 File Management
-
 - Browse, view, edit, delete, move
 - **Smart upload** — single file or ZIP, with
   automatic diff detection (new/modified/unchanged)
@@ -81,7 +78,6 @@ ignored — no reply, no logging beyond a debug trace, zero backend cost.
 - Download any repo as a ZIP
 
 ### 🚀 Smart Deploy
-
 - Send a ZIP → language auto-detected → repo
   created → `.gitignore` generated → pushed →
   link returned. Zero questions asked.
@@ -92,7 +88,6 @@ ignored — no reply, no logging beyond a debug trace, zero backend cost.
 <td width="50%" valign="top">
 
 ### 🔀 Collaboration
-
 - Pull Requests — create, merge, review requests
 - Issues — labels, milestones, assignees
 - GitHub Actions — trigger, re-run, logs, artifacts
@@ -102,7 +97,6 @@ ignored — no reply, no logging beyond a debug trace, zero backend cost.
 <td width="50%" valign="top">
 
 ### 🔐 Security & Automation
-
 - GitHub OAuth (never PATs) · AES-256-GCM at rest
 - Optional PIN lock on destructive actions
 - Scheduled tasks · Trigger rules · Auto-merge
@@ -159,15 +153,15 @@ Railway deployment, secret generation), see **[`docs/DEPLOYMENT.md`](./docs/DEPL
 
 ## 🔐 Security Model
 
-| Layer                   | Approach                                                                                               |
-| ----------------------- | ------------------------------------------------------------------------------------------------------ |
-| **Access control**      | Single `BOT_OWNER_ID` — every other user is silently dropped before any DB/API call                    |
-| **Token storage**       | AES-256-GCM, per-user derived key via scrypt — never stored in plaintext                               |
-| **Authentication**      | GitHub OAuth (Authorization Code flow) — Personal Access Tokens are never requested or accepted        |
-| **CSRF protection**     | Single-use, 5-minute-expiring OAuth `state` tokens                                                     |
-| **Destructive actions** | Explicit confirm/cancel screens; optional 4-digit PIN lock layer                                       |
-| **Disconnect**          | Deletes the local token **and** revokes it on GitHub's side — true revocation, not just local deletion |
-| **Secrets in chat**     | Any message containing a raw secret value is deleted immediately after being read                      |
+| Layer | Approach |
+|---|---|
+| **Access control** | Single `BOT_OWNER_ID` — every other user is silently dropped before any DB/API call |
+| **Token storage** | AES-256-GCM, per-user derived key via scrypt — never stored in plaintext |
+| **Authentication** | GitHub OAuth (Authorization Code flow) — Personal Access Tokens are never requested or accepted |
+| **CSRF protection** | Single-use, 5-minute-expiring OAuth `state` tokens |
+| **Destructive actions** | Explicit confirm/cancel screens; optional 4-digit PIN lock layer |
+| **Disconnect** | Deletes the local token **and** revokes it on GitHub's side — true revocation, not just local deletion |
+| **Secrets in chat** | Any message containing a raw secret value is deleted immediately after being read |
 
 See [`docs/legal/privacy.md`](./docs/legal/privacy.md) for the full data-handling policy.
 
@@ -226,21 +220,22 @@ gitrohub/
 
 ## 🛠️ Tech Stack
 
-| Layer            | Choice                                                               |
-| ---------------- | -------------------------------------------------------------------- |
-| Runtime          | Node.js 24 LTS, plain JavaScript (no TypeScript, no build step)      |
-| Bot framework    | [grammY](https://grammy.dev) v1.44.0, webhook mode                   |
-| GitHub API       | [Octokit.js](https://github.com/octokit/octokit.js) (REST + GraphQL) |
-| Database         | PostgreSQL (`pg`, hand-written queries)                              |
-| Cache / Sessions | Redis (`ioredis`)                                                    |
-| Logging          | `pino`, structured JSON in production                                |
-| Hosting          | Railway (Node runtime + Postgres plugin + Redis plugin)              |
+| Layer | Choice |
+|---|---|
+| Runtime | Node.js 24 LTS, plain JavaScript (no TypeScript, no build step) |
+| Bot framework | [grammY](https://grammy.dev) v1.44.0, webhook mode |
+| GitHub API | [Octokit.js](https://github.com/octokit/octokit.js) (REST + GraphQL) |
+| Database | PostgreSQL (`pg`, hand-written queries) |
+| Cache / Sessions | Redis (`ioredis`) |
+| Logging | `pino`, structured JSON in production |
+| Hosting | Railway (Node runtime + Postgres plugin + Redis plugin) |
 
 ---
 
 ## 📜 Docs
 
 - 📘 [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) — full deployment walkthrough
+- 📐 [`docs/VERSIONING.md`](./docs/VERSIONING.md) — how version bumps work (one command, always in sync)
 - 📗 [`CHANGELOG.md`](./CHANGELOG.md) — release history ([Keep a Changelog](https://keepachangelog.com) format)
 - 📕 [`LICENSE.md`](./LICENSE.md) — proprietary, all rights reserved
 - 📙 [`docs/legal/`](./docs/legal/) — Terms of Service, Privacy Policy, Acceptable Use Policy

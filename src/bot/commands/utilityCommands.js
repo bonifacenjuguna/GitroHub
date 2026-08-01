@@ -11,7 +11,14 @@ const pkg = require('../../../package.json');
 
 const START_TIME = Date.now();
 let commitHash = 'unknown';
-try { commitHash = require('child_process').execSync('git rev-parse --short HEAD').toString().trim(); } catch (_) {}
+try {
+  commitHash = require('child_process')
+    .execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
+    .toString()
+    .trim();
+} catch (_) {
+  // Not a git checkout (e.g. Railway's Nixpacks build) — fine, just falls back to 'unknown'.
+}
 
 function uptimeString() {
   const ms = Date.now() - START_TIME;
