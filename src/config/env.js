@@ -40,6 +40,17 @@ function validateEnv() {
     console.error('\n❌ ENCRYPTION_MASTER_KEY must be at least 32 characters (use a 32-byte hex string).\n');
     process.exit(1);
   }
+
+  if (!/^https?:\/\//.test(process.env.DOMAIN)) {
+    console.error(
+      `\n❌ DOMAIN must include the protocol (https://), e.g. "https://your-app.up.railway.app".\n` +
+      `   Current value: "${process.env.DOMAIN}"\n` +
+      `   Without a protocol, the GitHub OAuth redirect_uri built from it is malformed and\n` +
+      `   GitHub will reject it as an "Invalid Redirect URI" even if the callback path is\n` +
+      `   registered correctly on GitHub's side.\n`
+    );
+    process.exit(1);
+  }
 }
 
 validateEnv();
