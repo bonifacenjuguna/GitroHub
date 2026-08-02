@@ -11,6 +11,19 @@ const { redis } = require('./db/redis/client');
 async function main() {
   logger.info('🐙 Starting GitroHub...');
 
+  // Safety net: log any unhandled promise rejection instead of letting Node
+  // kill the entire process over it. This is what actually crashed the bot
+  // in production — a stale/expired Telegram callback query rejected a
+  // promise that nothing was awaiting, and Node's default behavior for an
+  // unhandled rejection is to terminate the process. The specific case
+  // that caused this (ctx.answerCallbackQuery on expired queries) is now
+  // fixed at the source in contextExtensions.js, but this handler stays as
+  // a second layer so no single unforeseen rejection anywhere else in the
+  // codebase can ever take the whole bot down the same way again.
+  process.on('unhandledRejection', (reason) => {
+    logger.error({ err: reason }, '⚠️ Unhandled promise rejection — logged and ignored, process kept alive');
+  });
+
   // Fail fast if the database schema hasn't been migrated yet.
   try {
     await pool.query('SELECT 1 FROM users LIMIT 1');
@@ -49,6 +62,25 @@ async function main() {
 
   try {
     await bot.init(); // fetches bot info (username, id) from Telegram
+
+    // Register the primary user-facing commands with Telegram so they
+    // appear in the "/" autocomplete menu. This is a deliberate reversal
+    // of the original design (v1.0.0 intentionally left ALL commands
+    // hidden from BotFather) — see CHANGELOG.md for why. Diagnostic/dev
+    // commands (/ping, /health, /whoami, /version, /uptime, /logs) stay
+    // unregistered on purpose: they still work when typed, they just don't
+    // clutter the autocomplete list for a bot only you use.
+    await bot.api.setMyCommands([
+      { command: 'start', description: 'Open the main menu' },
+      { command: 'menu', description: 'Jump to the main menu' },
+      { command: 'repo', description: 'Open a repo — /repo owner/name' },
+      { command: 'upload', description: 'Upload a file or ZIP project' },
+      { command: 'security', description: 'Account & Security' },
+      { command: 'settings', description: 'Bot settings' },
+      { command: 'status', description: 'Quick account & repo summary' },
+      { command: 'help', description: 'Help & documentation' },
+      { command: 'cancel', description: 'Cancel the current action' },
+    ]).catch((err) => logger.warn({ err }, 'Failed to register bot commands with Telegram'));
 
     const webhookUrl = `${env.DOMAIN}/telegram/webhook`;
     await bot.api.setWebhook(webhookUrl, { secret_token: env.WEBHOOK_SECRET });

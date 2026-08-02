@@ -5,6 +5,40 @@ All notable changes to GitroHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-08-02
+
+### Added
+- Post-OAuth confirmation message now includes an inline "🐙 Go to Main
+  Menu" button, so connecting GitHub no longer requires manually typing
+  `/start` to reach the menu.
+- Primary user-facing commands (`/start`, `/menu`, `/repo`, `/upload`,
+  `/security`, `/settings`, `/status`, `/help`, `/cancel`) are now
+  registered with Telegram automatically on every deploy via
+  `setMyCommands`, so they appear in the `/` autocomplete menu. This is a
+  deliberate reversal of the original v1.0.0 design, which intentionally
+  left every command hidden from BotFather. Diagnostic/developer commands
+  (`/ping`, `/health`, `/whoami`, `/version`, `/uptime`, `/logs`, `/pr`,
+  `/issues`, `/clone`) remain unregistered on purpose — they still work
+  when typed, they just don't clutter the suggestion list.
+
+### Fixed
+- **Critical crash fix:** expired/stale Telegram callback queries (tapping
+  an inline button after ~30-60s, or double-tapping) were causing
+  `ctx.answerCallbackQuery()` to reject with a 400 error that nothing was
+  awaiting — an unhandled promise rejection, which Node terminates the
+  entire process for by default. This was the actual root cause of the
+  repeated Active → Crashed → redeploy cycling seen in production.
+  Fixed by centrally wrapping `ctx.answerCallbackQuery()` in
+  `contextExtensions.js` so every call site across the whole bot is
+  protected automatically, plus a process-level `unhandledRejection`
+  safety net in `index.js` as a second layer of protection against any
+  future unforeseen rejection anywhere else in the codebase.
+
+## [1.0.4] - 2026-08-02
+
+### Fixed
+- Clarify DOMAIN protocol error message to explain it breaks the Telegram webhook itself, not just OAuth
+
 ## [1.0.3] - 2026-08-02
 
 ### Fixed

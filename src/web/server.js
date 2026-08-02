@@ -44,9 +44,14 @@ function createServer(bot) {
 
       // Notify the user proactively in their chat, since the callback happens
       // in a browser tab, not inside the Telegram conversation itself.
+      // Include an inline button straight into the Main Menu so the user
+      // isn't left having to manually type /start after connecting.
+      const { InlineKeyboard } = require('grammy');
+      const kb = new InlineKeyboard().text('🐙 Go to Main Menu', 'menu:main');
       await bot.api.sendMessage(
         telegramUserId,
-        `✅ GitHub Connected\n\nWelcome, @${identity.login}! You're all set.`
+        `✅ GitHub Connected\n\nWelcome, @${identity.login}! You're all set.`,
+        { reply_markup: kb }
       ).catch((err) => logger.warn({ err }, 'Failed to send post-OAuth confirmation message'));
 
       res.send(renderCallbackHtml({ status: 'success', username: identity.login, botUsername: env.BOT_USERNAME }));

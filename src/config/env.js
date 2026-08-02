@@ -44,10 +44,12 @@ function validateEnv() {
   if (!/^https?:\/\//.test(process.env.DOMAIN)) {
     console.error(
       `\n❌ DOMAIN must include the protocol (https://), e.g. "https://your-app.up.railway.app".\n` +
-      `   Current value: "${process.env.DOMAIN}"\n` +
-      `   Without a protocol, the GitHub OAuth redirect_uri built from it is malformed and\n` +
-      `   GitHub will reject it as an "Invalid Redirect URI" even if the callback path is\n` +
-      `   registered correctly on GitHub's side.\n`
+      `   Current value: "${process.env.DOMAIN}"\n\n` +
+      `   This isn't just about GitHub OAuth — Telegram itself requires webhook URLs\n` +
+      `   to be https://. Without the protocol here, the bot would start but NEVER\n` +
+      `   receive any Telegram messages at all (the exact "active but silent" state).\n` +
+      `   Refusing to start is the safer failure here.\n\n` +
+      `   Fix: set DOMAIN to "https://${process.env.DOMAIN.replace(/\/$/, '')}" in Railway's Variables tab.\n`
     );
     process.exit(1);
   }

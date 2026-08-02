@@ -24,7 +24,7 @@
 - [🏗️ Architecture](#️-architecture)
 - [⚡ Quick Start](#-quick-start)
 - [🔐 Security Model](#-security-model)
-- [⌨️ Hidden Commands](#️-hidden-commands)
+- [⌨️ Commands](#️-commands)
 - [📁 Project Structure](#-project-structure)
 - [🛠️ Tech Stack](#️-tech-stack)
 - [📜 Docs](#-docs)
@@ -167,17 +167,26 @@ See [`docs/legal/privacy.md`](./docs/legal/privacy.md) for the full data-handlin
 
 ---
 
-## ⌨️ Hidden Commands
+## ⌨️ Commands
 
-None of these are registered with BotFather — they work, but won't appear
-in Telegram's `/` autocomplete. This is intentional (see Security Model).
+Primary commands are registered with Telegram automatically on deploy, so
+they appear in the `/` autocomplete menu:
 
 ```
-/start     /menu      /cancel     /help
-/repo      /pr        /issues     /upload
-/clone     /status    /security   /settings
-/ping      /version   /uptime     /whoami
-/health    /logs
+/start     /menu      /repo      /upload
+/security  /settings  /status    /help
+/cancel
+```
+
+Diagnostic/developer commands stay **intentionally hidden** from
+autocomplete (they still work when typed manually) — this is a single-owner
+private bot, so cluttering the suggestion list with debugging tools didn't
+make sense:
+
+```
+/ping      /version   /uptime    /whoami
+/health    /logs      /pr        /issues
+/clone
 ```
 
 Plus custom shortcuts configurable via **⚙️ Settings → ⌨️ Commands & Shortcuts**.
