@@ -16,9 +16,24 @@ function createServer(bot) {
   app.use(express.json());
 
   // --- Telegram webhook ---
+  // onTimeout: 'return' means if a handler takes longer than
+  // timeoutMilliseconds, grammY closes the HTTP response to Telegram
+  // cleanly (a fast, empty 200) instead of throwing. Update processing
+  // continues in the background regardless via direct Bot API calls —
+  // this only affects how quickly we acknowledge the webhook delivery
+  // itself. Without this, a slow handler (e.g. several GitHub API calls
+  // in Promise.all taking a few seconds longer than expected) caused
+  // grammY to reject with "Request timed out", which Telegram read as a
+  // failed delivery and retried roughly every 60 seconds — each retry
+  // hitting the same slow path and timing out again, compounding into
+  // the exact "takes forever, then answers all at once" pattern reported.
   app.post(
     '/telegram/webhook',
-    webhookCallback(bot, 'express', { secretToken: env.WEBHOOK_SECRET })
+    webhookCallback(bot, 'express', {
+      secretToken: env.WEBHOOK_SECRET,
+      timeoutMilliseconds: 9_000,
+      onTimeout: 'return',
+    })
   );
 
   // --- GitHub OAuth callback (the animated page) ---
@@ -40,6 +55,7 @@ function createServer(bot) {
         accessToken,
         scopes,
       });
+      require('../github/client').invalidateClientCache(telegramUserId);
       await logAction(telegramUserId, 'connect_github');
 
       // Notify the user proactively in their chat, since the callback happens

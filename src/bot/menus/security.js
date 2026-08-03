@@ -124,6 +124,7 @@ function registerSecurityMenu(bot) {
     const token = await getDecryptedToken(ctx.from.id).catch(() => null);
     if (token) await revokeToken(token);
     await disconnectGithub(ctx.from.id);
+    require('../../github/client').invalidateClientCache(ctx.from.id);
     await logAction(ctx.from.id, 'disconnect_github');
     const kb = new InlineKeyboard().text('🔗 Reconnect', 'auth:connect').text('🏠 Main Menu', 'menu:main');
     await ctx.editOrReply(`✅ Disconnected. Your GitHub token has been deleted and revoked.`, { reply_markup: kb });

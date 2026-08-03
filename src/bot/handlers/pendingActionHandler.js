@@ -112,6 +112,11 @@ function registerPendingActionHandler(bot) {
         }
 
         case 'commit_message': {
+          if (ctx.session.uploadState?.committing) {
+            await ctx.reply('⏳');
+            return;
+          }
+          if (ctx.session.uploadState) ctx.session.uploadState.committing = true;
           // Generic handoff used by the upload flow — see upload.js for full wiring.
           const { handleCommitMessage } = require('../menus/upload');
           await handleCommitMessage(ctx, pending.payload, text);

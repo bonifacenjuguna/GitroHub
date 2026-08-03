@@ -100,13 +100,29 @@ async function commitPendingPayload(ctx, payload, message) {
   }
 
   if (payload.kind === 'zip') {
-    const committed = await commitZipBatch(ctx.from.id, owner, repoName, payload.branch, payload.filesToCommit, message);
-    await logAction(ctx.from.id, 'push', payload.fullName, { fileCount: committed.length });
-    ctx.session.uploadState = null;
-    const kb = new InlineKeyboard()
-      .text('🔀 Create Pull Request', `pr:${enc(payload.fullName)}:create:${enc(payload.branch)}`)
-      .row().text('⬅️ Back to Repo', `repo:open:${enc(payload.fullName)}`).text('🏠 Main Menu', 'menu:main');
-    return ctx.reply(`✅ Committed to ${payload.branch}\n${committed.length} files changed — "${message}"`, { reply_markup: kb });
+    // A multi-file commit can genuinely take longer than a few seconds
+    // (building blobs for every file, then one tree + commit + ref
+    // update). Acknowledge immediately so the user isn't staring at
+    // silence wondering whether the tap registered — the actual commit
+    // continues in the background regardless of this message.
+    await ctx.reply('⏳');
+
+    try {
+      const result = await commitZipBatch(ctx.from.id, owner, repoName, payload.branch, payload.filesToCommit, message);
+      await logAction(ctx.from.id, 'push', payload.fullName, { fileCount: result.committedPaths.length });
+      ctx.session.uploadState = null;
+      const kb = new InlineKeyboard()
+        .text('📄 View Commit', `commit:${enc(payload.fullName)}:${result.commitSha}`).row()
+        .text('🔀 Create Pull Request', `pr:${enc(payload.fullName)}:create:${enc(payload.branch)}`)
+        .row().text('⬅️ Back to Repo', `repo:open:${enc(payload.fullName)}`).text('🏠 Main Menu', 'menu:main');
+      return ctx.reply(`✅ Committed to ${payload.branch}\n${result.commitSha.slice(0, 7)} — ${result.committedPaths.length} files changed — "${message}"`, { reply_markup: kb });
+    } finally {
+      // Always clear the busy flag, success or failure, so a genuine
+      // error never leaves the upload flow permanently stuck for this
+      // session — the top-level try/catch in the callback handler below
+      // still reports the actual error to the user.
+      if (ctx.session.uploadState) ctx.session.uploadState.committing = false;
+    }
   }
 }
 
@@ -232,10 +248,29 @@ function registerUploadMenu(bot) {
   bot.callbackQuery('upload:commit:default', async (ctx) => {
     const pending = ctx.session.pendingAction;
     if (!pending) return ctx.answerCallbackQuery();
+
+    if (ctx.session.uploadState?.committing) {
+      // A commit for this exact upload is already running (e.g. Telegram
+      // redelivered this same tap while the first run was still in
+      // progress). Acknowledge without starting a second, competing
+      // commit — this is the actual fix for "many messages sent" /
+      // "next tap does nothing", not just a longer timer.
+      return ctx.answerCallbackQuery('Already committing — please wait for it to finish.');
+    }
+    if (ctx.session.uploadState) ctx.session.uploadState.committing = true;
+
     ctx.session.pendingAction = null;
     const message = pending.payload.defaultMessage || `Update ${pending.payload.path} via GitroHub`;
     await ctx.answerCallbackQuery();
-    await commitPendingPayload(ctx, pending.payload, message);
+    try {
+      await commitPendingPayload(ctx, pending.payload, message);
+    } catch (err) {
+      if (ctx.session.uploadState) ctx.session.uploadState.committing = false;
+      const formatted = formatError(err, { backCallback: 'menu:upload' });
+      const kb = new InlineKeyboard();
+      formatted.buttons.forEach((row) => { kb.row(); row.forEach((b) => kb.text(b.text, b.data)); });
+      await ctx.reply(formatted.text, { reply_markup: kb });
+    }
   });
 
   bot.callbackQuery('flow:cancel', async (ctx) => {

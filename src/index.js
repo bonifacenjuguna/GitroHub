@@ -21,7 +21,10 @@ async function main() {
   // a second layer so no single unforeseen rejection anywhere else in the
   // codebase can ever take the whole bot down the same way again.
   process.on('unhandledRejection', (reason) => {
-    logger.error({ err: reason }, '⚠️ Unhandled promise rejection — logged and ignored, process kept alive');
+    const summary = reason instanceof Error
+      ? { message: reason.message, name: reason.name, description: reason.description }
+      : { value: String(reason) };
+    logger.error({ err: summary }, '⚠️ Unhandled promise rejection — logged and ignored, process kept alive');
   });
 
   // Fail fast if the database schema hasn't been migrated yet.

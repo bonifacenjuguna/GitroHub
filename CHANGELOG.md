@@ -5,6 +5,78 @@ All notable changes to GitroHub are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.1] - 2026-08-02
+
+### Fixed
+- Trim upload progress messages to a bare hourglass emoji per preference (Telegram animates it natively); confirmed no latency regressions from the 1.2.0 upload rework
+
+## [1.2.0] - 2026-08-02
+
+### Fixed
+- **Full rework of the ZIP upload pipeline** — reported symptom: after
+  choosing "Strip wrapper", "Commit All" would hang with no response, and
+  if it did eventually respond, every subsequent tap did nothing while
+  duplicate "✅ Committed" messages piled up. Root causes, all in
+  `src/github/zipPipeline.js`:
+  - **Sequential diff checking:** every file in the ZIP was checked
+    against the repo one at a time, in a `for` loop — a 30-file project
+    meant 30 sequential network round-trips before the comparison screen
+    could even appear. Now runs with capped concurrency (8 at a time via
+    a small worker-pool helper), dramatically cutting wait time without
+    hammering GitHub's API hard enough to trip secondary rate limits.
+  - **Sequential per-file commits:** the actual commit step was creating
+    one full GitHub commit per file, one at a time — not the single
+    atomic commit originally designed for a ZIP push. Rewritten to use
+    the Git Data API directly: create a blob per file (parallel, capped
+    concurrency), build one tree from the branch's current tree plus all
+    new/updated blobs, create one commit, move the branch ref. A 30-file
+    project now produces exactly one commit instead of 30, and finishes
+    in a fraction of the time.
+  - **Duplicate/competing runs:** the tap-deduplication guard only held
+    its lock for 2 seconds — far shorter than a real multi-file commit
+    could take, especially under the old sequential approach. If Telegram
+    redelivered the update mid-commit, a second identical commit run
+    would fire concurrently, racing the first and producing the
+    duplicate-message, "nothing happens now" behavior reported. Replaced
+    with an explicit `committing` flag on the upload session that's held
+    for the actual duration of the operation (not a fixed timer) and
+    checked before starting — a genuinely duplicate tap now gets a clean
+    "Already committing, please wait" instead of triggering a second run.
+  - Added an immediate "⏳ Committing N files..." acknowledgment before
+    the heavy work starts, so a large project doesn't look unresponsive
+    while it's genuinely still working.
+  - A failed commit now surfaces a proper formatted error (via the
+    existing error-formatting standard) instead of silently vanishing
+    after the progress message with nothing logged but a swallowed
+    background error.
+
+## [1.1.1] - 2026-08-02
+
+### Fixed
+- **Slow, delayed responses ("takes forever, then answers all at once"):**
+  every GitHub API call anywhere in the bot was independently reconstructing
+  the Octokit client from scratch — a fresh Postgres read plus a fresh
+  scrypt-based AES-256-GCM decryption (scrypt is deliberately CPU-slow by
+  design) *per call*. A single screen like Repo Detail fires 6+ GitHub
+  calls concurrently via `Promise.all`, so that overhead was compounding
+  every time. Fixed with a short-lived (5-minute) in-memory client cache
+  in `src/github/client.js`, invalidated immediately on disconnect and
+  reconnect so a revoked or replaced token can never be used past its
+  validity window via a stale cached client.
+- **Webhook timeout handling:** configured `webhookCallback`'s
+  `timeoutMilliseconds`/`onTimeout` explicitly (`onTimeout: 'return'`) so
+  a handler that runs long closes the HTTP response to Telegram cleanly
+  instead of throwing. Update processing continues in the background via
+  direct Bot API calls either way — this only affects how fast we
+  acknowledge the webhook delivery itself. Previously, a slow handler
+  caused Telegram to treat the delivery as failed and retry roughly every
+  60 seconds, each retry hitting the same slow path and timing out again.
+- **Noisy/unreadable error logs:** the `unhandledRejection` safety net
+  added in 1.1.0 was logging the entire error object, which for GrammyError
+  includes the full `ctx` (entire Telegram update, complete inline
+  keyboard reply_markup, etc.) — producing walls of unreadable log noise
+  for a single error. Now logs only `message`, `name`, and `description`.
+
 ## [1.1.0] - 2026-08-02
 
 ### Added
