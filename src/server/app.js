@@ -76,7 +76,7 @@ function createApp(bot) {
       const bbtb = require('../keyboards/bbtb');
       await bot.telegram.sendMessage(
         telegramId,
-        `✅ *GitHub Connected*\nLinked as: ${escapeMd(ghUser.login)}\nScope: repo \\(full control of repos\\)`,
+        `✅ *GitHub Connected*\nLinked as: ${escapeMd(ghUser.login)}\nScope: repo, delete\\_repo \\(full control, including delete\\)`,
         { parse_mode: 'MarkdownV2', reply_markup: bbtb.mainMenu.reply_markup }
       );
 

@@ -134,15 +134,14 @@ async function downloadRepo(ctx, repoName) {
   try {
     const user = await github.getAuthenticatedUser(token);
     const repo = await github.getRepo(token, user.login, repoName);
-    const url = github.zipDownloadUrl(user.login, repoName, repo.default_branch);
-    const res = await fetch(url);
-    const buffer = Buffer.from(await res.arrayBuffer());
+    const buffer = await github.downloadZip(token, user.login, repoName, repo.default_branch);
 
     if (buffer.length > 20 * 1024 * 1024) {
+      const fallbackUrl = github.zipDownloadUrl(user.login, repoName, repo.default_branch);
       return ctx.reply(format.errorMessage(
         'Download failed',
         `repo is ${format.formatBytes(buffer.length)} — exceeds Telegram's 20MB limit for bot-sent files`,
-        `Here's a direct download link instead:\n${url}`
+        `Here's a direct download link instead:\n${fallbackUrl}`
       ));
     }
 

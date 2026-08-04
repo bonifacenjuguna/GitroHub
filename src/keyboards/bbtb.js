@@ -61,6 +61,11 @@ const activityLog = Markup.keyboard([
   ['⬆️ Back to Settings'],
 ]).resize();
 
+const disconnected = Markup.keyboard([
+  ['🔗 Connect GitHub'],
+  ['⚙️ Settings'],
+]).resize();
+
 const remove = Markup.removeKeyboard();
 
 module.exports = {
@@ -75,5 +80,6 @@ module.exports = {
   uploadSummary,
   searchAgain,
   activityLog,
+  disconnected,
   remove,
 };

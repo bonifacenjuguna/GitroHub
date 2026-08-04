@@ -7,7 +7,7 @@
 <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=20&pause=1000&color=3B82F6&center=true&vCenter=true&width=460&lines=GitHub+from+Telegram;Create+%C2%B7+Upload+%C2%B7+Download+%C2%B7+Manage;Owner-only+%C2%B7+No+one+else+gets+in;Built+with+Telegraf.js+%2B+Octokit" alt="Typing SVG" />
 
 <p>
-<img src="https://img.shields.io/badge/version-0.1.1-3B82F6?style=for-the-badge" />
+<img src="https://img.shields.io/badge/version-0.2.0-3B82F6?style=for-the-badge" />
 <img src="https://img.shields.io/badge/node-%3E%3D18-3B82F6?style=for-the-badge&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/JavaScript-No%20TypeScript-F1E05A?style=for-the-badge&logo=javascript&logoColor=black" />
 <img src="https://img.shields.io/badge/hosted%20on-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" />
@@ -111,11 +111,28 @@ gitrohub/
 
 ## 📋 Changelog
 
+### v0.2.0 — Real-world testing fixes
+A big pass of fixes based on hands-on testing against a live account:
+
+- **Fixed:** Download Repo (and external repo download) produced an empty 9-byte zip for any private repo — the code was fetching an unauthenticated `github.com/.../archive/...zip` URL, which 404s without a session for private repos. Now uses Octokit's authenticated archive endpoint, works for private and public repos alike.
+- **Fixed:** Repo list showed a single guessed "primary language" with an emoji circle. Now shows a real top-3 language breakdown with percentages (`GET /repos/{owner}/{repo}/languages`), and repos are visually separated with divider lines instead of running together.
+- **Fixed:** Tapping ↕️ Sort or 🔎 Filter crashed with `400: message can't be edited` — these were trying to edit a message that didn't exist from that context (a BBTB tap has no prior bot message attached to edit). Now they send their own fresh message, edit *that*, briefly show a confirmation, auto-delete it, then send a fresh repo list.
+- **Fixed (structural):** Any BBTB button or even `/start` got silently swallowed while inside a wizard (Create Repo, Upload, Rename, Edit File) — Telegraf hands control entirely to the active scene, so handlers registered afterward never ran. Fixed by attaching the exact same navigation handlers directly onto every scene as first-class escape hatches, so `/start`, `/cancel`, and every BBTB nav button now work identically whether or not a wizard is active.
+- **Fixed:** "⬆️ Upload Files" button (shown on empty repos and after creating a new repo) did nothing — its callback pattern was never wired up in the router.
+- **Fixed:** Repo deletion failed with "Must have admin rights to Repository" — the OAuth scope only requested `repo`, not `delete_repo`. Scope now requests both. **You'll need to disconnect and reconnect once** for this to take effect on an already-linked account.
+- **Fixed:** Uploading a photo via Telegram's image picker failed with a generic "send a document" message — now explicitly explains photos get compressed (altering file bytes) and tells you to use the 📎 File option instead.
+- **Fixed:** Typing a manual upload path had an unreachable "(leave blank for root)" instruction — Telegram doesn't allow sending empty text. Added an explicit "📍 Use Root" button instead.
+- **Improved:** Before asking for a manual upload path, the bot now shows the repo's current top-level file/folder structure for context.
+- **Improved:** Upload change-detection now shows exact size deltas for modified files (e.g. `helper.js: 2.1 KB → 2.4 KB`), and refuses outright with a clear message — no Commit button offered at all — when nothing actually changed, instead of allowing a no-op commit.
+- **New:** Bot commands (`/start`, `/settings`, `/cancel`) now register automatically via `setMyCommands` on boot — no manual BotFather setup needed.
+- **New:** Distinct disconnected-state flow — BBTB now shows only "🔗 Connect GitHub" and "⚙️ Settings" while logged out (instead of the full menu with dead buttons underneath), and Settings shows clear "Not connected" placeholders instead of blank/broken GitHub-dependent fields. Disconnecting now resets the BBTB immediately.
+- **Improved:** Welcome-back message now shows your GitHub username as `@username` and includes a live repo count.
+
 ### v0.1.1 — Bug fix
-- **Fixed:** inline keyboards (repo rows, file trees, upload confirms, etc.) were being silently dropped on 7 screens. Root cause: Telegram allows only one `reply_markup` per message, and code was spreading both an inline keyboard and a BBTB reply keyboard into the same options object — the BBTB always won, discarding the inline buttons before send. Fixed by sending the BBTB as its own short message (reply keyboards persist until changed) and letting content messages carry the inline keyboard alone. Affected: My Repos, Repo View, Activity Log, Search results, Browse Files, Upload summary, Create Repo wizard.
+- **Fixed:** inline keyboards were being silently dropped on 7 screens due to a `reply_markup` conflict between inline and BBTB keyboards sharing one message.
 
 ### v0.1.0 — Initial build
-- Owner-only gate, OAuth Web Flow with animated callback page, My Repos (filter/sort/search/pagination), Create/Rename/Delete repo, Visibility toggle, Upload (single file + zip with change detection), Browse Files (view/edit/send/delete), Download (own + external repos), Fork, Settings dashboard, Activity Log, Notifications.
+- Owner-only gate, OAuth Web Flow with animated callback page, My Repos, Create/Rename/Delete repo, Visibility toggle, Upload, Browse Files, Download, Fork, Settings dashboard, Activity Log, Notifications.
 
 ---
 
@@ -204,17 +221,18 @@ These were locked in during design and apply everywhere in the codebase:
 
 ---
 
-## ⚠️ Known limitations in this v0.1.0 build
+## ⚠️ Known limitations in this v0.2.0 build
 
-Being upfront about what's simplified in this first pass, consistent with the "specific errors, not vague ones" principle applied to the docs too:
+Being upfront about what's simplified, consistent with the "specific errors, not vague ones" principle applied to the docs too:
 
-- **"Browse Folders" during single-file upload path selection** currently falls back to asking you to type the path — the folder-tap navigator for *choosing an upload destination* (as opposed to browsing an existing tree, which is fully implemented) wasn't wired up in this pass. Type-path works fully, with format validation and retry.
-- **GitHub webhook-based notifications** (stars/issues/PRs landing as pushed Telegram messages) are schema-ready (`notif_github_activity` etc. exist and are toggleable in Settings) but the receiving webhook endpoint itself isn't implemented yet — this was flagged as a deferred v1.1+ item during design.
-- **🟢🟡🔴 Activity Status indicator** and **🍴 "Forked from X" tag** were explicitly deferred to a future version during design — not in this build.
-- **Text/slash-command fallback** (e.g. `/repos`, `/settings`) isn't implemented — the button-driven UI is the only interface for now, matching the deferred decision made during design.
-- Some destructive-action **double-tap debouncing** is handled by Telegram's own callback-query semantics but doesn't have explicit server-side idempotency locking yet — very low risk in practice for a single-user bot, but worth hardening before wider use.
+- **⚠️ IMPORTANT — reconnect required:** v0.2.0 adds the `delete_repo` scope needed to actually delete repositories. If you connected under v0.1.x, repo deletion will keep failing with "Must have admin rights" until you **Disconnect and reconnect once** from Settings — this re-runs the OAuth flow under the new scope.
+- **"Browse Folders" during single-file upload path selection** still falls back to type-path (with the repo's current structure now shown for context, and a one-tap Root shortcut) — the folder-tap navigator for *choosing* an upload destination wasn't wired up in this pass. Browsing an *existing* tree (Browse Files) is fully implemented.
+- **GitHub webhook-based notifications** (stars/issues/PRs) are schema-ready but the receiving webhook endpoint isn't implemented yet — deferred v1.1+ item.
+- **🟢🟡🔴 Activity Status indicator** and **🍴 "Forked from X" tag** were explicitly deferred to a future version during design.
+- **Text/slash-command fallback** for repo actions (e.g. `/repos`) isn't implemented — `/start`, `/settings`, `/cancel` now exist as commands, but the button-driven UI remains the primary interface for everything else.
+- Destructive-action **double-tap debouncing** relies on Telegram's own callback-query semantics, no explicit server-side idempotency lock yet — low risk for a single-user bot, worth hardening before wider use.
 
-None of these block normal daily use — they're the honest list of "built for v1, deepen later" rather than silent gaps.
+None of these block normal daily use.
 
 ---
 

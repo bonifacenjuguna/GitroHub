@@ -1,7 +1,6 @@
 const os = require('os');
 const github = require('../lib/github');
 const users = require('../lib/users');
-const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
 const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
@@ -27,7 +26,7 @@ async function showSettings(ctx) {
 
   const [pgStatus, redisStatus] = await Promise.all([pgDb.ping(), redisDb.ping()]);
 
-  let rateLimitLine = 'Not connected';
+  let rateLimitLine = 'Not connected — connect GitHub to see live usage';
   if (connected) {
     try {
       const token = await users.getDecryptedToken(telegramId);
@@ -43,12 +42,13 @@ async function showSettings(ctx) {
   const memLine = `${Math.round(mem.rss / 1024 / 1024)}MB / ${Math.round(os.totalmem() / 1024 / 1024)}MB`;
 
   const dbLine = (s) => (s.ok ? `🟢 Connected \\(${s.ms}ms\\)` : `🔴 Unreachable \\(${format.escapeMd(s.error || 'timeout')}\\)`);
+  const scopeLine = connected ? format.escapeMd((user.github_scope || 'repo').split(',').join(', ')) : '—';
 
   const text =
     `⚙️ *Settings & System Status*\n\n` +
     `👤 *ACCOUNT*\n` +
     `├ GitHub: ${connected ? format.escapeMd(user.github_username) : 'Not connected'}\n` +
-    `├ Scope: ${connected ? format.escapeMd(user.github_scope || 'repo') : '—'}\n` +
+    `├ Scope: ${scopeLine}\n` +
     `└ Linked since: ${connected ? format.escapeMd(format.relativeTime(user.connected_at)) : '—'}\n\n` +
     `📡 *GITHUB API*\n` +
     `└ Rate limit: ${rateLimitLine}\n\n` +
@@ -65,10 +65,16 @@ async function showSettings(ctx) {
     await activity.log(telegramId, '⚠️', 'Postgres unreachable', { detail: pgStatus.error, isError: true }).catch(() => {});
   }
 
-  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...bbtb.settings });
+  await ctx.reply(text, {
+    parse_mode: 'MarkdownV2',
+    reply_markup: (connected ? bbtb.settings : bbtb.disconnected).reply_markup,
+  });
 }
 
 async function askDisconnect(ctx) {
+  const connected = await users.isConnected(ctx.from.id);
+  if (!connected) return; // defensive — BBTB shouldn't offer this while disconnected anyway
+
   await ctx.reply(
     `⚠️ Disconnect GitHub account\\?\n\n` +
     `This will:\n` +
@@ -82,15 +88,17 @@ async function askDisconnect(ctx) {
 async function executeDisconnect(ctx) {
   await users.disconnect(ctx.from.id);
   await activity.log(ctx.from.id, '🚪', 'Disconnected GitHub account');
-  const oauth = require('../lib/oauth');
-  const url = oauth.buildAuthorizeUrl(ctx.from.id);
-  await ctx.reply('✅ Disconnected\\. Your GitHub account is no longer linked\\.', {
-    parse_mode: 'MarkdownV2',
-    ...inline.connectButton(url),
+
+  const { sendConnectPrompt } = require('./start');
+  await sendConnectPrompt(ctx, {
+    intro: '✅ Disconnected\\. Your GitHub account is no longer linked\\.',
   });
 }
 
 async function showNotifications(ctx) {
+  const connected = await users.isConnected(ctx.from.id);
+  if (!connected) return;
+
   const prefs = await users.getNotificationPrefs(ctx.from.id);
   await ctx.reply(
     `🔔 *Notifications*\n\nChoose what GitroHub should alert you about:`,

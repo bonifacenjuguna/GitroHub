@@ -2,6 +2,8 @@ const { Telegraf, Scenes, session } = require('telegraf');
 const config = require('./config');
 const ownerGate = require('./middleware/ownerGate');
 const redisStore = require('./middleware/redisSessionStore');
+const users = require('./lib/users');
+const bbtb = require('./keyboards/bbtb');
 
 const startHandler = require('./handlers/start');
 const myRepos = require('./handlers/myRepos');
@@ -17,6 +19,51 @@ const renameRepoScene = require('./scenes/renameRepo');
 const uploadFileScene = require('./scenes/uploadFile');
 const editFileScene = require('./scenes/editFile');
 
+/**
+ * Text inputs that scenes must keep handling THEMSELVES rather than being
+ * treated as a "leave the flow" escape — these are legitimate in-flow
+ * controls, not navigation.
+ */
+const SCENE_INTERNAL_LABELS = new Set(['❌ Cancel', '⏭️ Skip', '⬅️ Back', '⌨️ Type Path Instead', '📍 Use Root']);
+
+async function sendCancelledMenu(ctx) {
+  const connected = await users.isConnected(ctx.from.id);
+  await ctx.reply('❌ Cancelled — back to main menu.', connected ? bbtb.mainMenu : bbtb.disconnected);
+}
+
+/**
+ * GLOBAL SCENE ESCAPE HATCH.
+ *
+ * The root cause of the "/start and BBTB buttons get swallowed mid-wizard"
+ * bug: Telegraf hands control entirely to the active scene's current step
+ * once a scene is running, so handlers registered via bot.hears()/bot.command()
+ * AFTER stage.middleware() never get a chance to run during an active scene.
+ *
+ * The fix is to register the exact same escape actions DIRECTLY on each
+ * scene (scene.command()/scene.hears() are checked before the wizard's
+ * numbered step dispatch — this is the standard, documented Telegraf
+ * pattern for wizard cancellation), using the SAME handler map as the
+ * top-level bot.hears() registrations below, so behavior is identical
+ * whether or not a scene happens to be active.
+ */
+function attachGlobalEscapes(scene, handlerMap) {
+  scene.command('start', async (ctx) => {
+    await ctx.scene.leave();
+    return startHandler.handleStart(ctx);
+  });
+  scene.command('cancel', async (ctx) => {
+    await ctx.scene.leave();
+    return sendCancelledMenu(ctx);
+  });
+  for (const [label, handler] of Object.entries(handlerMap)) {
+    if (SCENE_INTERNAL_LABELS.has(label)) continue;
+    scene.hears(label, async (ctx) => {
+      await ctx.scene.leave();
+      return handler(ctx);
+    });
+  }
+}
+
 function createBot() {
   const bot = new Telegraf(config.BOT_TOKEN);
 
@@ -26,85 +73,103 @@ function createBot() {
   // 2) Redis-backed session (required by Scenes for wizard state)
   bot.use(session({ store: redisStore }));
 
-  // 3) Scenes stage
+  // ─── Shared handler map: BBTB label -> handler ────────────────
+  // Used both for top-level bot.hears() registration AND as the escape
+  // dispatch table injected into every scene (see attachGlobalEscapes).
+  const handlerMap = {
+    '📁 My Repos': (ctx) => myRepos.showMyRepos(ctx),
+    '➕ New Repo': (ctx) => ctx.scene.enter('createRepo'),
+    '🔍 Search Repo': async (ctx) => {
+      ctx.session.awaitingSearch = true;
+      await ctx.reply('🔍 Type a repo name/keyword, or paste a GitHub repo link.', bbtb.cancelOnly);
+    },
+    '⚙️ Settings': (ctx) => settings.showSettings(ctx),
+    '🔗 Connect GitHub': (ctx) => startHandler.sendConnectPrompt(ctx),
+
+    '⬆️ Back to Menu': async (ctx) => {
+      ctx.session.awaitingSearch = false;
+      const connected = await users.isConnected(ctx.from.id);
+      await ctx.reply('📍 Main Menu', connected ? bbtb.mainMenu : bbtb.disconnected);
+    },
+
+    '🔎 Filter': (ctx) => myRepos.showFilterMenu(ctx),
+    '↕️ Sort': (ctx) => myRepos.showSortMenu(ctx),
+    '🔄 Refresh': (ctx) => myRepos.showMyRepos(ctx),
+
+    '⬅️ Back to Repos': (ctx) => myRepos.showMyRepos(ctx),
+
+    '⬆️ Upload': async (ctx) => {
+      const repoName = ctx.session.currentRepo;
+      if (!repoName) return ctx.reply('Open a repo first from 📁 My Repos.');
+      await ctx.scene.enter('uploadFile', { repoName });
+    },
+    '📁 Browse Files': async (ctx) => {
+      const repoName = ctx.session.currentRepo;
+      if (!repoName) return ctx.reply('Open a repo first from 📁 My Repos.');
+      await browseFiles.showDirectory(ctx, repoName, '');
+    },
+    '⬇️ Download Repo': async (ctx) => {
+      const repoName = ctx.session.currentRepo;
+      if (!repoName) return ctx.reply('Open a repo first from 📁 My Repos.');
+      await repoView.downloadRepo(ctx, repoName);
+    },
+    '🔒 Visibility': async (ctx) => {
+      const repoName = ctx.session.currentRepo;
+      if (!repoName) return ctx.reply('Open a repo first from 📁 My Repos.');
+      await repoView.askToggleVisibility(ctx, repoName);
+    },
+
+    '🔍 Search Files': async (ctx) => {
+      ctx.session.awaitingFileSearch = true;
+      await ctx.reply('🔍 Type a filename or keyword to search across all files.', bbtb.cancelOnly);
+    },
+    '⬆️ Back to Repo': async (ctx) => {
+      const repoName = ctx.session.currentRepo;
+      if (repoName) await repoView.showRepoView(ctx, repoName);
+    },
+
+    '🔔 Notifications': (ctx) => settings.showNotifications(ctx),
+    '📜 Activity': (ctx) => activityLog.showActivity(ctx),
+    '🚪 Disconnect': (ctx) => settings.askDisconnect(ctx),
+    '🔄 Refresh Status': (ctx) => settings.showSettings(ctx),
+    '⬆️ Back to Settings': (ctx) => settings.showSettings(ctx),
+
+    '🔁 Search Again': async (ctx) => {
+      ctx.session.awaitingSearch = true;
+      await ctx.reply('🔍 Type a repo name/keyword, or paste a GitHub repo link.', bbtb.cancelOnly);
+    },
+
+    '📤 Upload Another': async (ctx) => {
+      const repoName = ctx.session.currentRepo;
+      if (repoName) await ctx.scene.enter('uploadFile', { repoName });
+    },
+  };
+
+  // 3) Attach the same escape hatches to every scene BEFORE building the
+  //    Stage, so /start, /cancel, and every BBTB nav button always work
+  //    even mid-wizard, instead of being silently swallowed.
+  attachGlobalEscapes(createRepoScene, handlerMap);
+  attachGlobalEscapes(renameRepoScene, handlerMap);
+  attachGlobalEscapes(uploadFileScene, handlerMap);
+  attachGlobalEscapes(editFileScene, handlerMap);
+
   const stage = new Scenes.Stage([createRepoScene, renameRepoScene, uploadFileScene, editFileScene]);
   bot.use(stage.middleware());
 
   // ─── Commands ─────────────────────────────────────────────
   bot.start(startHandler.handleStart);
+  bot.command('settings', (ctx) => settings.showSettings(ctx));
+  bot.command('cancel', (ctx) => sendCancelledMenu(ctx));
 
   // ─── BBTB (Reply Keyboard) text handlers ───────────────────
-  bot.hears('📁 My Repos', (ctx) => myRepos.showMyRepos(ctx));
-  bot.hears('➕ New Repo', (ctx) => ctx.scene.enter('createRepo'));
-  bot.hears('🔍 Search Repo', async (ctx) => {
-    ctx.session.awaitingSearch = true;
-    await ctx.reply('🔍 Type a repo name/keyword, or paste a GitHub repo link.', require('./keyboards/bbtb').cancelOnly);
-  });
-  bot.hears('⚙️ Settings', (ctx) => settings.showSettings(ctx));
-
-  bot.hears('⬆️ Back to Menu', async (ctx) => {
-    ctx.session.awaitingSearch = false;
-    await ctx.reply('📍 Main Menu', require('./keyboards/bbtb').mainMenu);
-  });
-
-  bot.hears('🔎 Filter', (ctx) => myRepos.showFilterMenu(ctx));
-  bot.hears('↕️ Sort', (ctx) => myRepos.showSortMenu(ctx));
-  bot.hears('🔄 Refresh', (ctx) => myRepos.showMyRepos(ctx));
-
-  bot.hears('⬅️ Back to Repos', async (ctx) => {
-    await myRepos.showMyRepos(ctx);
-  });
-
-  bot.hears('⬆️ Upload', async (ctx) => {
-    const repoName = ctx.session.currentRepo;
-    if (!repoName) return ctx.reply('Open a repo first from 📁 My Repos.');
-    await ctx.scene.enter('uploadFile', { repoName });
-  });
-  bot.hears('📁 Browse Files', async (ctx) => {
-    const repoName = ctx.session.currentRepo;
-    if (!repoName) return ctx.reply('Open a repo first from 📁 My Repos.');
-    await browseFiles.showDirectory(ctx, repoName, '');
-  });
-  bot.hears('⬇️ Download Repo', async (ctx) => {
-    const repoName = ctx.session.currentRepo;
-    if (!repoName) return ctx.reply('Open a repo first from 📁 My Repos.');
-    await repoView.downloadRepo(ctx, repoName);
-  });
-  bot.hears('🔒 Visibility', async (ctx) => {
-    const repoName = ctx.session.currentRepo;
-    if (!repoName) return ctx.reply('Open a repo first from 📁 My Repos.');
-    await repoView.askToggleVisibility(ctx, repoName);
-  });
-
-  bot.hears('🔍 Search Files', async (ctx) => {
-    ctx.session.awaitingFileSearch = true;
-    await ctx.reply('🔍 Type a filename or keyword to search across all files.', require('./keyboards/bbtb').cancelOnly);
-  });
-  bot.hears('⬆️ Back to Repo', async (ctx) => {
-    const repoName = ctx.session.currentRepo;
-    if (repoName) await repoView.showRepoView(ctx, repoName);
-  });
-
-  bot.hears('🔔 Notifications', (ctx) => settings.showNotifications(ctx));
-  bot.hears('📜 Activity', (ctx) => activityLog.showActivity(ctx));
-  bot.hears('🚪 Disconnect', (ctx) => settings.askDisconnect(ctx));
-  bot.hears('🔄 Refresh Status', (ctx) => settings.showSettings(ctx));
-  bot.hears('⬆️ Back to Settings', (ctx) => settings.showSettings(ctx));
-
-  bot.hears('🔁 Search Again', async (ctx) => {
-    ctx.session.awaitingSearch = true;
-    await ctx.reply('🔍 Type a repo name/keyword, or paste a GitHub repo link.');
-  });
-
-  bot.hears('📤 Upload Another', async (ctx) => {
-    const repoName = ctx.session.currentRepo;
-    if (repoName) await ctx.scene.enter('uploadFile', { repoName });
-  });
+  for (const [label, handler] of Object.entries(handlerMap)) {
+    bot.hears(label, handler);
+  }
 
   bot.hears('❌ Cancel', async (ctx) => {
     ctx.session.awaitingSearch = false;
     ctx.session.awaitingFileSearch = false;
-    await ctx.reply('Cancelled.', require('./keyboards/bbtb').mainMenu);
+    await sendCancelledMenu(ctx);
   });
 
   // ─── Free-text input router (search / file-search) ─────────
@@ -141,16 +206,6 @@ function createBot() {
       await ctx.answerCbQuery();
       return myRepos.showMyRepos(ctx, { edit: true });
     }
-    if (data.startsWith('filter:')) {
-      await ctx.answerCbQuery();
-      myRepos.setFilter(ctx.from.id, data.split(':')[1]);
-      return myRepos.showMyRepos(ctx, { edit: true });
-    }
-    if (data.startsWith('sort:')) {
-      await ctx.answerCbQuery();
-      myRepos.setSort(ctx.from.id, data.split(':')[1]);
-      return myRepos.showMyRepos(ctx, { edit: true });
-    }
 
     // Repo actions
     if (data.startsWith('repo:rename:')) {
@@ -177,6 +232,36 @@ function createBot() {
     if (data.startsWith('repo:visibility:cancel:')) {
       await ctx.answerCbQuery();
       return ctx.reply('Cancelled.');
+    }
+
+    // Upload entry point from "⬆️ Upload Files" buttons (empty-repo screen, New Repo success screen)
+    if (data.startsWith('upload:start:')) {
+      await ctx.answerCbQuery();
+      const repoName = data.split('upload:start:')[1];
+      ctx.session.currentRepo = repoName;
+      return ctx.scene.enter('uploadFile', { repoName });
+    }
+
+    if (data === 'repos:back') {
+      await ctx.answerCbQuery();
+      await ctx.deleteMessage().catch(() => {});
+      return myRepos.showMyRepos(ctx);
+    }
+
+    // Filter / Sort menus — these render on their OWN freshly-sent message
+    // (see myRepos.showFilterMenu/showSortMenu), so editing here is always
+    // safe: it's never a stale reference to a different message.
+    if (data.startsWith('filter:') || data.startsWith('sort:')) {
+      await ctx.answerCbQuery();
+      if (data.startsWith('filter:')) myRepos.setFilter(ctx.from.id, data.split(':')[1]);
+      else myRepos.setSort(ctx.from.id, data.split(':')[1]);
+
+      const label = data.startsWith('filter:')
+        ? `✅ Filtered: ${data.split(':')[1]}`
+        : `✅ Sorted: ${data.split(':')[1]}`;
+      await ctx.editMessageText(label);
+      setTimeout(() => ctx.deleteMessage().catch(() => {}), 800);
+      return myRepos.showMyRepos(ctx);
     }
 
     // File browsing

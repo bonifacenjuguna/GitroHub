@@ -12,7 +12,7 @@ function buildAuthorizeUrl(telegramId) {
   const params = new URLSearchParams({
     client_id: config.GITHUB_CLIENT_ID,
     redirect_uri: `${config.BASE_URL}/callback`,
-    scope: 'repo',
+    scope: 'repo,delete_repo',
     state,
     allow_signup: 'false',
   });

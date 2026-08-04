@@ -173,9 +173,28 @@ async function commitMultipleFiles(token, owner, repo, files, message) {
   return newCommit;
 }
 
-/** Codeload zip URL — used for both "Download Repo" and external repo download */
+/** Codeload zip URL — kept for reference/fallback links in error messages only */
 function zipDownloadUrl(owner, repo, branch = 'main') {
   return `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`;
+}
+
+/**
+ * Downloads a repo archive as a Buffer using the authenticated Git Archive API.
+ * Unlike a plain fetch() against github.com/.../archive/...zip (which returns a
+ * 9-byte "Not Found" for any private repo since it isn't authenticated), this
+ * goes through Octokit with the user's token and works for private AND public repos.
+ */
+async function downloadZip(token, owner, repo, ref) {
+  const octo = client(token);
+  const response = await octo.repos.downloadZipballArchive({ owner, repo, ref });
+  return Buffer.from(response.data);
+}
+
+/** Fetches per-language byte counts (used to compute language % breakdown) */
+async function getLanguages(token, owner, repo) {
+  const octo = client(token);
+  const { data } = await octo.repos.listLanguages({ owner, repo });
+  return data; // { JavaScript: 12345, HTML: 6789, ... } bytes per language
 }
 
 module.exports = {
@@ -194,4 +213,6 @@ module.exports = {
   deleteFile,
   commitMultipleFiles,
   zipDownloadUrl,
+  downloadZip,
+  getLanguages,
 };

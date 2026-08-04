@@ -34,8 +34,32 @@ function applyFilterSort(repos, state) {
 const FILTER_LABELS = { all: 'All', public: '🌐 Public', private: '🔒 Private', forks: '🍴 Forks' };
 const SORT_LABELS = { updated: 'Recently Updated', name: 'Name (A-Z)', stars: 'Most Stars', created: 'Recently Created' };
 
-function renderRepoLine(r) {
-  return `📦 *${format.escapeMd(r.name)}*\n   ${format.visibilityLine(r.private)} · ${format.languageLine(r.language)} · ⭐ ${r.stargazers_count}`;
+/** Turns { JavaScript: 12000, HTML: 4000 } into "JavaScript 75% · HTML 25%" (top 3) */
+function languageBreakdown(languages) {
+  const entries = Object.entries(languages);
+  if (entries.length === 0) return 'No language detected';
+  const total = entries.reduce((sum, [, bytes]) => sum + bytes, 0);
+  return entries
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([lang, bytes]) => `${lang} ${Math.round((bytes / total) * 100)}%`)
+    .join(' · ');
+}
+
+async function renderRepoLine(token, r) {
+  let langLine = 'No language detected';
+  try {
+    const languages = await github.getLanguages(token, r.owner.login, r.name);
+    langLine = languageBreakdown(languages);
+  } catch (_) {
+    // best-effort — repo may be empty, fall back to the single-language guess
+    langLine = r.language || 'No language detected';
+  }
+  return (
+    `📦 *${format.escapeMd(r.name)}*\n` +
+    `${format.visibilityLine(r.private)} · ⭐ ${r.stargazers_count}\n` +
+    `${format.escapeMd(langLine)}`
+  );
 }
 
 async function showMyRepos(ctx, { edit = false } = {}) {
@@ -59,7 +83,8 @@ async function showMyRepos(ctx, { edit = false } = {}) {
   if (pageRepos.length === 0) {
     text += format.escapeMd(`No repos match filter "${FILTER_LABELS[state.filter]}".`);
   } else {
-    text += pageRepos.map(renderRepoLine).join('\n\n');
+    const lines = await Promise.all(pageRepos.map((r) => renderRepoLine(token, r)));
+    text += lines.join('\n──────────────────────────\n');
     text += `\n\nPage ${state.page} of ${totalPages}`;
   }
 
@@ -76,14 +101,18 @@ async function showMyRepos(ctx, { edit = false } = {}) {
 }
 
 async function showFilterMenu(ctx) {
-  await ctx.editMessageText('🔎 *Filter repositories by:*', {
+  // Sent as a brand-new message (not an edit) — a BBTB tap has no prior
+  // bot message to edit, which is exactly what caused the old
+  // "400: message can't be edited" crash. The callback handler in bot.js
+  // edits THIS fresh message, so that edit is always safe.
+  await ctx.reply('🔎 *Filter repositories by:*', {
     parse_mode: 'MarkdownV2',
     ...inline.filterMenu,
   });
 }
 
 async function showSortMenu(ctx) {
-  await ctx.editMessageText('↕️ *Sort repositories by:*', {
+  await ctx.reply('↕️ *Sort repositories by:*', {
     parse_mode: 'MarkdownV2',
     ...inline.sortMenu,
   });

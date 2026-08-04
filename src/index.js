@@ -14,6 +14,14 @@ async function main() {
   console.log('🔧 Starting Telegram bot...');
   const bot = createBot();
 
+  // Register command shortcuts (shown when typing "/" in Telegram) without
+  // needing to register them manually in BotFather.
+  await bot.telegram.setMyCommands([
+    { command: 'start', description: '🏠 Open main menu, or connect your GitHub account' },
+    { command: 'settings', description: '⚙️ View settings and live system status' },
+    { command: 'cancel', description: '❌ Cancel whatever you\'re doing and return to the menu' },
+  ]);
+
   console.log('🔧 Starting web server (OAuth callback)...');
   const app = createApp(bot);
 

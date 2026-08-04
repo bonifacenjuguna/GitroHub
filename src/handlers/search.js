@@ -116,19 +116,18 @@ async function downloadExternalZip(ctx) {
   await ctx.reply(`📦 Preparing zip of ${format.escapeMd(owner)}/${format.escapeMd(repo)}\\.\\.\\.`, { parse_mode: 'MarkdownV2' });
   try {
     const repoData = await github.getRepo(token, owner, repo);
-    const url = github.zipDownloadUrl(owner, repo, repoData.default_branch);
-    const res = await fetch(url);
-    const buf = Buffer.from(await res.arrayBuffer());
+    const buffer = await github.downloadZip(token, owner, repo, repoData.default_branch);
 
-    if (buf.length > 20 * 1024 * 1024) {
+    if (buffer.length > 20 * 1024 * 1024) {
+      const fallbackUrl = github.zipDownloadUrl(owner, repo, repoData.default_branch);
       return ctx.reply(format.errorMessage(
         'Download failed',
-        `repo is ${format.formatBytes(buf.length)} — exceeds Telegram's 20MB limit for bot-sent files`,
-        `Here's a direct download link instead:\n${url}`
+        `repo is ${format.formatBytes(buffer.length)} — exceeds Telegram's 20MB limit for bot-sent files`,
+        `Here's a direct download link instead:\n${fallbackUrl}`
       ));
     }
 
-    await ctx.replyWithDocument({ source: buf, filename: `${repo}.zip` });
+    await ctx.replyWithDocument({ source: buffer, filename: `${repo}.zip` });
     await activity.log(ctx.from.id, '⬇️', `Downloaded external repo → ${owner}/${repo}`);
   } catch (err) {
     await ctx.reply(format.errorMessage('Download failed', err.message, 'Try again later.'));

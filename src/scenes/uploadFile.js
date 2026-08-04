@@ -7,13 +7,18 @@ const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
 const { gitBlobSha } = require('../lib/gitHash');
 const config = require('../config');
+const { listDirectory } = require('../handlers/browseFiles');
 
 const PATH_EXAMPLES =
   'Examples:\n' +
   '• src/index.js\n' +
   '• assets/images/logo.png\n' +
-  '• config/settings.json\n' +
-  '• (leave blank for root)';
+  '• config/settings.json';
+
+const typePathBbtb = Markup.keyboard([
+  ['📍 Use Root', '⬅️ Back'],
+  ['❌ Cancel'],
+]).resize();
 
 const scene = new Scenes.WizardScene(
   'uploadFile',
@@ -22,7 +27,8 @@ const scene = new Scenes.WizardScene(
   async (ctx) => {
     ctx.wizard.state.repoName = ctx.wizard.state.repoName || ctx.scene.state.repoName;
     await ctx.reply(
-      `📤 Send a file or a .zip (max ${format.formatBytes(config.MAX_ZIP_SIZE_BYTES)}) to upload to ${ctx.wizard.state.repoName}`,
+      `📤 Send a file or a .zip (max ${format.formatBytes(config.MAX_ZIP_SIZE_BYTES)}) to upload to ${ctx.wizard.state.repoName}\n\n` +
+      `⚠️ Send it as a document/file attachment (📎 icon → File) — not via the photo/gallery picker, which compresses images and would alter the file's bytes.`,
       bbtb.cancelOnly
     );
     return ctx.wizard.next();
@@ -34,6 +40,16 @@ const scene = new Scenes.WizardScene(
       await ctx.reply('Upload cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
     }
+
+    if (ctx.message && ctx.message.photo) {
+      await ctx.reply(format.errorMessage(
+        'Can\u2019t upload this file',
+        'it was sent as a compressed photo, not a file attachment — Telegram compresses images sent via the photo picker, which alters the original bytes',
+        'Use the 📎 attachment icon and choose "File" (not "Photo/Gallery") to send it unmodified, or ❌ Cancel.'
+      ));
+      return;
+    }
+
     if (!ctx.message || !ctx.message.document) {
       await ctx.reply('Send a file as a document attachment, or ❌ Cancel.');
       return;
@@ -74,8 +90,15 @@ const scene = new Scenes.WizardScene(
       return;
     }
     if (ctx.message && ctx.message.text === '⌨️ Type Path Instead') {
-      await ctx.reply(`⌨️ Type the destination path.\n\n${PATH_EXAMPLES}`, bbtb.cancelWithBack);
+      await ctx.reply(`⌨️ Type the destination path.\n\n${PATH_EXAMPLES}\n\nOr tap 📍 Use Root below.`, typePathBbtb);
       return;
+    }
+    if (ctx.message && ctx.message.text === '📍 Use Root') {
+      ctx.wizard.state.pendingFiles[0].path = ctx.wizard.state.pendingFiles[0].filename;
+      return showSummary(ctx);
+    }
+    if (ctx.message && ctx.message.text === '⬅️ Back') {
+      return processSingleFile(ctx, null, null, true);
     }
     if (ctx.message && ctx.message.text === '❌ Cancel') {
       await ctx.reply('Upload cancelled.', bbtb.mainMenu);
@@ -87,7 +110,7 @@ const scene = new Scenes.WizardScene(
         await ctx.reply(format.errorMessage(
           'Invalid path',
           `"${path}" contains a double slash, leading slash, or space around a slash`,
-          `${PATH_EXAMPLES}\n\nTry again.`
+          `${PATH_EXAMPLES}\n\nTry again, or tap 📍 Use Root below.`
         ));
         return;
       }
@@ -101,7 +124,7 @@ const scene = new Scenes.WizardScene(
     if (ctx.callbackQuery && ctx.callbackQuery.data === 'upload:summary:list') {
       await ctx.answerCbQuery();
       const list = ctx.wizard.state.pendingFiles
-        .map((f) => `${statusIcon(f.status)} ${f.path}`)
+        .map((f) => `${statusIcon(f.status)} ${f.path}${f.status === 'modified' ? ` (${f.oldSize} → ${f.newSize})` : ''}`)
         .join('\n');
       await ctx.reply(`📋 Files:\n${list}`);
       return;
@@ -115,7 +138,7 @@ const scene = new Scenes.WizardScene(
       await ctx.answerCbQuery();
       const changed = ctx.wizard.state.pendingFiles.filter((f) => f.status !== 'unchanged');
       if (changed.length === 0) {
-        await ctx.reply('⚠️ Nothing to commit — all files matched what\u2019s already in the repo.', bbtb.mainMenu);
+        await ctx.reply('➖ Nothing to commit — every file matches what\u2019s already in the repo.', bbtb.mainMenu);
         return ctx.scene.leave();
       }
       await ctx.reply('Write a commit message, or use default.', bbtb.cancelWithSkip);
@@ -181,19 +204,50 @@ async function classifyFiles(ctx, files) {
   }
   const existingByPath = new Map(existingTree.map((e) => [e.path, e.sha]));
 
-  return files.map((f) => {
+  return Promise.all(files.map(async (f) => {
     const existingSha = existingByPath.get(f.path);
     const localSha = gitBlobSha(f.content);
     let status = 'new';
-    if (existingSha) status = existingSha === localSha ? 'unchanged' : 'modified';
-    return { ...f, status };
-  });
+    let oldSize;
+    if (existingSha) {
+      status = existingSha === localSha ? 'unchanged' : 'modified';
+      if (status === 'modified') {
+        try {
+          const existing = await github.getFileContent(token, user.login, ctx.wizard.state.repoName, f.path);
+          oldSize = format.formatBytes(existing.size);
+        } catch (_) { /* best-effort */ }
+      }
+    }
+    return { ...f, status, oldSize, newSize: format.formatBytes(Buffer.byteLength(f.content)) };
+  }));
 }
 
-async function processSingleFile(ctx, buffer, filename) {
-  ctx.wizard.state.pendingFiles = [{ filename, content: buffer.toString('utf8'), path: null }];
+async function processSingleFile(ctx, buffer, filename, isBackNav = false) {
+  if (!isBackNav) {
+    ctx.wizard.state.pendingFiles = [{ filename, content: buffer.toString('utf8'), path: null }];
+    delete ctx.wizard.state.pendingFiles[0].status;
+  }
+
+  // Show existing top-level repo structure for context before asking where to put it
+  const token = await requireConnected(ctx);
+  if (!token) return ctx.scene.leave();
+
+  let structureLine = '';
+  try {
+    const user = await github.getAuthenticatedUser(token);
+    const tree = await github.getTree(token, user.login, ctx.wizard.state.repoName);
+    const topLevel = listDirectory(tree, '');
+    if (topLevel.length > 0) {
+      const preview = topLevel.slice(0, 8).map((e) => (e.type === 'tree' ? `📁 ${e.name}/` : `📄 ${e.name}`)).join('\n');
+      structureLine = `\n\n📂 Current top-level contents:\n${preview}${topLevel.length > 8 ? `\n… and ${topLevel.length - 8} more` : ''}`;
+    } else {
+      structureLine = '\n\n📂 This repo is currently empty.';
+    }
+  } catch (_) { /* best-effort — don't block the flow if this fails */ }
+
+  const f = ctx.wizard.state.pendingFiles[0];
   await ctx.reply(
-    `📄 Received: ${filename} (${format.formatBytes(buffer.length)})\nWhere should this go?`,
+    `📄 Received: ${f.filename} (${format.formatBytes(Buffer.byteLength(f.content, 'utf8'))})\nWhere should this go?${structureLine}`,
     {
       ...Markup.inlineKeyboard([
         [Markup.button.callback('📁 Browse Folders', 'upload:choose:browse')],
@@ -256,11 +310,32 @@ async function showSummary(ctx) {
   const counts = { new: 0, modified: 0, unchanged: 0 };
   files.forEach((f) => counts[f.status]++);
 
+  await ctx.reply('📦 Upload Summary', bbtb.uploadSummary);
+
+  // Nothing changed at all — refuse outright, per design, rather than
+  // offering a Commit button that would push an empty no-op commit.
+  if (counts.new === 0 && counts.modified === 0) {
+    const names = files.map((f) => f.path).join(', ');
+    await ctx.reply(
+      `📦 Upload Summary → ${ctx.wizard.state.repoName}\n` +
+      `➖ No changes detected — ${files.length === 1 ? `"${names}" matches` : `all ${files.length} files match`} what's already in the repo.\n\n` +
+      `Nothing to upload.`,
+      Markup.inlineKeyboard([[Markup.button.callback('📦 Open Repo', `repo:${ctx.wizard.state.repoName}`)]])
+    );
+    return ctx.scene.leave();
+  }
+
+  const changeDetail = files
+    .filter((f) => f.status === 'modified')
+    .slice(0, 3)
+    .map((f) => `✏️ ${f.path}: ${f.oldSize || '?'} → ${f.newSize}`)
+    .join('\n');
+
   const text =
     `📦 Upload Summary → ${ctx.wizard.state.repoName}\n` +
-    `🆕 New: ${counts.new}   ✏️ Modified: ${counts.modified}   ➖ Unchanged: ${counts.unchanged} (skipped)`;
+    `🆕 New: ${counts.new}   ✏️ Modified: ${counts.modified}   ➖ Unchanged: ${counts.unchanged} (skipped)` +
+    (changeDetail ? `\n\n${changeDetail}` : '');
 
-  await ctx.reply('📦 Upload Summary', bbtb.uploadSummary);
   await ctx.reply(text, {
     ...Markup.inlineKeyboard([
       [Markup.button.callback('📋 View File List', 'upload:summary:list')],
