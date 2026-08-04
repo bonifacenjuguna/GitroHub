@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GitroHub — Connecting</title>
+<style>
+  :root {
+    --bg: #050508;
+    --bg2: #0d0d14;
+    --blue: #3b82f6;
+    --cyan: #38bdf8;
+    --green: #22c55e;
+    --red: #ef4444;
+    --text: #e6e8ee;
+    --muted: #8b8fa3;
+    --accent: var(--blue);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: radial-gradient(ellipse at 50% 30%, var(--bg2), var(--bg) 70%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden;
+  }
+  canvas#bg {
+    position: fixed; inset: 0; width: 100%; height: 100%; z-index: 0;
+  }
+  .glow-rotator {
+    position: fixed; inset: -20%;
+    background: conic-gradient(from 0deg, transparent, var(--accent)22, transparent 30%, transparent);
+    animation: rotate 30s linear infinite;
+    z-index: 1; pointer-events: none;
+    transition: background 0.8s ease;
+  }
+  @keyframes rotate { to { transform: rotate(360deg); } }
+
+  .wrap {
+    position: relative; z-index: 2;
+    min-height: 100vh;
+    display: flex; align-items: center; justify-content: center;
+    padding: 24px;
+  }
+  .card {
+    width: 100%; max-width: 420px;
+    background: rgba(20, 20, 30, 0.55);
+    backdrop-filter: blur(20px);
+    border-radius: 20px;
+    border: 1px solid rgba(59, 130, 246, 0.25);
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.02), 0 20px 60px rgba(0,0,0,0.5), 0 0 40px var(--accent-glow, rgba(59,130,246,0.15));
+    padding: 28px 26px 30px;
+    text-align: center;
+    animation: cardIn 0.6s cubic-bezier(.2,.8,.2,1);
+    transition: box-shadow 0.8s ease;
+  }
+  @keyframes cardIn {
+    from { opacity: 0; transform: scale(0.94) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .progress-top {
+    height: 3px; width: 100%; border-radius: 3px;
+    background: rgba(255,255,255,0.06);
+    overflow: hidden; margin-bottom: 22px;
+  }
+  .progress-top-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--blue), var(--cyan));
+    transition: width 0.4s ease;
+  }
+
+  .logo-wrap {
+    position: relative; width: 96px; height: 96px; margin: 0 auto 14px;
+  }
+  .logo-ring {
+    position: absolute; inset: -8px;
+    border-radius: 50%;
+    border: 2px solid transparent;
+    border-top-color: var(--accent);
+    border-right-color: var(--accent);
+    animation: spin 1.6s linear infinite;
+    transition: border-color 0.6s ease, opacity 0.4s ease;
+  }
+  .logo-ring.done { animation: none; border-color: var(--accent); opacity: 0.35; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .logo-img {
+    width: 96px; height: 96px; border-radius: 50%;
+    animation: breathe 3s ease-in-out infinite;
+    filter: drop-shadow(0 0 18px var(--accent-glow, rgba(59,130,246,0.4)));
+    transition: filter 0.6s ease;
+  }
+  @keyframes breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.035); }
+  }
+
+  h1 { font-size: 17px; margin: 4px 0 2px; font-weight: 700; letter-spacing: 0.2px; }
+  .subtitle { font-size: 13px; color: var(--muted); margin-bottom: 18px; }
+
+  .terminal {
+    text-align: left;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 14px 16px;
+    font-family: 'SF Mono', 'Fira Code', Consolas, monospace;
+    font-size: 12.5px;
+    line-height: 1.9;
+    min-height: 120px;
+    position: relative;
+    overflow: hidden;
+  }
+  .terminal::after {
+    content: ''; position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(rgba(255,255,255,0.015) 0 1px, transparent 1px 3px);
+    opacity: 0.5;
+  }
+  .log-line {
+    display: flex; align-items: center; gap: 8px;
+    opacity: 0; transform: translateX(-6px);
+    animation: lineIn 0.4s forwards;
+    border-left: 2px solid transparent;
+    padding-left: 8px; margin-left: -8px;
+  }
+  .log-line.complete { border-left-color: var(--green); }
+  .log-line.failed { border-left-color: var(--red); }
+  @keyframes lineIn { to { opacity: 1; transform: translateX(0); } }
+
+  .icon-wrap { width: 15px; height: 15px; flex-shrink: 0; display:flex; align-items:center; justify-content:center; }
+  .icon-spinner {
+    width: 12px; height: 12px; border-radius: 50%;
+    border: 2px solid rgba(59,130,246,0.25); border-top-color: var(--blue);
+    animation: spin 0.8s linear infinite;
+  }
+  .icon-check, .icon-x { width: 14px; height: 14px; }
+  .cursor {
+    display: inline-block; width: 6px; height: 12px; background: var(--blue);
+    animation: blink 1s step-start infinite; margin-left: 2px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  .result-box {
+    margin-top: 18px; padding: 14px 16px; border-radius: 12px;
+    background: rgba(34, 197, 94, 0.08);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+    text-align: left;
+    display: none;
+  }
+  .result-box.show { display: block; animation: lineIn 0.4s forwards; }
+  .result-box.fail { background: rgba(239, 68, 68, 0.08); border-color: rgba(239, 68, 68, 0.28); }
+  .result-title { font-weight: 700; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .result-detail { font-size: 12.5px; color: var(--muted); margin-top: 4px; }
+
+  .countdown-wrap {
+    margin-top: 22px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  }
+  .ring-box { position: relative; width: 64px; height: 64px; }
+  .ring-box svg { transform: rotate(-90deg); }
+  .ring-bg { fill: none; stroke: rgba(255,255,255,0.08); stroke-width: 4; }
+  .ring-fill { fill: none; stroke: var(--accent); stroke-width: 4; stroke-linecap: round;
+    transition: stroke-dashoffset 1s linear, stroke 0.6s ease; }
+  .ring-number {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 18px; font-variant-numeric: tabular-nums;
+  }
+  .redirect-label { font-size: 12.5px; color: var(--muted); }
+
+  .btn {
+    margin-top: 16px; display: inline-flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, var(--blue), var(--cyan));
+    color: #06121f; font-weight: 700; font-size: 13.5px;
+    padding: 11px 20px; border-radius: 10px; text-decoration: none;
+    box-shadow: 0 6px 20px rgba(59,130,246,0.35);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .btn:hover { transform: translateY(-1px); box-shadow: 0 8px 26px rgba(59,130,246,0.5); }
+  .btn.fail { background: linear-gradient(135deg, #f87171, #ef4444); box-shadow: 0 6px 20px rgba(239,68,68,0.35); }
+
+  .footer { margin-top: 22px; font-size: 11px; color: rgba(139,143,163,0.6); letter-spacing: 0.3px; }
+</style>
+</head>
+<body>
+  <canvas id="bg"></canvas>
+  <div class="glow-rotator" id="glowRotator"></div>
+
+  <div class="wrap">
+    <div class="card" id="card">
+      <div class="progress-top"><div class="progress-top-fill" id="progressFill"></div></div>
+
+      <div class="logo-wrap">
+        <div class="logo-ring" id="logoRing"></div>
+        <img class="logo-img" id="logoImg" src="/logo.png" alt="GitroHub" />
+      </div>
+
+      <h1>GitroHub</h1>
+      <div class="subtitle" id="subtitle">Linking your GitHub account…</div>
+
+      <div class="terminal" id="terminal"></div>
+
+      <div class="result-box" id="resultBox">
+        <div class="result-title" id="resultTitle"></div>
+        <div class="result-detail" id="resultDetail"></div>
+      </div>
+
+      <div class="countdown-wrap" id="countdownWrap" style="display:none;">
+        <div class="ring-box">
+          <svg width="64" height="64">
+            <circle class="ring-bg" cx="32" cy="32" r="28"></circle>
+            <circle class="ring-fill" id="ringFill" cx="32" cy="32" r="28"
+              stroke-dasharray="175.9" stroke-dashoffset="0"></circle>
+          </svg>
+          <div class="ring-number" id="ringNumber">5</div>
+        </div>
+        <div class="redirect-label">Redirecting to Telegram…</div>
+        <a href="#" class="btn" id="openTelegramBtn">Open Telegram Now</a>
+      </div>
+
+      <div class="footer">Powered by GitroHub</div>
+    </div>
+  </div>
+
+<script>
+  // ── Injected server-side: window.__GITROHUB__ = { status, username, steps, error, botDeepLink }
+  const DATA = window.__GITROHUB__ || { status: 'success', username: 'you', steps: [], botDeepLink: 'https://t.me/GitroHubBot' };
+
+  // ─── Particle + circuit background ─────────────────────────
+  const canvas = document.getElementById('bg');
+  const ctx = canvas.getContext('2d');
+  let w, h;
+  function resize() { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; }
+  resize(); window.addEventListener('resize', resize);
+
+  const particles = Array.from({ length: 40 }, () => ({
+    x: Math.random() * w, y: Math.random() * h,
+    r: Math.random() * 1.6 + 0.4,
+    speed: Math.random() * 0.3 + 0.05,
+    alpha: Math.random() * 0.5 + 0.1,
+  }));
+
+  const nodes = Array.from({ length: 10 }, () => ({
+    x: Math.random() * w, y: Math.random() * h,
+  }));
+
+  let pulseT = 0;
+  function drawBg() {
+    ctx.clearRect(0, 0, w, h);
+
+    // circuit lines between nearby nodes
+    ctx.strokeStyle = 'rgba(59,130,246,0.08)';
+    ctx.lineWidth = 1;
+    for (let i = 0; i < nodes.length; i++) {
+      for (let j = i + 1; j < nodes.length; j++) {
+        const dx = nodes[i].x - nodes[j].x, dy = nodes[i].y - nodes[j].y;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist < 260) {
+          ctx.beginPath();
+          ctx.moveTo(nodes[i].x, nodes[i].y);
+          ctx.lineTo(nodes[j].x, nodes[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // traveling pulse along one path
+    pulseT += 0.006;
+    if (nodes.length >= 2) {
+      const a = nodes[0], b = nodes[1];
+      const t = (Math.sin(pulseT) + 1) / 2;
+      const px = a.x + (b.x - a.x) * t;
+      const py = a.y + (b.y - a.y) * t;
+      const grad = ctx.createRadialGradient(px, py, 0, px, py, 6);
+      grad.addColorStop(0, 'rgba(56,189,248,0.9)');
+      grad.addColorStop(1, 'rgba(56,189,248,0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath(); ctx.arc(px, py, 6, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // particles
+    particles.forEach((p) => {
+      p.y -= p.speed;
+      if (p.y < -5) { p.y = h + 5; p.x = Math.random() * w; }
+      ctx.beginPath();
+      ctx.fillStyle = 'rgba(148,180,255,' + p.alpha + ')';
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fill();
+    });
+
+    requestAnimationFrame(drawBg);
+  }
+  drawBg();
+
+  // ─── Status sequence ─────────────────────────────────────────
+  const terminal = document.getElementById('terminal');
+  const progressFill = document.getElementById('progressFill');
+  const subtitle = document.getElementById('subtitle');
+  const resultBox = document.getElementById('resultBox');
+  const resultTitle = document.getElementById('resultTitle');
+  const resultDetail = document.getElementById('resultDetail');
+  const logoRing = document.getElementById('logoRing');
+  const countdownWrap = document.getElementById('countdownWrap');
+  const openTelegramBtn = document.getElementById('openTelegramBtn');
+  const glowRotator = document.getElementById('glowRotator');
+
+  const iconSpinner = '<span class="icon-spinner"></span>';
+  const iconCheck = '<svg class="icon-check" viewBox="0 0 24 24" fill="none"><path d="M4 12.5 L9.5 18 L20 6" stroke="#22c55e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const iconX = '<svg class="icon-x" viewBox="0 0 24 24" fill="none"><path d="M5 5 L19 19 M19 5 L5 19" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round"/></svg>';
+
+  function addLine(text, state) {
+    const line = document.createElement('div');
+    line.className = 'log-line';
+    line.innerHTML = '<span class="icon-wrap">' + iconSpinner + '</span><span>' + text + '</span>';
+    terminal.appendChild(line);
+    return line;
+  }
+
+  function resolveLine(line, ok) {
+    line.classList.add(ok ? 'complete' : 'failed');
+    line.querySelector('.icon-wrap').innerHTML = ok ? iconCheck : iconX;
+  }
+
+  async function runSequence() {
+    const steps = DATA.steps || [];
+    const failIndex = DATA.status === 'error' ? (DATA.failStepIndex ?? steps.length - 1) : -1;
+
+    for (let i = 0; i < steps.length; i++) {
+      const line = addLine(steps[i]);
+      progressFill.style.width = Math.round(((i + 1) / steps.length) * (DATA.status === 'error' ? 60 : 100)) + '%';
+      await wait(380);
+      const failed = i === failIndex;
+      resolveLine(line, !failed);
+      if (failed) break;
+      await wait(160);
+    }
+
+    if (DATA.status === 'success') {
+      finishSuccess();
+    } else {
+      finishError();
+    }
+  }
+
+  function finishSuccess() {
+    logoRing.classList.add('done');
+    document.documentElement.style.setProperty('--accent', 'var(--green)');
+    glowRotator.style.background = 'conic-gradient(from 0deg, transparent, #22c55e22, transparent 30%, transparent)';
+    subtitle.textContent = 'Connection established';
+    resultBox.classList.add('show');
+    resultTitle.innerHTML = iconCheck + ' GitHub Connected Successfully';
+    resultDetail.textContent = 'Linked as @' + DATA.username;
+    progressFill.style.width = '100%';
+    countdownWrap.style.display = 'flex';
+    openTelegramBtn.href = DATA.botDeepLink;
+    startCountdown(5);
+  }
+
+  function finishError() {
+    logoRing.classList.add('done');
+    document.documentElement.style.setProperty('--accent', 'var(--red)');
+    glowRotator.style.background = 'conic-gradient(from 0deg, transparent, #ef444422, transparent 30%, transparent)';
+    subtitle.textContent = 'Connection failed';
+    resultBox.classList.add('show', 'fail');
+    resultTitle.innerHTML = iconX + ' Connection Failed';
+    resultDetail.textContent = DATA.error || 'Something went wrong linking your account.';
+    countdownWrap.style.display = 'flex';
+    openTelegramBtn.classList.add('fail');
+    openTelegramBtn.textContent = 'Return to Telegram';
+    openTelegramBtn.href = DATA.botDeepLink;
+    startCountdown(8);
+  }
+
+  function startCountdown(seconds) {
+    const ringFill = document.getElementById('ringFill');
+    const ringNumber = document.getElementById('ringNumber');
+    const circumference = 175.9;
+    let remaining = seconds;
+    ringNumber.textContent = remaining;
+
+    const interval = setInterval(() => {
+      remaining -= 1;
+      ringNumber.textContent = Math.max(remaining, 0);
+      const offset = circumference * (1 - remaining / seconds);
+      ringFill.style.strokeDashoffset = offset;
+      if (remaining <= 0) {
+        clearInterval(interval);
+        window.location.href = DATA.botDeepLink;
+      }
+    }, 1000);
+  }
+
+  function wait(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+  runSequence();
+</script>
+</body>
+</html>

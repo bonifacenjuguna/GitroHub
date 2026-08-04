@@ -1,268 +1,225 @@
 <div align="center">
 
-# 🐙 GitroHub
+<img src="./public/logo.png" width="140" alt="GitroHub logo" />
 
-### Your complete GitHub workspace in Telegram
+<h1>GitroHub</h1>
 
-**Manage, automate, and enhance your GitHub workflow without leaving Telegram.**
+<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=20&pause=1000&color=3B82F6&center=true&vCenter=true&width=460&lines=GitHub+from+Telegram;Create+%C2%B7+Upload+%C2%B7+Download+%C2%B7+Manage;Owner-only+%C2%B7+No+one+else+gets+in;Built+with+Telegraf.js+%2B+Octokit" alt="Typing SVG" />
 
-![Node](https://img.shields.io/badge/Node.js-24%20LTS-3c873a?style=for-the-badge&logo=node.js&logoColor=white)
-![grammY](https://img.shields.io/badge/grammY-1.44.0-6e5bff?style=for-the-badge)
-![License](https://img.shields.io/badge/License-Proprietary-red?style=for-the-badge)
-![Version](https://img.shields.io/badge/version-1.0.0-22d3ee?style=for-the-badge)
-
-<img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=20&duration=2600&pause=900&color=6E5BFF&center=true&vCenter=true&width=560&lines=Repositories.+Branches.+Commits.+Pull+Requests.;Upload+a+ZIP+%E2%86%92+GitroHub+pushes+it+for+you.;AES-256-GCM+encrypted.+OAuth+only.+No+PATs.;Owner-only.+Private.+Yours." alt="Typing SVG" />
+<p>
+<img src="https://img.shields.io/badge/version-0.1.0-3B82F6?style=for-the-badge" />
+<img src="https://img.shields.io/badge/node-%3E%3D18-3B82F6?style=for-the-badge&logo=node.js&logoColor=white" />
+<img src="https://img.shields.io/badge/JavaScript-No%20TypeScript-F1E05A?style=for-the-badge&logo=javascript&logoColor=black" />
+<img src="https://img.shields.io/badge/hosted%20on-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" />
+<img src="https://img.shields.io/badge/license-MIT-38BDF8?style=for-the-badge" />
+</p>
 
 </div>
 
 ---
 
-## 📖 Table of Contents
+## What is GitroHub?
 
-- [✨ Overview](#-overview)
-- [🧩 Feature Pillars](#-feature-pillars)
-- [🏗️ Architecture](#️-architecture)
-- [⚡ Quick Start](#-quick-start)
-- [🔐 Security Model](#-security-model)
-- [⌨️ Commands](#️-commands)
-- [📁 Project Structure](#-project-structure)
-- [🛠️ Tech Stack](#️-tech-stack)
-- [📜 Docs](#-docs)
-- [🗺️ Roadmap](#️-roadmap)
+GitroHub is a **private, owner-only Telegram bot** that connects to your GitHub account and lets you create, browse, edit, upload to, and delete repositories — all from a Telegram chat, on your phone, without opening a browser.
+
+This isn't a public bot. It's built to talk to **exactly one person** (you) — the number in `OWNER_ID`. Everyone else who messages it is silently ignored, no reply, no logging, no processing, ever.
 
 ---
 
-## ✨ Overview
+## ✨ Features
 
-GitroHub turns Telegram into a full GitHub client — repository management,
-Git workflows, file uploads with automatic diffing, pull requests, issues,
-Actions, releases, and automation, all through inline-button menus that feel
-native to chat.
-
-This instance is **owner-only by design**: a single `BOT_OWNER_ID` gates
-every incoming update. Anyone else who messages the bot is silently
-ignored — no reply, no logging beyond a debug trace, zero backend cost.
-
-> 🔒 **Private repository. Proprietary license.** See [`LICENSE.md`](./LICENSE.md).
-
----
-
-## 🧩 Feature Pillars
-
-<table>
-<tr>
-<td width="50%" valign="top">
-
-### 📦 Repositories
-- Create · Delete · Rename · Fork
-- Star / Watch / Archive
-- Visibility, topics, description, homepage
-- Collaborators & permissions
-- 🔑 Secrets & environment variables
-- 📊 Insights (commits, contributors, traffic)
-
-### 🌿 Git Operations
-- Branches — create, delete, compare, rename
-- Commits — history, diff, revert, cherry-pick
-- Bulk-delete merged branches
-
-</td>
-<td width="50%" valign="top">
-
-### 📁 File Management
-- Browse, view, edit, delete, move
-- **Smart upload** — single file or ZIP, with
-  automatic diff detection (new/modified/unchanged)
-- ZIP wrapper-folder auto-detection & stripping
-- `.gitignore`-aware filtering
-- Download any repo as a ZIP
-
-### 🚀 Smart Deploy
-- Send a ZIP → language auto-detected → repo
-  created → `.gitignore` generated → pushed →
-  link returned. Zero questions asked.
-
-</td>
-</tr>
-<tr>
-<td width="50%" valign="top">
-
-### 🔀 Collaboration
-- Pull Requests — create, merge, review requests
-- Issues — labels, milestones, assignees
-- GitHub Actions — trigger, re-run, logs, artifacts
-- Releases — auto-generated notes
-
-</td>
-<td width="50%" valign="top">
-
-### 🔐 Security & Automation
-- GitHub OAuth (never PATs) · AES-256-GCM at rest
-- Optional PIN lock on destructive actions
-- Scheduled tasks · Trigger rules · Auto-merge
-- Bulk multi-repo actions
-
-</td>
-</tr>
-</table>
+| | |
+|---|---|
+| 🔗 **OAuth Web Flow** | Tap once → browser opens → authorize → auto-redirected back with an animated confirmation page |
+| 📁 **Repo Management** | List, filter, sort, search (fuzzy), create, rename, delete, toggle visibility |
+| ⬆️ **Upload** | Single file or `.zip` (auto-strips the GitHub-style wrapper folder), with 🆕 New / ✏️ Modified / ➖ Unchanged detection before committing |
+| 📂 **Browse Files** | Full tree navigation, view content, send as file, edit inline, delete |
+| ⬇️ **Download** | Any of your repos, or any public external repo pasted as a link |
+| 🍴 **Fork** | Fork any public GitHub repo straight into your account |
+| ⚙️ **Settings** | Live Postgres/Redis health, GitHub rate-limit status, memory/uptime, bot version |
+| 📜 **Activity Log** | Every action recorded, filterable to errors-only |
+| 🔔 **Notifications** | Granular on/off per category |
+| 🎨 **Animated OAuth Page** | Custom callback page with particle background, circuit-line animation, live status feed, and a countdown auto-redirect back into Telegram |
 
 ---
 
 ## 🏗️ Architecture
 
 ```
-┌─────────────┐      webhook       ┌──────────────────┐
-│   Telegram   │ ─────────────────▶ │   Express Server  │
-└─────────────┘                     │  (webhook + OAuth  │
-                                     │   callback page)   │
-┌─────────────┐      OAuth          └─────────┬─────────┘
-│   GitHub     │ ◀───────────────────────────┘
-└─────────────┘                               │
-                                     ┌─────────▼─────────┐
-                                     │     grammY Bot      │
-                                     │  (owner-gated core)  │
-                                     └──┬───────────────┬──┘
-                            ┌───────────▼───┐   ┌───────▼────────┐
-                            │  PostgreSQL     │   │     Redis       │
-                            │  (durable data) │   │ (sessions/cache) │
-                            └─────────────────┘   └─────────────────┘
+┌─────────────────┐        ┌──────────────────────┐
+│   Telegram       │◄──────►│   bot.js (Telegraf)   │
+│   (You, only)    │        │   Owner gate → Scenes │
+└─────────────────┘        └──────────┬────────────┘
+                                       │
+                     ┌─────────────────┼─────────────────┐
+                     ▼                 ▼                 ▼
+              ┌────────────┐   ┌─────────────┐   ┌──────────────┐
+              │  Postgres   │   │    Redis     │   │  GitHub API   │
+              │ users, logs │   │ sessions,    │   │ (Octokit)     │
+              │             │   │ wizard state │   │              │
+              └────────────┘   └─────────────┘   └──────────────┘
+                                       ▲
+                                       │
+                     ┌─────────────────┴─────────────────┐
+                     │   app.js (Express) — /callback      │
+                     │   Animated OAuth confirmation page   │
+                     └──────────────────────────────────────┘
 ```
 
-- **Webhook mode**, not polling — instant, zero wasted requests.
-- **Redis-backed sessions** — navigation state, pending actions, upload flow state.
-- **Postgres** — users, preferences, pins, activity log, automation rules.
-- **Response caching + rate-limit tracking** on every GitHub API call.
+**One process, two jobs**: the same Node process runs both the Telegraf bot (webhook or polling) and a small Express server that only exists to handle GitHub's OAuth redirect (`/callback`) and serve the animated confirmation page. This keeps Railway hosting to a single service.
 
----
-
-## ⚡ Quick Start
-
-```bash
-git clone <your-private-repo-url> gitrohub
-cd gitrohub
-npm install
-cp .env.example .env   # fill in every value — see docs/DEPLOYMENT.md
-npm run migrate
-npm start
-```
-
-For a full walkthrough (Telegram bot creation, GitHub OAuth App setup,
-Railway deployment, secret generation), see **[`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)**.
-
----
-
-## 🔐 Security Model
-
-| Layer | Approach |
-|---|---|
-| **Access control** | Single `BOT_OWNER_ID` — every other user is silently dropped before any DB/API call |
-| **Token storage** | AES-256-GCM, per-user derived key via scrypt — never stored in plaintext |
-| **Authentication** | GitHub OAuth (Authorization Code flow) — Personal Access Tokens are never requested or accepted |
-| **CSRF protection** | Single-use, 5-minute-expiring OAuth `state` tokens |
-| **Destructive actions** | Explicit confirm/cancel screens; optional 4-digit PIN lock layer |
-| **Disconnect** | Deletes the local token **and** revokes it on GitHub's side — true revocation, not just local deletion |
-| **Secrets in chat** | Any message containing a raw secret value is deleted immediately after being read |
-
-See [`docs/legal/privacy.md`](./docs/legal/privacy.md) for the full data-handling policy.
-
----
-
-## ⌨️ Commands
-
-Primary commands are registered with Telegram automatically on deploy, so
-they appear in the `/` autocomplete menu:
-
-```
-/start     /menu      /repo      /upload
-/security  /settings  /status    /help
-/cancel
-```
-
-Diagnostic/developer commands stay **intentionally hidden** from
-autocomplete (they still work when typed manually) — this is a single-owner
-private bot, so cluttering the suggestion list with debugging tools didn't
-make sense:
-
-```
-/ping      /version   /uptime    /whoami
-/health    /logs      /pr        /issues
-/clone
-```
-
-Plus custom shortcuts configurable via **⚙️ Settings → ⌨️ Commands & Shortcuts**.
-
----
-
-## 📁 Project Structure
+### Folder structure
 
 ```
 gitrohub/
+├── public/
+│   ├── logo.png              # Bot logo (transparent PNG)
+│   └── callback.html         # Animated OAuth callback page
 ├── src/
-│   ├── bot/
-│   │   ├── bot.js              # Wires all middleware + menu handlers
-│   │   ├── middleware/         # Owner gate, sessions, guards
-│   │   ├── menus/              # Every screen: repos, upload, security, etc.
-│   │   ├── handlers/           # Pending-action dispatcher, URL detection
-│   │   ├── keyboards/          # Reusable nav/keyboard builders
-│   │   └── commands/           # /ping, /health, /status, etc.
-│   ├── github/                 # Octokit wrappers — repos, branches, files,
-│   │                           # commits, PRs, issues, actions, releases,
-│   │                           # ZIP pipeline (wrapper detection, diffing)
-│   ├── security/                # AES-256-GCM encryption, OAuth, PIN lock
+│   ├── index.js               # Entrypoint — boots DB, Redis, bot, server
+│   ├── bot.js                 # Telegraf wiring: middleware, scenes, routers
+│   ├── config.js               # Env var loading + validation
 │   ├── db/
-│   │   ├── postgres/            # Pool, schema.sql, migrations, queries
-│   │   └── redis/                # Sessions, cache, rate-limit tracking
-│   ├── automation/               # Cron-based scheduled tasks
-│   ├── web/                      # Express server, OAuth callback page
-│   ├── utils/                    # Logger, error formatting, formatting helpers
-│   └── config/                    # Environment validation
-├── docs/                          # DEPLOYMENT.md + legal documents
-├── scripts/                       # Standalone healthcheck script
+│   │   ├── postgres.js         # Pool + ping()
+│   │   ├── redis.js            # Client + ping()
+│   │   ├── schema.sql          # users, activity_log tables
+│   │   └── migrate.js          # Runs schema.sql on boot
+│   ├── lib/
+│   │   ├── github.js           # Octokit wrapper — every GitHub operation
+│   │   ├── oauth.js            # Authorize URL + code exchange
+│   │   ├── users.js            # Account data-access (connect/disconnect)
+│   │   ├── crypto.js           # AES-256-GCM token encryption
+│   │   ├── gitHash.js          # Git blob SHA (for upload change-detection)
+│   │   ├── activity.js         # Activity log read/write
+│   │   ├── session.js          # Redis-backed wizard state (Back/Cancel)
+│   │   ├── format.js           # Locked formatting standard (see below)
+│   │   └── requireConnected.js # Guard used by every GitHub-touching handler
+│   ├── middleware/
+│   │   ├── ownerGate.js        # Silently drops all non-owner traffic
+│   │   └── redisSessionStore.js
+│   ├── keyboards/
+│   │   ├── bbtb.js             # Reply keyboards (Buttons Below Typing Bar)
+│   │   └── inline.js           # Inline keyboards
+│   ├── handlers/                # One file per screen/zone
+│   └── scenes/                  # Multi-step wizards (Create/Upload/Rename/Edit)
+├── package.json
 ├── .env.example
-├── railway.json
-├── CHANGELOG.md
-├── LICENSE.md
-└── package.json
+└── README.md
 ```
 
 ---
 
-## 🛠️ Tech Stack
+## 🚀 Setup
 
-| Layer | Choice |
-|---|---|
-| Runtime | Node.js 24 LTS, plain JavaScript (no TypeScript, no build step) |
-| Bot framework | [grammY](https://grammy.dev) v1.44.0, webhook mode |
-| GitHub API | [Octokit.js](https://github.com/octokit/octokit.js) (REST + GraphQL) |
-| Database | PostgreSQL (`pg`, hand-written queries) |
-| Cache / Sessions | Redis (`ioredis`) |
-| Logging | `pino`, structured JSON in production |
-| Hosting | Railway (Node runtime + Postgres plugin + Redis plugin) |
+### 1. Create the Telegram bot
+Message [@BotFather](https://t.me/BotFather) → `/newbot` → follow the prompts → copy the token.
+
+### 2. Get your Telegram user ID
+Message [@userinfobot](https://t.me/userinfobot) → copy your numeric ID. This becomes `OWNER_ID` — the **only** ID the bot will ever respond to.
+
+### 3. Create a GitHub OAuth App
+Go to [github.com/settings/developers](https://github.com/settings/developers) → **New OAuth App**:
+- **Homepage URL**: your Railway URL (e.g. `https://gitrohub-production.up.railway.app`)
+- **Authorization callback URL**: `https://your-railway-url.up.railway.app/callback` *(must match exactly, no trailing slash)*
+
+Copy the **Client ID** and generate a **Client Secret**.
+
+### 4. Set up Railway
+1. Create a new Railway project, deploy from this repo (or upload the zip)
+2. Add a **Postgres** plugin — copies `DATABASE_URL` into your environment automatically
+3. Add a **Redis** plugin — copies `REDIS_URL` into your environment automatically
+4. Set the remaining environment variables (copy `.env.example` → fill in):
+
+```
+BOT_TOKEN=...
+OWNER_ID=...
+GITHUB_CLIENT_ID=...
+GITHUB_CLIENT_SECRET=...
+BASE_URL=https://your-railway-url.up.railway.app
+SESSION_JWT_SECRET=$(openssl rand -hex 32)
+TOKEN_ENCRYPTION_KEY=$(openssl rand -hex 32)
+NODE_ENV=production
+```
+
+5. Deploy. On boot, GitroHub automatically:
+   - Runs the Postgres migration (creates `users` + `activity_log` tables — safe to re-run)
+   - Connects to Redis
+   - Registers the Telegram webhook pointing at `${BASE_URL}/telegram-webhook`
+   - Starts the Express server for `/callback`
+
+### 5. Local development (optional)
+```bash
+npm install
+cp .env.example .env   # fill in your values, leave NODE_ENV unset
+npm run dev             # runs in long-polling mode, no webhook needed
+```
+In dev mode the bot polls Telegram directly, so `BASE_URL` only needs to be reachable for the `/callback` route — use a tool like `ngrok http 3000` and point your GitHub OAuth App + `.env`'s `BASE_URL` at the ngrok URL.
+
+### 6. Talk to your bot
+Open your bot on Telegram, hit `/start`, tap **Connect GitHub Account** — you'll get the animated callback page, then land back in the bot fully connected.
 
 ---
 
-## 📜 Docs
+## 🎨 The animated OAuth callback page
 
-- 📘 [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) — full deployment walkthrough
-- 📐 [`docs/VERSIONING.md`](./docs/VERSIONING.md) — how version bumps work (one command, always in sync)
-- 📗 [`CHANGELOG.md`](./CHANGELOG.md) — release history ([Keep a Changelog](https://keepachangelog.com) format)
-- 📕 [`LICENSE.md`](./LICENSE.md) — proprietary, all rights reserved
-- 📙 [`docs/legal/`](./docs/legal/) — Terms of Service, Privacy Policy, Acceptable Use Policy
+`public/callback.html` is a single self-contained file (no build step, no framework) featuring:
+- A canvas-based particle field + circuit-line background with a traveling signal pulse
+- A slowly rotating conic gradient glow behind the card
+- A terminal-style status feed that plays out step-by-step with SVG checkmarks/X's (no emoji — Lucide-style hand-drawn stroke icons)
+- A live SVG countdown ring that auto-redirects back into Telegram (deep link) when it hits zero
+- Distinct color themes for success (blue → green) and failure (blue → red) states
+
+The bot's `app.js` injects `window.__GITROHUB__` with the real outcome (`success`/`error`, GitHub username, and — on failure — exactly which step failed) so the page always reflects what actually happened, never a generic animation.
 
 ---
 
-## 🗺️ Roadmap
+## 🔒 Security notes
 
-See the `[Unreleased]` section of [`CHANGELOG.md`](./CHANGELOG.md) for what's
-planned next: deploy key management, full backup/restore, repository
-templates, draft PRs, and native secret-scanning alert surfacing.
+- **Owner gate is the first middleware registered**, before session lookup, before anything — non-owner messages are dropped with zero processing, zero reply, zero log noise.
+- GitHub access tokens are encrypted at rest with **AES-256-GCM** (`TOKEN_ENCRYPTION_KEY`) before being stored in Postgres — never stored in plaintext.
+- OAuth `state` parameter is a short-lived **signed JWT** carrying your Telegram ID, so the `/callback` route can't be spoofed into linking a token to the wrong chat.
+- OAuth scope requested is `repo` only — full control of repositories, nothing broader (no `admin:org`, no `user` scope, etc.).
+
+---
+
+## 📐 Design principles baked into the code
+
+These were locked in during design and apply everywhere in the codebase:
+
+1. **BBTB vs Inline** — reusable/frequent actions live in the Reply Keyboard (bottom bar); content-specific and destructive/final actions live inline, attached to the message.
+2. **Every error names the exact cause + next step** — see `format.errorMessage()`, used everywhere instead of generic "Something went wrong" messages.
+3. **State-based emoji/labels are never stale** — visibility, language, filter/sort labels are recomputed fresh on every render.
+4. **Edit in place within a flow, send fresh on final/destructive outcomes** — so multi-step wizards don't spam the chat, but a completed action always leaves a permanent record.
+5. **⬅️ Back ≠ restart** — wizard state lives in Redis (`WIZARD_SESSION_TTL_SECONDS`, default 30 min), so backing up a step preserves what you already typed, and a Railway restart mid-flow doesn't wipe your progress.
+
+---
+
+## ⚠️ Known limitations in this v0.1.0 build
+
+Being upfront about what's simplified in this first pass, consistent with the "specific errors, not vague ones" principle applied to the docs too:
+
+- **"Browse Folders" during single-file upload path selection** currently falls back to asking you to type the path — the folder-tap navigator for *choosing an upload destination* (as opposed to browsing an existing tree, which is fully implemented) wasn't wired up in this pass. Type-path works fully, with format validation and retry.
+- **GitHub webhook-based notifications** (stars/issues/PRs landing as pushed Telegram messages) are schema-ready (`notif_github_activity` etc. exist and are toggleable in Settings) but the receiving webhook endpoint itself isn't implemented yet — this was flagged as a deferred v1.1+ item during design.
+- **🟢🟡🔴 Activity Status indicator** and **🍴 "Forked from X" tag** were explicitly deferred to a future version during design — not in this build.
+- **Text/slash-command fallback** (e.g. `/repos`, `/settings`) isn't implemented — the button-driven UI is the only interface for now, matching the deferred decision made during design.
+- Some destructive-action **double-tap debouncing** is handled by Telegram's own callback-query semantics but doesn't have explicit server-side idempotency locking yet — very low risk in practice for a single-user bot, but worth hardening before wider use.
+
+None of these block normal daily use — they're the honest list of "built for v1, deepen later" rather than silent gaps.
+
+---
+
+## 💡 Recommendations for what's next
+
+A few things worth considering that came up while building, beyond what was in the original design conversation:
+
+1. **Rate-limit-aware backoff** — right now if GitHub's API rate limit is hit mid-operation, the user gets a clear error (per design), but the bot doesn't automatically queue/retry after the reset window. Worth adding for upload-heavy sessions.
+2. **Large repo tree pagination** — `getTree()` fetches the *entire* recursive tree in one call, which is fine up to a few thousand files, but very large repos (10k+ files) could hit response-size or Telegram-message-size limits in Browse Files. Worth capping and paginating server-side, not just visually.
+3. **Webhook signature verification** — when the GitHub-activity webhook endpoint gets built (deferred item), it must verify GitHub's `X-Hub-Signature-256` header against a shared secret, or anyone who finds the URL could inject fake "activity" into your Activity Log.
+4. **Structured logging** — `console.log`/`console.error` is fine for a single-user bot on Railway's log viewer, but if this ever grows, swapping in a tiny structured logger (pino is lightweight and pairs well with Railway's log parsing) would make the Settings → Activity error surfacing more powerful.
+5. **Health check endpoint** — Railway can auto-restart on failed health checks; a simple `GET /health` that checks Postgres + Redis + returns 200/503 would let Railway catch a degraded state before you notice it manually in Settings.
 
 ---
 
 <div align="center">
-
-Built with 💜 for developers who live in chat.
-
-**GitroHub v1.0.0**
-
+<sub>Built for one person, on purpose. 🔒</sub>
 </div>
