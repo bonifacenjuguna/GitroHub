@@ -57,10 +57,10 @@ async function showDirectory(ctx, repoName, dirPath = '') {
     const entries = listDirectory(tree, dirPath);
     const label = dirPath ? `📁 /${dirPath}` : '📁 / (root)';
 
+    await ctx.reply('📁 Browse Files', bbtb.browseFiles);
     await ctx.reply(format.escapeMd(label), {
       parse_mode: 'MarkdownV2',
       ...inline.fileTree(entries.map((e) => ({ ...e, type: e.type === 'tree' ? 'tree' : 'blob' })), dirPath),
-      ...bbtb.browseFiles,
     });
   } catch (err) {
     await ctx.reply(format.errorMessage(

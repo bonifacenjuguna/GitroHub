@@ -32,7 +32,10 @@ async function showRepoView(ctx, repoName) {
   ctx.session.currentRepo = repo.name;
   ctx.session.repoOwner = repo.owner.login;
 
-  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.repoActions(repo.name), ...bbtb.repoView });
+  // Reply keyboard (BBTB) and inline keyboard can't share one message — send
+  // the BBTB once via a tiny marker message, then the real content with only inline.
+  await ctx.reply('📦 Repo View', bbtb.repoView);
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.repoActions(repo.name) });
 }
 
 async function showRepoDetails(ctx, repoName) {

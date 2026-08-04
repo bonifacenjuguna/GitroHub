@@ -68,7 +68,10 @@ async function showMyRepos(ctx, { edit = false } = {}) {
   if (edit) {
     await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
   } else {
-    await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard, ...bbtb.myRepos });
+    // Reply keyboard (BBTB) and inline keyboard can't share one message —
+    // send the BBTB once via a tiny marker message, then content with only inline.
+    await ctx.reply('📁 My Repos', bbtb.myRepos);
+    await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
   }
 }
 

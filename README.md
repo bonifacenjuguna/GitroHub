@@ -7,7 +7,7 @@
 <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=20&pause=1000&color=3B82F6&center=true&vCenter=true&width=460&lines=GitHub+from+Telegram;Create+%C2%B7+Upload+%C2%B7+Download+%C2%B7+Manage;Owner-only+%C2%B7+No+one+else+gets+in;Built+with+Telegraf.js+%2B+Octokit" alt="Typing SVG" />
 
 <p>
-<img src="https://img.shields.io/badge/version-0.1.0-3B82F6?style=for-the-badge" />
+<img src="https://img.shields.io/badge/version-0.1.1-3B82F6?style=for-the-badge" />
 <img src="https://img.shields.io/badge/node-%3E%3D18-3B82F6?style=for-the-badge&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/JavaScript-No%20TypeScript-F1E05A?style=for-the-badge&logo=javascript&logoColor=black" />
 <img src="https://img.shields.io/badge/hosted%20on-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" />
@@ -106,6 +106,16 @@ gitrohub/
 ├── .env.example
 └── README.md
 ```
+
+---
+
+## 📋 Changelog
+
+### v0.1.1 — Bug fix
+- **Fixed:** inline keyboards (repo rows, file trees, upload confirms, etc.) were being silently dropped on 7 screens. Root cause: Telegram allows only one `reply_markup` per message, and code was spreading both an inline keyboard and a BBTB reply keyboard into the same options object — the BBTB always won, discarding the inline buttons before send. Fixed by sending the BBTB as its own short message (reply keyboards persist until changed) and letting content messages carry the inline keyboard alone. Affected: My Repos, Repo View, Activity Log, Search results, Browse Files, Upload summary, Create Repo wizard.
+
+### v0.1.0 — Initial build
+- Owner-only gate, OAuth Web Flow with animated callback page, My Repos (filter/sort/search/pagination), Create/Rename/Delete repo, Visibility toggle, Upload (single file + zip with change detection), Browse Files (view/edit/send/delete), Download (own + external repos), Fork, Settings dashboard, Activity Log, Notifications.
 
 ---
 

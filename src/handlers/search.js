@@ -63,7 +63,8 @@ async function handleRepoSearch(ctx, query) {
     }
   }
 
-  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows), ...bbtb.searchAgain });
+  await ctx.reply('🔍 Search Results', bbtb.searchAgain);
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 
 async function handleExternalRepo(ctx, owner, repoName) {

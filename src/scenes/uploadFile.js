@@ -260,12 +260,12 @@ async function showSummary(ctx) {
     `📦 Upload Summary → ${ctx.wizard.state.repoName}\n` +
     `🆕 New: ${counts.new}   ✏️ Modified: ${counts.modified}   ➖ Unchanged: ${counts.unchanged} (skipped)`;
 
+  await ctx.reply('📦 Upload Summary', bbtb.uploadSummary);
   await ctx.reply(text, {
     ...Markup.inlineKeyboard([
       [Markup.button.callback('📋 View File List', 'upload:summary:list')],
       [Markup.button.callback('✅ Commit Changes', 'upload:commit'), Markup.button.callback('❌ Cancel', 'upload:cancel')],
     ]),
-    ...bbtb.uploadSummary,
   });
   return ctx.wizard.selectStep(3);
 }

@@ -38,10 +38,8 @@ const scene = new Scenes.WizardScene(
       return;
     }
     ctx.wizard.state.data.name = name;
-    await ctx.reply(
-      `Repo name: ${name} ✅\nChoose visibility:`,
-      { ...inline.createRepoVisibility, ...bbtb.cancelWithBack }
-    );
+    await ctx.reply('📦 New Repo — Step 2 of 4', bbtb.cancelWithBack);
+    await ctx.reply(`Repo name: ${name} ✅\nChoose visibility:`, inline.createRepoVisibility);
     return ctx.wizard.next();
   },
 
@@ -75,7 +73,8 @@ const scene = new Scenes.WizardScene(
     if (description) text += `\n"${description}"`;
     text += '\n\nReady to create this repository?';
 
-    await ctx.reply(text, { ...inline.createRepoConfirm, ...bbtb.cancelWithBack });
+    await ctx.reply('📦 New Repo — Step 4 of 4', bbtb.cancelWithBack);
+    await ctx.reply(text, inline.createRepoConfirm);
     return ctx.wizard.next();
   },
 
@@ -95,9 +94,10 @@ const scene = new Scenes.WizardScene(
     try {
       const repo = await github.createRepo(token, { name, isPrivate, description });
       await activity.log(ctx.from.id, '➕', `Created repo → ${name}`);
+      await ctx.reply('📍 Main Menu', bbtb.mainMenu);
       await ctx.reply(
         `✅ Repo created: ${repo.name}\n🔗 ${repo.html_url}`,
-        { ...inline.createRepoSuccess(repo.name), ...bbtb.mainMenu }
+        inline.createRepoSuccess(repo.name)
       );
     } catch (err) {
       const reason = err.status === 422

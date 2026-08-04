@@ -28,7 +28,8 @@ async function showActivity(ctx, { page = 1, errorsOnly = false, edit = false } 
   if (edit) {
     await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
   } else {
-    await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard, ...bbtb.activityLog });
+    await ctx.reply('📜 Activity', bbtb.activityLog);
+    await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
   }
 }
 
