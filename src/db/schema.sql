@@ -33,3 +33,11 @@ CREATE INDEX IF NOT EXISTS idx_activity_log_telegram_id_created
 
 CREATE INDEX IF NOT EXISTS idx_activity_log_errors
   ON activity_log (telegram_id, is_error, created_at DESC);
+
+-- Tracks one-off maintenance migrations (e.g. clearing corrupted encrypted
+-- data) so they only ever run a single time, no matter how many times the
+-- app restarts.
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id           TEXT PRIMARY KEY,
+  applied_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
