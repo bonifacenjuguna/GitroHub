@@ -83,6 +83,13 @@ function createBot() {
     let release;
     updateQueue = new Promise((resolve) => { release = resolve; });
     await previous;
+
+    // Immediate visual feedback the moment this update actually starts
+    // being worked on — so a tap never just sits there with no sign
+    // anything happened, even during the split-second before the real
+    // reply arrives. Fire-and-forget: never blocks on this.
+    ctx.sendChatAction('typing').catch(() => {});
+
     try {
       await next();
     } finally {

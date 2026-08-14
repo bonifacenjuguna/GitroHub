@@ -35,7 +35,10 @@ async function connect() {
 async function ping() {
   const start = Date.now();
   try {
-    await client.ping();
+    await Promise.race([
+      client.ping(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
+    ]);
     return { ok: true, ms: Date.now() - start };
   } catch (err) {
     return { ok: false, ms: null, error: err.message };

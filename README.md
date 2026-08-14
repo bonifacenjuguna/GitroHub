@@ -7,7 +7,7 @@
 <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=20&pause=1000&color=3B82F6&center=true&vCenter=true&width=460&lines=GitHub+from+Telegram;Create+%C2%B7+Upload+%C2%B7+Download+%C2%B7+Manage;Owner-only+%C2%B7+No+one+else+gets+in;Built+with+Telegraf.js+%2B+Octokit" alt="Typing SVG" />
 
 <p>
-<img src="https://img.shields.io/badge/version-0.7.0-3B82F6?style=for-the-badge" />
+<img src="https://img.shields.io/badge/version-0.7.1-3B82F6?style=for-the-badge" />
 <img src="https://img.shields.io/badge/node-%3E%3D18-3B82F6?style=for-the-badge&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/JavaScript-No%20TypeScript-F1E05A?style=for-the-badge&logo=javascript&logoColor=black" />
 <img src="https://img.shields.io/badge/hosted%20on-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" />
@@ -145,6 +145,14 @@ Returns `200` with `{ status: "ok", postgres, redis, memoryMB, uptimeSeconds }` 
 ---
 
 ## 📋 Changelog
+
+### v0.7.1 — Closed the last unprotected I/O path
+v0.7.0 added hard timeouts to Postgres and every GitHub call, on the theory that a single unprotected piece of I/O could block the entire update queue behind it. Real usage found the one piece that got missed:
+
+- **Fixed:** Redis session reads/writes had no timeout — the one piece of I/O that runs on literally *every* single interaction, tap or message. Since updates now process one at a time (v0.7.0), a stall here blocked everything behind it in line, including `/start`, which is exactly what "click Upload, everything freezes, only unfreezes once I tap Start" looked like — `/start` wasn't special-casing its way through, it was just as stuck as everything else, and its eventual completion is what released the queue.
+- **Fixed:** same gap in `redis.ping()` (used by Settings and `/health`) — now also timeout-bound.
+- **New:** an immediate "typing…" indicator fires the instant any update starts being processed, before the real reply arrives — so a tap never sits there with zero visible feedback, even during the normal split-second of real work.
+- **Removed:** `lib/session.js` — dead code from the very first design, before Telegraf's Scenes system replaced it. Never required anywhere; found while auditing every remaining piece of Redis I/O for missing timeouts.
 
 ### v0.7.0 — Fixed the freeze (root cause, not a workaround)
 Real-world Railway logs showed the bot appearing to freeze on Upload, and even `/start` — which should always work — going unresponsive too. Root-caused to the same underlying issue as the v0.5.0 memory crashes, closing the loop properly this time:
