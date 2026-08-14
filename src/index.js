@@ -9,6 +9,7 @@ const logger = require('./lib/logger');
 let bot;
 let httpServer;
 let shuttingDown = false;
+let botMode = null; // 'webhook' | 'polling' — tracks which so shutdown knows whether bot.stop() is even valid
 
 /**
  * Closes everything in order (bot polling/webhook, HTTP server, Redis,
@@ -20,12 +21,18 @@ let shuttingDown = false;
 async function shutdown(reason) {
   if (shuttingDown) return;
   shuttingDown = true;
-  logger.info(`Shutting down`, { reason });
+  logger.info('Shutting down', { reason });
 
-  try {
-    if (bot) bot.stop(reason);
-  } catch (err) {
-    logger.error('Error stopping bot', { message: err.message });
+  // bot.stop() only means something in polling mode (it stops the getUpdates
+  // loop). In webhook mode there's no such loop running, so calling it just
+  // throws "Bot is not running!" every time — noise that was cluttering the
+  // exact logs needed to debug real issues. Skipped entirely in webhook mode.
+  if (botMode === 'polling') {
+    try {
+      if (bot) bot.stop(reason);
+    } catch (err) {
+      logger.error('Error stopping bot', { message: err.message });
+    }
   }
   try {
     if (httpServer) await new Promise((resolve) => httpServer.close(resolve));
@@ -48,30 +55,38 @@ async function shutdown(reason) {
 }
 
 /**
- * Checks RSS memory every 30s against a self-imposed ceiling comfortably
- * under Railway's hard container limit. If crossed, triggers the SAME
- * clean shutdown path above rather than waiting for the kernel to SIGKILL
- * the process.
+ * Checks RSS memory against a self-imposed ceiling comfortably under
+ * Railway's hard container limit, and triggers the SAME clean shutdown
+ * path above rather than waiting for the kernel to SIGKILL the process.
+ *
+ * Checks more frequently (5s) for the first 2 minutes after boot, since
+ * that's the window where a webhook backlog burst would show up fastest —
+ * then relaxes to the normal 30s interval once things settle.
  */
 function startMemoryWatchdog() {
-  setInterval(() => {
+  const startTime = Date.now();
+  const FAST_INTERVAL_MS = 5000;
+  const FAST_WINDOW_MS = 2 * 60 * 1000;
+
+  function check() {
     const rssMB = Math.round(process.memoryUsage().rss / 1024 / 1024);
     if (rssMB >= config.MEMORY_WATCHDOG_MB) {
       logger.warn('Memory watchdog threshold crossed — restarting cleanly', { rssMB, ceilingMB: config.MEMORY_WATCHDOG_MB });
       shutdown('memory-watchdog');
+      return;
     }
-  }, config.MEMORY_WATCHDOG_CHECK_INTERVAL_MS).unref();
+    const inFastWindow = Date.now() - startTime < FAST_WINDOW_MS;
+    setTimeout(check, inFastWindow ? FAST_INTERVAL_MS : config.MEMORY_WATCHDOG_CHECK_INTERVAL_MS).unref();
+  }
+  setTimeout(check, FAST_INTERVAL_MS).unref();
 }
 
 /**
  * Process-level safety net. An uncaught exception leaves Node in an
  * undefined state — best practice is to log it clearly and exit via the
- * same clean shutdown path, rather than either silently crashing (loses
- * the "why") or trying to keep running (risks corrupted state). Unhandled
- * promise rejections are logged but don't trigger a restart on their own —
- * most of these are already recoverable errors caught one level up (e.g.
- * bot.catch), and restarting on every one would be too trigger-happy for
- * what's usually a non-fatal issue.
+ * same clean shutdown path. Unhandled promise rejections are logged but
+ * don't trigger a restart on their own — most are already recoverable
+ * errors caught one level up (e.g. bot.catch).
  */
 function installCrashHandlers() {
   process.on('uncaughtException', (err) => {
@@ -95,10 +110,12 @@ async function main() {
   logger.info('Starting Telegram bot...');
   bot = createBot();
 
+  // Kept short — Telegram's own command list UI is a compact popup, long
+  // descriptions get truncated or crowd out the command names.
   await bot.telegram.setMyCommands([
-    { command: 'start', description: '🏠 Open main menu, or connect your GitHub account' },
-    { command: 'settings', description: '⚙️ View settings and live system status' },
-    { command: 'cancel', description: '❌ Cancel whatever you\'re doing and return to the menu' },
+    { command: 'start', description: '🏠 Main menu' },
+    { command: 'settings', description: '⚙️ Settings & status' },
+    { command: 'cancel', description: '❌ Cancel & return to menu' },
   ]);
 
   logger.info('Starting web server (OAuth callback + health check)...');
@@ -107,18 +124,40 @@ async function main() {
   const useWebhook = process.env.NODE_ENV === 'production';
 
   if (useWebhook) {
+    botMode = 'webhook';
     const webhookPath = '/telegram-webhook';
     app.use(bot.webhookCallback(webhookPath, { secretToken: config.TELEGRAM_WEBHOOK_SECRET }));
     httpServer = app.listen(config.PORT, async () => {
       logger.info('Server listening', { port: config.PORT });
-      await bot.telegram.setWebhook(`${config.BASE_URL}${webhookPath}`, { secret_token: config.TELEGRAM_WEBHOOK_SECRET });
+
+      // Log how many updates were actually pending before discarding them —
+      // turns "I think there's a backlog" into hard evidence in the logs.
+      try {
+        const info = await bot.telegram.getWebhookInfo();
+        if (info.pending_update_count > 0) {
+          logger.warn('Discarding pending update backlog on startup', { count: info.pending_update_count });
+        }
+      } catch (err) {
+        logger.error('Could not check webhook backlog before clearing', { message: err.message });
+      }
+
+      // drop_pending_updates: without this, any updates that queued up on
+      // Telegram's side while the bot was down all got delivered in a burst
+      // the instant the webhook came back — each spinning up its own DB/
+      // GitHub work roughly at once. Every boot now starts genuinely clean
+      // instead of inheriting whatever piled up during any downtime.
+      await bot.telegram.setWebhook(`${config.BASE_URL}${webhookPath}`, {
+        secret_token: config.TELEGRAM_WEBHOOK_SECRET,
+        drop_pending_updates: true,
+      });
       logger.info('Telegram webhook set', { url: `${config.BASE_URL}${webhookPath}` });
     });
   } else {
+    botMode = 'polling';
     httpServer = app.listen(config.PORT, () => {
       logger.info('Server listening (OAuth callback + health check)', { port: config.PORT });
     });
-    await bot.launch();
+    await bot.launch({ dropPendingUpdates: true });
     logger.info('Bot running in polling mode (development)');
   }
 

@@ -38,13 +38,20 @@ async function handleStart(ctx) {
 
   const user = await users.getUser(telegramId);
 
+  // Repo count is a nice-to-have on the welcome message, not essential —
+  // race it against a short timeout so /start can never hang waiting on
+  // GitHub even if that call is slow, regardless of what's happening
+  // elsewhere.
   let repoCountLine = '';
   try {
     const token = await users.getDecryptedToken(telegramId);
-    const repos = await repoCache.getRepos(ctx.from.id, token);
+    const repos = await Promise.race([
+      repoCache.getRepos(ctx.from.id, token),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
+    ]);
     repoCountLine = `\n📁 ${repos.length} repos ready to manage`;
   } catch (_) {
-    // best-effort — don't block the welcome message if this fails
+    // best-effort — don't block the welcome message if this fails or is slow
   }
 
   await ctx.reply(

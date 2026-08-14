@@ -2,7 +2,12 @@ const { createClient } = require('redis');
 const config = require('../config');
 const logger = require('../lib/logger');
 
-const client = createClient({ url: config.REDIS_URL });
+const client = createClient({
+  url: config.REDIS_URL,
+  socket: {
+    connectTimeout: 5000, // fail fast instead of hanging if Redis is unreachable
+  },
+});
 
 client.on('error', (err) => {
   logger.error('Redis client error', { message: err.message });

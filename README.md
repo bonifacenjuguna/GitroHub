@@ -7,7 +7,7 @@
 <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=20&pause=1000&color=3B82F6&center=true&vCenter=true&width=460&lines=GitHub+from+Telegram;Create+%C2%B7+Upload+%C2%B7+Download+%C2%B7+Manage;Owner-only+%C2%B7+No+one+else+gets+in;Built+with+Telegraf.js+%2B+Octokit" alt="Typing SVG" />
 
 <p>
-<img src="https://img.shields.io/badge/version-0.6.0-3B82F6?style=for-the-badge" />
+<img src="https://img.shields.io/badge/version-0.7.0-3B82F6?style=for-the-badge" />
 <img src="https://img.shields.io/badge/node-%3E%3D18-3B82F6?style=for-the-badge&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/JavaScript-No%20TypeScript-F1E05A?style=for-the-badge&logo=javascript&logoColor=black" />
 <img src="https://img.shields.io/badge/hosted%20on-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" />
@@ -135,7 +135,9 @@ GitroHub now defends against this on three layers:
 
 Also tightened: the Postgres pool is capped at `PG_POOL_MAX` (default 3, was unbounded up to 10) — a single-owner bot doesn't need more — and GitHub API clients are cached per token instead of being constructed fresh on every single call.
 
-If you're still seeing crashes after deploying this version, check `GET /health` (see below) and Railway's Metrics tab — if RSS is climbing steadily even at rest, that points to something new rather than the causes above.
+**A related failure mode, fixed in v0.7.0:** if the bot crashed and restarted repeatedly, any Telegram messages sent during that downtime queued up and got delivered in a burst the moment the webhook came back — each one triggering its own database/GitHub work at once. That burst could itself spike memory enough to crash again, building an even bigger backlog for the next restart. The bot now discards any such backlog on every restart (`drop_pending_updates`) and processes updates one at a time, closing that loop.
+
+If you're still seeing crashes or freezes after deploying v0.7.0+, check `GET /health` (see below) and Railway's Metrics tab — if RSS is climbing steadily even at rest, that points to something new rather than the causes above.
 
 ### `GET /health`
 Returns `200` with `{ status: "ok", postgres, redis, memoryMB, uptimeSeconds }` when healthy, `503` with `status: "degraded"` if either DB is unreachable. Point Railway's health check at this path so it can restart a degraded instance proactively instead of only reacting after a crash.
@@ -143,6 +145,19 @@ Returns `200` with `{ status: "ok", postgres, redis, memoryMB, uptimeSeconds }` 
 ---
 
 ## 📋 Changelog
+
+### v0.7.0 — Fixed the freeze (root cause, not a workaround)
+Real-world Railway logs showed the bot appearing to freeze on Upload, and even `/start` — which should always work — going unresponsive too. Root-caused to the same underlying issue as the v0.5.0 memory crashes, closing the loop properly this time:
+
+- **Fixed (the actual freeze):** Postgres had no connection or query timeout set at all. If the pool couldn't hand out a free connection — which happens after repeated crash-restarts leave orphaned connections behind — any request touching the database, including `/start`'s own "are you connected" check, just waited forever instead of failing with an error. Now fails fast (5s to acquire a connection, 10s per query) with a clear message instead of hanging silently.
+- **Fixed (the crash-loop trigger):** the webhook now discards any backlog of missed updates on every restart (`drop_pending_updates: true`) instead of letting Telegram deliver it all in a burst the instant the bot comes back online. That burst — several updates each triggering their own DB/GitHub work near-simultaneously — was very likely what caused memory to spike hard within the first minute of every restart, which caused another crash, which built up another backlog. Self-reinforcing loop, now broken at the source.
+- **New:** the actual backlog size gets logged (via `getWebhookInfo`) right before it's discarded, so this is now visible evidence in the logs, not a theory.
+- **New:** incoming Telegram updates are now processed one at a time instead of concurrently — for a single-owner bot this has zero downside, and it caps how many simultaneous DB/GitHub requests can ever pile up at once to exactly one, protecting against this same failure mode even if a backlog ever built up again for some other reason.
+- **New:** every GitHub API call (reads and writes) now has a hard timeout (15s single calls, 45s for multi-file commits) — this is what makes the sequential processing above actually safe, since without it a single hung GitHub request would now block every subsequent interaction behind it in the queue.
+- **Fixed:** `Error stopping bot {"message":"Bot is not running!"}` was firing on every single shutdown — `bot.stop()` only means something in polling mode, but was being called unconditionally in webhook mode too. Now skipped correctly, so real issues aren't buried in that noise.
+- **Improved:** the memory watchdog checks every 5s for the first 2 minutes after boot (relaxing to 30s after), since that's the window a backlog-burst spike would show up fastest in.
+- **Improved:** `/start`'s optional repo-count lookup now races against its own 4s timeout, so it can never block the welcome message even if GitHub itself is slow.
+- **Improved:** shortened all 3 bot command descriptions — Telegram's command list is a compact popup, long descriptions were getting crowded.
 
 ### v0.6.0 — Optimization, hardening, and a real security fix
 A large pass covering performance, resilience, and a genuine security gap — all discussed and locked in before building.

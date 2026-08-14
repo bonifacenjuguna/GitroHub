@@ -71,6 +71,25 @@ function createBot() {
   const bot = new Telegraf(config.BOT_TOKEN);
 
   bot.use(ownerGate());
+
+  // Serializes ALL update processing — only one Telegram update is ever
+  // being handled at a time. This is what caps how many simultaneous DB/
+  // GitHub requests can pile up: a backlog burst after a crash-restart, or
+  // just several quick taps, now gets worked through one at a time instead
+  // of all at once. Zero practical downside for a single-owner bot.
+  let updateQueue = Promise.resolve();
+  bot.use(async (ctx, next) => {
+    const previous = updateQueue;
+    let release;
+    updateQueue = new Promise((resolve) => { release = resolve; });
+    await previous;
+    try {
+      await next();
+    } finally {
+      release();
+    }
+  });
+
   bot.use(session({ store: redisStore }));
 
   // ─── Shared handler map: BBTB label -> handler ────────────────
