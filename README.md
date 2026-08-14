@@ -7,7 +7,7 @@
 <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=20&pause=1000&color=3B82F6&center=true&vCenter=true&width=460&lines=GitHub+from+Telegram;Create+%C2%B7+Upload+%C2%B7+Download+%C2%B7+Manage;Owner-only+%C2%B7+No+one+else+gets+in;Built+with+Telegraf.js+%2B+Octokit" alt="Typing SVG" />
 
 <p>
-<img src="https://img.shields.io/badge/version-0.7.1-3B82F6?style=for-the-badge" />
+<img src="https://img.shields.io/badge/version-0.7.2-3B82F6?style=for-the-badge" />
 <img src="https://img.shields.io/badge/node-%3E%3D18-3B82F6?style=for-the-badge&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/JavaScript-No%20TypeScript-F1E05A?style=for-the-badge&logo=javascript&logoColor=black" />
 <img src="https://img.shields.io/badge/hosted%20on-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" />
@@ -145,6 +145,14 @@ Returns `200` with `{ status: "ok", postgres, redis, memoryMB, uptimeSeconds }` 
 ---
 
 ## 📋 Changelog
+
+### v0.7.2 — Found the actual bug (not a timeout issue)
+v0.7.0 and v0.7.1 added timeouts everywhere on the theory that some piece of I/O was stalling. Real logs showed no timeout ever firing, which ruled that whole theory out — the real cause was structural, not a stall:
+
+- **Fixed (root cause):** entering a scene via `ctx.scene.enter(...)` makes Telegraf re-process the *same incoming message* through the newly-entered scene's own handlers. Our global escape-hatch system registered every BBTB label — including the exact labels used to *enter* a scene in the first place ("➕ New Repo", "⬆️ Upload") — as a "leave and re-enter" trigger on that same scene. So tapping New Repo would enter the scene, get re-processed, immediately match its own escape hatch, leave, and re-enter — bouncing several times (each doing real session I/O) before finally settling. That bounce was the entire "15+ seconds, then it works" pattern. Explains precisely why Pin (no scene involved) was instant, and why Rename/Edit File (entered via inline buttons, not BBTB text) were never affected — the collision only happens when the entry trigger and the escape-hatch trigger are the same text message.
+- **Fixed:** each scene now excludes its own entry-trigger label(s) from its escape-hatch registrations, so re-entry falls through cleanly to the scene's actual first step instead of colliding with itself.
+- **New:** every `/start` reply now shows the running bot version (`🔧 v0.7.2`) — confirm a deploy actually landed without checking Railway.
+- **Note:** the v0.7.0/v0.7.1 timeout work (Postgres, GitHub calls, Redis session I/O) wasn't wasted — it's real protection against genuine stalls, just wasn't what caused *this specific* symptom. Both fixes now stand together.
 
 ### v0.7.1 — Closed the last unprotected I/O path
 v0.7.0 added hard timeouts to Postgres and every GitHub call, on the theory that a single unprotected piece of I/O could block the entire update queue behind it. Real usage found the one piece that got missed:

@@ -42,8 +42,19 @@ async function sendCancelledMenu(ctx) {
  * Registers the same navigation handlers directly on each scene so
  * /start, /cancel, and every BBTB nav button work identically whether or
  * not a wizard is currently active.
+ *
+ * `selfEntryLabels` excludes the specific label(s) that are how you ENTER
+ * this exact scene in the first place. Without this, entering a scene via
+ * a BBTB tap (e.g. "➕ New Repo") causes Telegraf to re-process that same
+ * text INSIDE the newly-entered scene — where it would immediately match
+ * its own escape hatch, leave, and re-enter again, bouncing several times
+ * before settling (each bounce doing real session I/O). This was a real
+ * bug, not a timeout issue — found by tracing why only scenes triggered
+ * by a BBTB label (New Repo, Upload) were affected, while ones triggered
+ * by inline buttons (Rename, Edit File) never were.
  */
-function attachGlobalEscapes(scene, handlerMap, onLeave) {
+function attachGlobalEscapes(scene, handlerMap, onLeave, selfEntryLabels = []) {
+  const excluded = new Set([...SCENE_INTERNAL_LABELS, ...selfEntryLabels]);
   const cleanup = async (ctx) => {
     if (onLeave) {
       try { onLeave(ctx); } catch (_) { /* never let cleanup itself block leaving */ }
@@ -59,7 +70,7 @@ function attachGlobalEscapes(scene, handlerMap, onLeave) {
     return sendCancelledMenu(ctx);
   });
   for (const [label, handler] of Object.entries(handlerMap)) {
-    if (SCENE_INTERNAL_LABELS.has(label)) continue;
+    if (excluded.has(label)) continue;
     scene.hears(label, async (ctx) => {
       await cleanup(ctx);
       return handler(ctx);
@@ -191,9 +202,9 @@ function createBot() {
     '⬅️ Back to Selection': (ctx) => bulkActions.startBulkSelect(ctx),
   };
 
-  attachGlobalEscapes(createRepoScene, handlerMap);
+  attachGlobalEscapes(createRepoScene, handlerMap, null, ['➕ New Repo']);
   attachGlobalEscapes(renameRepoScene, handlerMap);
-  attachGlobalEscapes(uploadFileScene, handlerMap, uploadFileScene.releaseOnExternalLeave);
+  attachGlobalEscapes(uploadFileScene, handlerMap, uploadFileScene.releaseOnExternalLeave, ['⬆️ Upload', '⬆️ Upload Here', '🔁 Replace Folder', '📤 Upload Another']);
   attachGlobalEscapes(editFileScene, handlerMap);
 
   const stage = new Scenes.Stage([createRepoScene, renameRepoScene, uploadFileScene, editFileScene]);
