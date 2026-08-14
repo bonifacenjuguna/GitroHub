@@ -13,6 +13,7 @@ function repoList(repos, page, totalPages, filterLabel, sortLabel) {
 const filterMenu = Markup.inlineKeyboard([
   [Markup.button.callback('All', 'filter:all'), Markup.button.callback('🌐 Public', 'filter:public')],
   [Markup.button.callback('🔒 Private', 'filter:private'), Markup.button.callback('🍴 Forks', 'filter:forks')],
+  [Markup.button.callback('🏷️ By Tag ▾', 'filter:tagmenu'), Markup.button.callback('💻 By Language ▾', 'filter:langmenu')],
   [Markup.button.callback('⬅️ Back', 'repos:back')],
 ]);
 
@@ -21,13 +22,18 @@ const sortMenu = Markup.inlineKeyboard([
   [Markup.button.callback('🔤 Name (A-Z)', 'sort:name')],
   [Markup.button.callback('⭐ Most Stars', 'sort:stars')],
   [Markup.button.callback('📅 Recently Created', 'sort:created')],
+  [Markup.button.callback('💻 Dominant Language (A-Z)', 'sort:language')],
   [Markup.button.callback('⬅️ Back', 'repos:back')],
 ]);
 
-/** Repo View info card — only Rename + Delete Repo live inline (destructive/specific) */
-function repoActions(repoName) {
+/** Repo View info card — Rename, Pin/Unpin, Tags stay inline; Delete Repo is the destructive one */
+function repoActions(repoName, pinned = false) {
   return Markup.inlineKeyboard([
     [Markup.button.callback('✏️ Rename', `repo:rename:${repoName}`)],
+    [
+      Markup.button.callback(pinned ? '📌 Unpin' : '📌 Pin', `repo:pin:${repoName}`),
+      Markup.button.callback('🏷️ Tags', `repo:tags:${repoName}`),
+    ],
     [Markup.button.callback('🗑 Delete Repo', `repo:delete:${repoName}`)],
   ]);
 }
@@ -70,13 +76,21 @@ function createRepoSuccess(repoName) {
 }
 
 /** File/folder tree navigator — folders and files both rendered as rows */
-function fileTree(entries, currentPath, showUploadHere = false) {
+/** Folder/file tree navigator — folders and files rendered as rows, with pagination for large folders */
+function fileTree(entries, currentPath, pagination = null) {
   const rows = entries.map((e) => {
     const label = e.type === 'tree' ? `📁 ${e.name}/` : `📄 ${e.name}`;
     const action = e.type === 'tree' ? `browse:dir:${e.path}` : `browse:file:${e.path}`;
     return [Markup.button.callback(label, action)];
   });
-  if (showUploadHere) rows.push([Markup.button.callback('📌 Upload Here', `upload:path:${currentPath}`)]);
+
+  if (pagination && pagination.totalPages > 1) {
+    const nav = [];
+    if (pagination.page > 1) nav.push(Markup.button.callback('⬅️ Prev', `browse:dirpage:${pagination.page - 1}:${currentPath}`));
+    if (pagination.page < pagination.totalPages) nav.push(Markup.button.callback('Next ➡️', `browse:dirpage:${pagination.page + 1}:${currentPath}`));
+    if (nav.length) rows.push(nav);
+  }
+
   if (currentPath) {
     const parent = currentPath.split('/').slice(0, -1).join('/');
     rows.push([Markup.button.callback('⬅️ Up One Level', `browse:dir:${parent}`)]);
@@ -87,7 +101,7 @@ function fileTree(entries, currentPath, showUploadHere = false) {
 function fileActions(path) {
   return Markup.inlineKeyboard([
     [Markup.button.callback('👁 View Content', `file:view:${path}`), Markup.button.callback('📥 Send as File', `file:raw:${path}`)],
-    [Markup.button.callback('✏️ Edit', `file:edit:${path}`)],
+    [Markup.button.callback('✏️ Edit', `file:edit:${path}`), Markup.button.callback('🔁 Replace', `file:replace:${path}`)],
     [Markup.button.callback('🗑 Delete File', `file:delete:${path}`)],
     [Markup.button.callback('⬅️ Back to Folder', `browse:parent:${path}`)],
   ]);

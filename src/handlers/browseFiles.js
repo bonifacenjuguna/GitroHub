@@ -1,9 +1,11 @@
 const github = require('../lib/github');
+const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
 const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
+const config = require('../config');
 
 const TEXT_EXTENSIONS = new Set([
   'js', 'ts', 'jsx', 'tsx', 'json', 'md', 'txt', 'html', 'css', 'py', 'java',
@@ -38,12 +40,15 @@ function listDirectory(tree, dirPath) {
   });
 }
 
-async function showDirectory(ctx, repoName, dirPath = '') {
+async function showDirectory(ctx, repoName, dirPath = '', page = 1) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
+  ctx.session = ctx.session || {};
+  ctx.session.currentBrowseDir = dirPath; // used by "Upload Here" / "Replace Folder" BBTB buttons
+
   try {
-    const user = await github.getAuthenticatedUser(token);
+    const user = await repoCache.getUser(ctx.from.id, token);
     const tree = await github.getTree(token, user.login, repoName);
 
     if (tree.length === 0) {
@@ -54,13 +59,23 @@ async function showDirectory(ctx, repoName, dirPath = '') {
       );
     }
 
-    const entries = listDirectory(tree, dirPath);
-    const label = dirPath ? `📁 /${dirPath}` : '📁 / (root)';
+    const allEntries = listDirectory(tree, dirPath);
+    const perPage = config.FILES_PER_PAGE;
+    const totalPages = Math.max(1, Math.ceil(allEntries.length / perPage));
+    const safePage = Math.min(Math.max(1, page), totalPages);
+    const entries = allEntries.slice((safePage - 1) * perPage, safePage * perPage);
+
+    let label = dirPath ? `📁 /${dirPath}` : '📁 / (root)';
+    if (allEntries.length > perPage) label += ` — ${allEntries.length} items, page ${safePage} of ${totalPages}`;
 
     await ctx.reply('📁 Browse Files', bbtb.browseFiles);
     await ctx.reply(format.escapeMd(label), {
       parse_mode: 'MarkdownV2',
-      ...inline.fileTree(entries.map((e) => ({ ...e, type: e.type === 'tree' ? 'tree' : 'blob' })), dirPath),
+      ...inline.fileTree(
+        entries.map((e) => ({ ...e, type: e.type === 'tree' ? 'tree' : 'blob' })),
+        dirPath,
+        { page: safePage, totalPages }
+      ),
     });
   } catch (err) {
     await ctx.reply(format.errorMessage(
@@ -93,7 +108,7 @@ async function viewFileContent(ctx, repoName, filePath) {
   }
 
   try {
-    const user = await github.getAuthenticatedUser(token);
+    const user = await repoCache.getUser(ctx.from.id, token);
     const { content, size } = await github.getFileContent(token, user.login, repoName, filePath);
     const lines = content.split('\n');
     const preview = lines.slice(0, 40).join('\n');
@@ -115,7 +130,7 @@ async function sendFileAsDocument(ctx, repoName, filePath) {
 
   const fileName = filePath.split('/').pop();
   try {
-    const user = await github.getAuthenticatedUser(token);
+    const user = await repoCache.getUser(ctx.from.id, token);
     const { content } = await github.getFileContent(token, user.login, repoName, filePath);
     await ctx.replyWithDocument({ source: Buffer.from(content, 'utf8'), filename: fileName });
   } catch (err) {
@@ -131,13 +146,21 @@ async function askDeleteFile(ctx, repoName, filePath) {
 }
 
 async function executeDeleteFile(ctx, repoName, filePath) {
+  const actionLock = require('../lib/actionLock');
+  const { skipped } = await actionLock.withLock(ctx.from.id, () => _executeDeleteFile(ctx, repoName, filePath));
+  if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
+}
+
+async function _executeDeleteFile(ctx, repoName, filePath) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
   try {
-    const user = await github.getAuthenticatedUser(token);
+    const user = await repoCache.getUser(ctx.from.id, token);
     const { sha } = await github.getFileContent(token, user.login, repoName, filePath);
     await github.deleteFile(token, user.login, repoName, filePath, sha, `Delete ${filePath} via GitroHub`);
+    repoCache.invalidateRepos(ctx.from.id);
+    repoCache.invalidateLanguages(ctx.from.id, repoName);
     await activity.log(ctx.from.id, '🗑', `Deleted file → ${filePath} (${repoName})`);
     await ctx.reply(format.successMessage(`Deleted "${filePath}"`));
   } catch (err) {
@@ -150,7 +173,7 @@ async function searchFiles(ctx, repoName, query) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
-  const user = await github.getAuthenticatedUser(token);
+  const user = await repoCache.getUser(ctx.from.id, token);
   const tree = await github.getTree(token, user.login, repoName);
   const matches = tree.filter((f) => f.path.toLowerCase().includes(query.toLowerCase())).slice(0, 15);
 

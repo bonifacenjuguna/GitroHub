@@ -1,9 +1,22 @@
 const { Scenes, Markup } = require('telegraf');
 const github = require('../lib/github');
+const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
+
+/**
+ * Returns the user to exactly where they were — the Browse Files folder
+ * containing this file — instead of dumping them at Main Menu. This was a
+ * reported bug: Cancel (and every exit path) used to hard-reset to
+ * bbtb.mainMenu regardless of context.
+ */
+async function returnToFolder(ctx, repoName, filePath) {
+  const browseFiles = require('../handlers/browseFiles');
+  const parentDir = filePath.split('/').slice(0, -1).join('/');
+  return browseFiles.showDirectory(ctx, repoName, parentDir);
+}
 
 const scene = new Scenes.WizardScene(
   'editFile',
@@ -17,7 +30,7 @@ const scene = new Scenes.WizardScene(
     if (!token) return ctx.scene.leave();
 
     try {
-      const user = await github.getAuthenticatedUser(token);
+      const user = await repoCache.getUser(ctx.from.id, token);
       const { content, sha } = await github.getFileContent(token, user.login, repoName, filePath);
       ctx.wizard.state.originalContent = content;
       ctx.wizard.state.sha = sha;
@@ -26,9 +39,7 @@ const scene = new Scenes.WizardScene(
         `✏️ Editing ${filePath}\nCurrent content sent below. Reply with the full new content to replace it, or Cancel.`,
         bbtb.cancelOnly
       );
-      // Send current content as its own message/document so it doesn't get lost in the prompt
       if (content.length < 3500) {
-        const format = require('../lib/format');
         await ctx.reply('```\n' + format.escapeCodeBlock(content) + '\n```', { parse_mode: 'MarkdownV2' }).catch(() =>
           ctx.replyWithDocument({ source: Buffer.from(content), filename: filePath.split('/').pop() })
         );
@@ -37,15 +48,20 @@ const scene = new Scenes.WizardScene(
       }
       return ctx.wizard.next();
     } catch (err) {
-      await ctx.reply(format.errorMessage('Couldn\u2019t load file for editing', err.message, 'Try again.'), bbtb.mainMenu);
-      return ctx.scene.leave();
+      const errorHelpers = require('../lib/errorHelpers');
+      await errorHelpers.replyGithubError(ctx, err, 'Couldn\u2019t load file for editing');
+      await ctx.scene.leave();
+      return returnToFolder(ctx, repoName, filePath);
     }
   },
 
   async (ctx) => {
+    const { repoName, filePath } = ctx.wizard.state;
+
     if (ctx.message && ctx.message.text === '❌ Cancel') {
-      await ctx.reply('Edit cancelled.', bbtb.mainMenu);
-      return ctx.scene.leave();
+      await ctx.reply('Edit cancelled.');
+      await ctx.scene.leave();
+      return returnToFolder(ctx, repoName, filePath);
     }
     if (!ctx.message || !ctx.message.text) {
       await ctx.reply('Reply with the new file content as text, or ❌ Cancel.');
@@ -59,7 +75,7 @@ const scene = new Scenes.WizardScene(
     const diffLabel = diff >= 0 ? `+${diff} lines added` : `${Math.abs(diff)} lines removed`;
 
     await ctx.reply(
-      `✏️ Confirm edit to ${ctx.wizard.state.filePath}\n${diffLabel}`,
+      `✏️ Confirm edit to ${filePath}\n${diffLabel}`,
       Markup.inlineKeyboard([
         [Markup.button.callback('✅ Commit Change', 'edit:confirm')],
         [Markup.button.callback('❌ Cancel', 'edit:cancel')],
@@ -69,41 +85,53 @@ const scene = new Scenes.WizardScene(
   },
 
   async (ctx) => {
+    const { repoName, filePath, newContent, sha } = ctx.wizard.state;
+
     if (!ctx.callbackQuery) {
       await ctx.reply('Tap ✅ Commit Change or ❌ Cancel above.');
       return;
     }
     await ctx.answerCbQuery();
     if (ctx.callbackQuery.data === 'edit:cancel') {
-      await ctx.reply('Edit cancelled.', bbtb.mainMenu);
-      return ctx.scene.leave();
+      await ctx.reply('Edit cancelled.');
+      await ctx.scene.leave();
+      return returnToFolder(ctx, repoName, filePath);
+    }
+    if (ctx.callbackQuery.data !== 'edit:confirm') {
+      // Stray/stale callback from an unrelated old message — don't treat
+      // it as a commit confirmation.
+      await ctx.reply('Tap ✅ Commit Change or ❌ Cancel above.');
+      return;
     }
 
     const token = await requireConnected(ctx);
     if (!token) return ctx.scene.leave();
 
-    const { repoName, filePath, newContent, sha } = ctx.wizard.state;
     try {
-      const user = await github.getAuthenticatedUser(token);
-      // Re-fetch current sha to detect if file changed since we opened it
+      const user = await repoCache.getUser(ctx.from.id, token);
       const current = await github.getFileContent(token, user.login, repoName, filePath);
       if (current.sha !== sha) {
         await ctx.reply(format.errorMessage(
           'Edit failed',
           `${filePath} was modified on GitHub since you opened it`,
           'Your changes weren\u2019t lost — view the latest version first to avoid overwriting it.'
-        ), bbtb.mainMenu);
-        return ctx.scene.leave();
+        ));
+        await ctx.scene.leave();
+        return returnToFolder(ctx, repoName, filePath);
       }
 
       await github.putFile(token, user.login, repoName, filePath, newContent, `Update ${filePath} via GitroHub`, sha);
+      repoCache.invalidateRepos(ctx.from.id);
+      repoCache.invalidateLanguages(ctx.from.id, repoName);
       await activity.log(ctx.from.id, '✏️', `Edited file → ${filePath} (${repoName})`);
-      await ctx.reply(format.successMessage(`Updated ${filePath}`), bbtb.mainMenu);
+      await ctx.reply(format.successMessage(`Updated ${filePath}`));
     } catch (err) {
       await activity.log(ctx.from.id, '⚠️', `Edit failed → ${filePath}`, { detail: err.message, isError: true });
-      await ctx.reply(format.errorMessage('Edit failed', err.message, 'Try again.'), bbtb.mainMenu);
+      const errorHelpers = require('../lib/errorHelpers');
+      await errorHelpers.replyGithubError(ctx, err, 'Edit failed');
     }
-    return ctx.scene.leave();
+    await ctx.scene.leave();
+    return returnToFolder(ctx, repoName, filePath);
   }
 );
 

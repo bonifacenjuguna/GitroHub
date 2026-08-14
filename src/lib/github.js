@@ -5,37 +5,85 @@ const { Octokit } = require('@octokit/rest');
  * menus map to. One function per bot action, so handlers stay declarative
  * and error-shaping (per our "specific errors always" rule) happens in
  * exactly one place per operation.
+ *
+ * Clients are cached per token instead of constructed fresh on every call —
+ * building a new Octokit instance isn't free (route methods, request
+ * wrappers, hooks all get rebuilt), and doing it on every single API call
+ * was adding real allocation churn under load. Capped at 3 entries as a
+ * defensive bound (a single-owner bot only ever really has one token, but
+ * this avoids unbounded growth across reconnects with different tokens).
  */
+const clientCache = new Map();
 function client(token) {
-  return new Octokit({ auth: token });
+  if (clientCache.has(token)) return clientCache.get(token);
+  const octo = new Octokit({ auth: token });
+  clientCache.set(token, octo);
+  if (clientCache.size > 3) {
+    clientCache.delete(clientCache.keys().next().value);
+  }
+  return octo;
+}
+
+/**
+ * True if the error looks like a genuine rate-limit rejection (403 with
+ * the specific rate-limit headers/message GitHub uses), as opposed to a
+ * permissions 403 — those need very different messages.
+ */
+function isRateLimitError(err) {
+  return !!(err && err.status === 403 && /rate limit/i.test(err.message || ''));
+}
+
+/**
+ * Retries ONE time, with a short delay, for transient failures only —
+ * network blips and 5xx server errors. Deliberately only used on
+ * idempotent READ operations below; wrapping writes (create/delete/put)
+ * would risk double-executing a mutation if the first attempt actually
+ * succeeded but the response was lost in transit.
+ */
+async function withRetry(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    const transient = (err.status >= 500 && err.status < 600) || !err.status;
+    if (!transient || isRateLimitError(err)) throw err; // rate limits shouldn't be retried immediately
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return fn();
+  }
 }
 
 async function getAuthenticatedUser(token) {
-  const octo = client(token);
-  const { data } = await octo.users.getAuthenticated();
-  return data; // { login, avatar_url, ... }
+  return withRetry(async () => {
+    const octo = client(token);
+    const { data } = await octo.users.getAuthenticated();
+    return data; // { login, avatar_url, ... }
+  });
 }
 
 async function getRateLimit(token) {
-  const octo = client(token);
-  const { data } = await octo.rateLimit.get();
-  return data.resources.core; // { limit, remaining, reset }
+  return withRetry(async () => {
+    const octo = client(token);
+    const { data } = await octo.rateLimit.get();
+    return data.resources.core; // { limit, remaining, reset }
+  });
 }
 
 async function listRepos(token, { sort = 'updated', direction = 'desc' } = {}) {
-  const octo = client(token);
-  const repos = await octo.paginate(octo.repos.listForAuthenticatedUser, {
-    per_page: 100,
-    sort,
-    direction,
+  return withRetry(async () => {
+    const octo = client(token);
+    return octo.paginate(octo.repos.listForAuthenticatedUser, {
+      per_page: 100,
+      sort,
+      direction,
+    });
   });
-  return repos;
 }
 
 async function getRepo(token, owner, repo) {
-  const octo = client(token);
-  const { data } = await octo.repos.get({ owner, repo });
-  return data;
+  return withRetry(async () => {
+    const octo = client(token);
+    const { data } = await octo.repos.get({ owner, repo });
+    return data;
+  });
 }
 
 async function createRepo(token, { name, isPrivate, description }) {
@@ -74,28 +122,32 @@ async function forkRepo(token, owner, repo) {
 
 /** Full recursive file tree — used for both Browse Files and file search */
 async function getTree(token, owner, repo, branch = null) {
-  const octo = client(token);
-  const repoData = branch ? { default_branch: branch } : await getRepo(token, owner, repo);
-  const { data: refData } = await octo.git.getRef({
-    owner,
-    repo,
-    ref: `heads/${repoData.default_branch}`,
+  return withRetry(async () => {
+    const octo = client(token);
+    const repoData = branch ? { default_branch: branch } : await getRepo(token, owner, repo);
+    const { data: refData } = await octo.git.getRef({
+      owner,
+      repo,
+      ref: `heads/${repoData.default_branch}`,
+    });
+    const { data } = await octo.git.getTree({
+      owner,
+      repo,
+      tree_sha: refData.object.sha,
+      recursive: 'true',
+    });
+    return data.tree.filter((entry) => entry.type === 'blob'); // files only
   });
-  const { data } = await octo.git.getTree({
-    owner,
-    repo,
-    tree_sha: refData.object.sha,
-    recursive: 'true',
-  });
-  return data.tree.filter((entry) => entry.type === 'blob'); // files only
 }
 
 async function getFileContent(token, owner, repo, path) {
-  const octo = client(token);
-  const { data } = await octo.repos.getContent({ owner, repo, path });
-  if (Array.isArray(data)) throw new Error('Path is a directory, not a file');
-  const content = Buffer.from(data.content, data.encoding).toString('utf8');
-  return { content, sha: data.sha, size: data.size };
+  return withRetry(async () => {
+    const octo = client(token);
+    const { data } = await octo.repos.getContent({ owner, repo, path });
+    if (Array.isArray(data)) throw new Error('Path is a directory, not a file');
+    const content = Buffer.from(data.content, data.encoding).toString('utf8');
+    return { content, sha: data.sha, size: data.size };
+  });
 }
 
 /**
@@ -122,11 +174,12 @@ async function deleteFile(token, owner, repo, path, sha, message) {
 }
 
 /**
- * Commit multiple files in ONE commit using the Git Data API
- * (blobs -> tree -> commit -> update ref). This is what powers zip uploads
- * with a single combined commit instead of N commits.
+ * Commit multiple files (and optionally delete some) in ONE commit using the
+ * Git Data API (blobs -> tree -> commit -> update ref). Deletions are done by
+ * setting `sha: null` on that path's tree entry, which GitHub's Git Trees API
+ * treats as "remove this path" when building on top of an existing base_tree.
  */
-async function commitMultipleFiles(token, owner, repo, files, message) {
+async function commitMultipleFiles(token, owner, repo, files, message, deletions = []) {
   const octo = client(token);
   const repoData = await getRepo(token, owner, repo);
   const branch = repoData.default_branch;
@@ -153,11 +206,13 @@ async function commitMultipleFiles(token, owner, repo, files, message) {
     })
   );
 
+  const deletionEntries = deletions.map((path) => ({ path, mode: '100644', type: 'blob', sha: null }));
+
   const { data: newTree } = await octo.git.createTree({
     owner,
     repo,
     base_tree: baseTreeSha,
-    tree: blobs,
+    tree: [...blobs, ...deletionEntries],
   });
 
   const { data: newCommit } = await octo.git.createCommit({
@@ -192,9 +247,11 @@ async function downloadZip(token, owner, repo, ref) {
 
 /** Fetches per-language byte counts (used to compute language % breakdown) */
 async function getLanguages(token, owner, repo) {
-  const octo = client(token);
-  const { data } = await octo.repos.listLanguages({ owner, repo });
-  return data; // { JavaScript: 12345, HTML: 6789, ... } bytes per language
+  return withRetry(async () => {
+    const octo = client(token);
+    const { data } = await octo.repos.listLanguages({ owner, repo });
+    return data; // { JavaScript: 12345, HTML: 6789, ... } bytes per language
+  });
 }
 
 module.exports = {
@@ -215,4 +272,5 @@ module.exports = {
   zipDownloadUrl,
   downloadZip,
   getLanguages,
+  isRateLimitError,
 };

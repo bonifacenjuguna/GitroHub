@@ -1,5 +1,6 @@
 const Fuse = require('fuse.js');
 const github = require('../lib/github');
+const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
 const inline = require('../keyboards/inline');
@@ -25,7 +26,7 @@ async function handleRepoSearch(ctx, query) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
-  const repos = await github.listRepos(token);
+  const repos = await repoCache.getRepos(ctx.from.id, token);
   const fuse = new Fuse(repos, { keys: ['name'], threshold: 0.4, includeScore: true });
   const results = fuse.search(query);
 
@@ -149,6 +150,7 @@ async function executeForkExternal(ctx) {
 
   try {
     const forked = await github.forkRepo(token, owner, repo);
+    repoCache.invalidateRepos(ctx.from.id);
     await activity.log(ctx.from.id, '🍴', `Forked → ${owner}/${repo}`);
     await ctx.reply(
       `✅ Forked\\! ${format.escapeMd(repo)} is now in your account\\.`,

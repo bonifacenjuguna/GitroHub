@@ -1,5 +1,6 @@
 const users = require('../lib/users');
 const github = require('../lib/github');
+const repoCache = require('../lib/repoCache');
 const oauth = require('../lib/oauth');
 const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
@@ -40,7 +41,7 @@ async function handleStart(ctx) {
   let repoCountLine = '';
   try {
     const token = await users.getDecryptedToken(telegramId);
-    const repos = await github.listRepos(token);
+    const repos = await repoCache.getRepos(ctx.from.id, token);
     repoCountLine = `\n📁 ${repos.length} repos ready to manage`;
   } catch (_) {
     // best-effort — don't block the welcome message if this fails

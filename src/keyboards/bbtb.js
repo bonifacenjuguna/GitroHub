@@ -16,6 +16,7 @@ const mainMenu = Markup.keyboard([
 const myRepos = Markup.keyboard([
   ['➕ New Repo', '🔎 Filter'],
   ['↕️ Sort', '🔄 Refresh'],
+  ['⭐ Pinned', '🧹 Bulk Select'],
   ['⬆️ Back to Menu'],
 ]).resize();
 
@@ -26,13 +27,16 @@ const repoView = Markup.keyboard([
 ]).resize();
 
 const browseFiles = Markup.keyboard([
+  ['⬆️ Upload Here', '🔁 Replace Folder'],
   ['🔍 Search Files'],
   ['⬆️ Back to Repo'],
 ]).resize();
 
 const settings = Markup.keyboard([
   ['🔔 Notifications', '📜 Activity'],
-  ['🚪 Disconnect', '🔄 Refresh Status'],
+  ['⚙️ My Defaults', '📦 Storage & Data'],
+  ['🔑 Access Log', '🔄 Refresh Status'],
+  ['🚪 Disconnect'],
   ['⬆️ Back to Menu'],
 ]).resize();
 
@@ -66,6 +70,30 @@ const disconnected = Markup.keyboard([
   ['⚙️ Settings'],
 ]).resize();
 
+const pinned = Markup.keyboard([
+  ['🔄 Refresh'],
+  ['⬆️ Back to Menu'],
+]).resize();
+
+const bulkSelect = Markup.keyboard([
+  ['✅ Done Selecting'],
+  ['❌ Cancel', '⬆️ Back to Menu'],
+]).resize();
+
+const bulkActionMenu = Markup.keyboard([
+  ['⬅️ Back to Selection'],
+  ['❌ Cancel', '⬆️ Back to Menu'],
+]).resize();
+
+const bulkComplete = Markup.keyboard([
+  ['📁 My Repos'],
+  ['⬆️ Back to Menu'],
+]).resize();
+
+const backToSettings = Markup.keyboard([
+  ['⬆️ Back to Settings'],
+]).resize();
+
 const remove = Markup.removeKeyboard();
 
 module.exports = {
@@ -81,5 +109,10 @@ module.exports = {
   searchAgain,
   activityLog,
   disconnected,
+  pinned,
+  bulkSelect,
+  bulkActionMenu,
+  bulkComplete,
+  backToSettings,
   remove,
 };

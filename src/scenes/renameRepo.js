@@ -1,5 +1,6 @@
 const { Scenes, Markup } = require('telegraf');
 const github = require('../lib/github');
+const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
@@ -57,22 +58,36 @@ const scene = new Scenes.WizardScene(
       await ctx.reply('Rename cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
     }
+    if (ctx.callbackQuery.data !== 'rename:confirm') {
+      // Stray/stale callback from an unrelated old message — don't treat
+      // it as a rename confirmation.
+      await ctx.reply('Tap ✅ Confirm Rename or ❌ Cancel above.');
+      return;
+    }
 
     const token = await requireConnected(ctx);
     if (!token) return ctx.scene.leave();
 
     const { oldName, newName } = ctx.wizard.state;
     try {
-      const user = await github.getAuthenticatedUser(token);
+      const user = await repoCache.getUser(ctx.from.id, token);
       const repo = await github.renameRepo(token, user.login, oldName, newName);
+      const repoCache = require('../lib/repoCache');
+      repoCache.invalidateRepos(ctx.from.id);
+      repoCache.invalidateLanguages(ctx.from.id, oldName);
       await activity.log(ctx.from.id, '✏️', `Renamed → ${oldName} → ${newName}`);
       await ctx.reply(`✅ Renamed: ${oldName} → ${repo.name}\n🔗 ${repo.html_url}`, bbtb.mainMenu);
     } catch (err) {
-      const reason = err.status === 422
-        ? `"${newName}" is already taken by another repo on your account`
-        : err.message;
       await activity.log(ctx.from.id, '⚠️', `Rename failed → ${oldName}`, { detail: err.message, isError: true });
-      await ctx.reply(format.errorMessage('Rename failed', reason, 'Choose a different name.'), bbtb.mainMenu);
+      const errorHelpers = require('../lib/errorHelpers');
+      if (errorHelpers.isAuthError(err)) {
+        await errorHelpers.replyGithubError(ctx, err, 'Rename failed');
+      } else {
+        const reason = err.status === 422
+          ? `"${newName}" is already taken by another repo on your account`
+          : err.message;
+        await ctx.reply(format.errorMessage('Rename failed', reason, 'Choose a different name.'), bbtb.mainMenu);
+      }
     }
     return ctx.scene.leave();
   }

@@ -1,9 +1,29 @@
 const github = require('../lib/github');
+const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
 const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
+const users = require('../lib/users');
+const pins = require('../lib/pins');
+const tags = require('../lib/tags');
+const pathMemory = require('../lib/pathMemory');
+
+/**
+ * Storage & Data's "auto-delete on repo deletion" setting — when on (the
+ * default), removes any pins/tags/path-memory GitroHub kept for a repo the
+ * moment it's actually deleted from GitHub, so orphaned data doesn't pile up.
+ */
+async function cleanupOrphanedData(telegramId, repoName) {
+  const user = await users.getUser(telegramId);
+  if (!user || !user.auto_cleanup_on_delete) return;
+  await Promise.all([
+    pins.removeByRepoName(telegramId, repoName),
+    tags.removeAllForRepo(telegramId, repoName),
+    pathMemory.removeForRepo(telegramId, repoName),
+  ]);
+}
 
 async function showRepoView(ctx, repoName) {
   const token = await requireConnected(ctx);
@@ -11,7 +31,7 @@ async function showRepoView(ctx, repoName) {
 
   let repo;
   try {
-    const user = await github.getAuthenticatedUser(token);
+    const user = await repoCache.getUser(ctx.from.id, token);
     repo = await github.getRepo(token, user.login, repoName);
   } catch (err) {
     return ctx.reply(format.errorMessage(
@@ -21,12 +41,32 @@ async function showRepoView(ctx, repoName) {
     ));
   }
 
+  let langLine = 'No language detected';
+  try {
+    const languages = await repoCache.getLanguages(ctx.from.id, repo.owner.login, repo.name, token);
+    langLine = format.languageBreakdown(languages);
+  } catch (_) {
+    langLine = repo.language || 'No language detected';
+  }
+
+  const [pinned, repoTags] = await Promise.all([
+    pins.isPinned(ctx.from.id, repo.name),
+    tags.tagsForRepo(ctx.from.id, repo.name),
+  ]);
+
+  const tagLine = repoTags.length > 0
+    ? `\n🏷️ ${format.escapeMd(repoTags.map((t) => `${t.emoji} ${t.name}`).join(' · '))}`
+    : '';
+
   const text =
-    `📦 *${format.escapeMd(repo.name)}*\n` +
-    `${format.visibilityLine(repo.private)} · ${format.languageLine(repo.language)} · ⭐ ${repo.stargazers_count}   🍴 ${repo.forks_count}   👁 ${repo.watchers_count}\n` +
-    `Size: ${format.escapeMd(format.formatBytes(repo.size * 1024))}\n` +
-    `Last updated: ${format.escapeMd(format.relativeTime(repo.updated_at))}\n` +
-    `Created: ${format.escapeMd(format.relativeTime(repo.created_at))}`;
+    `📦 *${format.escapeMd(repo.name)}*${pinned ? ' 📌' : ''}\n` +
+    `${format.visibilityLine(repo.private)} · ⭐ ${repo.stargazers_count} · 🍴 ${repo.forks_count} · 👁 ${repo.watchers_count}\n\n` +
+    `💻 *LANGUAGES*\n${format.escapeMd(langLine)}\n\n` +
+    `📊 *DETAILS*\n` +
+    `├ Size: ${format.escapeMd(format.formatBytes(repo.size * 1024))}\n` +
+    `├ Last updated: ${format.escapeMd(format.relativeTime(repo.updated_at))}\n` +
+    `└ Created: ${format.escapeMd(format.relativeTime(repo.created_at))}` +
+    tagLine;
 
   ctx.session = ctx.session || {};
   ctx.session.currentRepo = repo.name;
@@ -35,14 +75,14 @@ async function showRepoView(ctx, repoName) {
   // Reply keyboard (BBTB) and inline keyboard can't share one message — send
   // the BBTB once via a tiny marker message, then the real content with only inline.
   await ctx.reply('📦 Repo View', bbtb.repoView);
-  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.repoActions(repo.name) });
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.repoActions(repo.name, pinned) });
 }
 
 async function showRepoDetails(ctx, repoName) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
-  const user = await github.getAuthenticatedUser(token);
+  const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
   let fileCount = '—';
   try {
@@ -75,26 +115,37 @@ async function executeDeleteRepo(ctx, repoName) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
-  try {
-    const user = await github.getAuthenticatedUser(token);
-    await github.deleteRepo(token, user.login, repoName);
-    await activity.log(ctx.from.id, '🗑', `Deleted repo → ${repoName}`);
-    await ctx.reply(format.successMessage(`Deleted repository "${repoName}"`), bbtb.mainMenu);
-  } catch (err) {
-    await activity.log(ctx.from.id, '⚠️', `Delete repo failed → ${repoName}`, { detail: err.message, isError: true });
-    await ctx.reply(format.errorMessage(
-      `Couldn\u2019t delete "${repoName}"`,
-      err.message,
-      'Check your token permissions and try again.'
-    ));
-  }
+  const actionLock = require('../lib/actionLock');
+  const { skipped } = await actionLock.withLock(ctx.from.id, async () => {
+    try {
+      const user = await repoCache.getUser(ctx.from.id, token);
+      await github.deleteRepo(token, user.login, repoName);
+      repoCache.invalidateRepos(ctx.from.id);
+      repoCache.invalidateLanguages(ctx.from.id, repoName);
+      await activity.log(ctx.from.id, '🗑', `Deleted repo → ${repoName}`);
+      await cleanupOrphanedData(ctx.from.id, repoName);
+      await ctx.reply(format.successMessage(`Deleted repository "${repoName}"`), bbtb.mainMenu);
+    } catch (err) {
+      await activity.log(ctx.from.id, '⚠️', `Delete repo failed → ${repoName}`, { detail: err.message, isError: true });
+      const errorHelpers = require('../lib/errorHelpers');
+      const wasAuthError = await errorHelpers.replyGithubError(ctx, err, `Couldn\u2019t delete "${repoName}"`);
+      if (!wasAuthError) {
+        await ctx.reply(format.errorMessage(
+          `Couldn\u2019t delete "${repoName}"`,
+          err.message,
+          'Check your token permissions and try again.'
+        ));
+      }
+    }
+  });
+  if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
 async function askToggleVisibility(ctx, repoName) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
-  const user = await github.getAuthenticatedUser(token);
+  const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
 
   const text = repo.private
@@ -105,24 +156,35 @@ async function askToggleVisibility(ctx, repoName) {
 }
 
 async function executeToggleVisibility(ctx, repoName) {
+  const actionLock = require('../lib/actionLock');
+  const { skipped } = await actionLock.withLock(ctx.from.id, () => _executeToggleVisibility(ctx, repoName));
+  if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
+}
+
+async function _executeToggleVisibility(ctx, repoName) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
   try {
-    const user = await github.getAuthenticatedUser(token);
+    const user = await repoCache.getUser(ctx.from.id, token);
     const repo = await github.getRepo(token, user.login, repoName);
     const updated = await github.setVisibility(token, user.login, repoName, !repo.private);
+    repoCache.invalidateRepos(ctx.from.id);
     await activity.log(ctx.from.id, '🔒', `Visibility changed → ${repoName} (${repo.private ? 'Private→Public' : 'Public→Private'})`);
     await ctx.reply(format.successMessage(
       `Visibility updated: ${repoName} is now ${updated.private ? '🔒 Private' : '🌐 Public'}`
     ));
   } catch (err) {
     await activity.log(ctx.from.id, '⚠️', `Visibility change failed → ${repoName}`, { detail: err.message, isError: true });
-    await ctx.reply(format.errorMessage(
-      `Couldn\u2019t change visibility`,
-      err.message.includes('403') ? 'your token may not have admin rights on this repo' : err.message,
-      'Try reconnecting GitHub with full scope.'
-    ));
+    const errorHelpers = require('../lib/errorHelpers');
+    const wasAuthError = await errorHelpers.replyGithubError(ctx, err, 'Couldn\u2019t change visibility');
+    if (!wasAuthError) {
+      await ctx.reply(format.errorMessage(
+        `Couldn\u2019t change visibility`,
+        err.message.includes('403') ? 'your token may not have admin rights on this repo' : err.message,
+        'Try reconnecting GitHub with full scope.'
+      ));
+    }
   }
 }
 
@@ -132,7 +194,7 @@ async function downloadRepo(ctx, repoName) {
 
   await ctx.reply(`📦 Preparing zip of ${format.escapeMd(repoName)}\\.\\.\\.`, { parse_mode: 'MarkdownV2' });
   try {
-    const user = await github.getAuthenticatedUser(token);
+    const user = await repoCache.getUser(ctx.from.id, token);
     const repo = await github.getRepo(token, user.login, repoName);
     const buffer = await github.downloadZip(token, user.login, repoName, repo.default_branch);
 
@@ -149,8 +211,24 @@ async function downloadRepo(ctx, repoName) {
     await activity.log(ctx.from.id, '⬇️', `Downloaded repo → ${repoName}`);
   } catch (err) {
     await activity.log(ctx.from.id, '⚠️', `Download failed → ${repoName}`, { detail: err.message, isError: true });
-    await ctx.reply(format.errorMessage('Download failed', err.message, 'Try again.'));
+    const errorHelpers = require('../lib/errorHelpers');
+    await errorHelpers.replyGithubError(ctx, err, 'Download failed');
   }
+}
+
+async function togglePin(ctx, repoName) {
+  const telegramId = ctx.from.id;
+  const isPinned = await pins.isPinned(telegramId, repoName);
+
+  if (isPinned) {
+    await pins.unpin(telegramId, repoName);
+    await ctx.reply(`📌 Unpinned — removed from ⭐ Pinned.`);
+  } else {
+    await pins.pin(telegramId, repoName);
+    await ctx.reply(`📌 Pinned — added to ⭐ Pinned for quick access.`);
+  }
+  // Re-render so the 📌 tag on the info card and the button label both update immediately
+  return showRepoView(ctx, repoName);
 }
 
 module.exports = {
@@ -161,4 +239,6 @@ module.exports = {
   askToggleVisibility,
   executeToggleVisibility,
   downloadRepo,
+  cleanupOrphanedData,
+  togglePin,
 };

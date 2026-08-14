@@ -37,6 +37,18 @@ function languageLine(lang) {
   return lang ? `${languageEmoji(lang)} ${lang}` : '⚪ No language detected';
 }
 
+/** Turns { JavaScript: 12000, HTML: 4000 } into "JavaScript 75% · HTML 25%" (top 3) */
+function languageBreakdown(languages) {
+  const entries = Object.entries(languages || {});
+  if (entries.length === 0) return 'No language detected';
+  const total = entries.reduce((sum, [, bytes]) => sum + bytes, 0);
+  return entries
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([lang, bytes]) => `${lang} ${Math.round((bytes / total) * 100)}%`)
+    .join(' · ');
+}
+
 function visibilityLine(isPrivate) {
   return isPrivate ? '🔒 Private' : '🌐 Public';
 }
@@ -92,6 +104,7 @@ function escapeCodeBlock(text = '') {
 module.exports = {
   languageEmoji,
   languageLine,
+  languageBreakdown,
   visibilityLine,
   relativeTime,
   formatBytes,

@@ -3,11 +3,19 @@ const format = require('../lib/format');
 const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const config = require('../config');
+const dataStore = require('../lib/dataStore');
 
 async function showActivity(ctx, { page = 1, errorsOnly = false, edit = false } = {}) {
   const telegramId = ctx.from.id;
   const limit = config.ACTIVITY_PER_PAGE;
   const offset = (page - 1) * limit;
+
+  // Opportunistic cleanup: prunes anything past the user's configured
+  // retention window (Storage & Data → Auto-Cleanup) whenever this screen
+  // loads — cheap single DELETE query, no separate scheduler needed.
+  if (!edit) {
+    await dataStore.pruneOldActivity(telegramId).catch(() => {});
+  }
 
   const { rows, total } = await activity.recent(telegramId, { limit, offset, errorsOnly });
   const totalPages = Math.max(1, Math.ceil(total / limit));

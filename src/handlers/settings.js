@@ -61,14 +61,45 @@ async function showSettings(ctx) {
     `├ Memory: ${format.escapeMd(memLine)}\n` +
     `└ Bot version: v${format.escapeMd(config.BOT_VERSION)}`;
 
+  // System Alerts notification: push a distinct alert (not just an Activity
+  // Log entry) when a DB is down and the person has this category on —
+  // debounced to at most once per 10 minutes per DB. Checked BEFORE writing
+  // this check's own log entries below, so the very first occurrence isn't
+  // mistaken for "already alerted recently".
+  await maybePushSystemAlert(telegramId, pgStatus, redisStatus, ctx);
+
   if (!pgStatus.ok) {
     await activity.log(telegramId, '⚠️', 'Postgres unreachable', { detail: pgStatus.error, isError: true }).catch(() => {});
+  }
+  if (!redisStatus.ok) {
+    await activity.log(telegramId, '⚠️', 'Redis unreachable', { detail: redisStatus.error, isError: true }).catch(() => {});
   }
 
   await ctx.reply(text, {
     parse_mode: 'MarkdownV2',
     reply_markup: (connected ? bbtb.settings : bbtb.disconnected).reply_markup,
   });
+}
+
+async function maybePushSystemAlert(telegramId, pgStatus, redisStatus, ctx) {
+  const down = [];
+  if (!pgStatus.ok) down.push('PostgreSQL');
+  if (!redisStatus.ok) down.push('Redis');
+  if (down.length === 0) return;
+
+  try {
+    const prefs = await users.getNotificationPrefs(telegramId);
+    if (!prefs || !prefs.systemAlerts) return;
+
+    const { rows } = await activity.recent(telegramId, { limit: 5, errorsOnly: true });
+    const recentlyAlerted = rows.some((r) =>
+      down.some((name) => r.summary.includes(`${name} unreachable`)) &&
+      Date.now() - new Date(r.created_at).getTime() < 10 * 60 * 1000
+    );
+    if (recentlyAlerted) return;
+
+    await ctx.reply(`⚠️ System Alert: ${down.join(' and ')} ${down.length > 1 ? 'are' : 'is'} unreachable. Some features may fail until this recovers.`);
+  } catch (_) { /* best-effort — never let alerting itself crash Settings */ }
 }
 
 async function askDisconnect(ctx) {
@@ -86,8 +117,18 @@ async function askDisconnect(ctx) {
 }
 
 async function executeDisconnect(ctx) {
+  const actionLock = require('../lib/actionLock');
+  const { skipped } = await actionLock.withLock(ctx.from.id, () => _executeDisconnect(ctx));
+  if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
+}
+
+async function _executeDisconnect(ctx) {
   await users.disconnect(ctx.from.id);
+  const repoCache = require('../lib/repoCache');
+  repoCache.invalidateUser(ctx.from.id);
   await activity.log(ctx.from.id, '🚪', 'Disconnected GitHub account');
+  const accessLog = require('../lib/accessLog');
+  await accessLog.record(ctx.from.id, 'disconnected');
 
   const { sendConnectPrompt } = require('./start');
   await sendConnectPrompt(ctx, {

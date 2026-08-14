@@ -1,10 +1,17 @@
 const { createClient } = require('redis');
 const config = require('../config');
+const logger = require('../lib/logger');
 
 const client = createClient({ url: config.REDIS_URL });
 
 client.on('error', (err) => {
-  console.error('⚠️ Redis client error:', err.message);
+  logger.error('Redis client error', { message: err.message });
+});
+client.on('reconnecting', () => {
+  logger.warn('Redis reconnecting...');
+});
+client.on('ready', () => {
+  logger.info('Redis connection ready');
 });
 
 let connected = false;
@@ -12,7 +19,7 @@ async function connect() {
   if (!connected) {
     await client.connect();
     connected = true;
-    console.log('✅ Redis connected');
+    logger.info('Redis connected');
   }
 }
 
@@ -30,4 +37,12 @@ async function ping() {
   }
 }
 
-module.exports = { client, connect, ping };
+/** Closes the Redis connection cleanly — used on graceful shutdown (SIGTERM). */
+async function close() {
+  if (connected) {
+    await client.quit();
+    connected = false;
+  }
+}
+
+module.exports = { client, connect, ping, close };

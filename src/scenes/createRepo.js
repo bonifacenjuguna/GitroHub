@@ -39,7 +39,15 @@ const scene = new Scenes.WizardScene(
     }
     ctx.wizard.state.data.name = name;
     await ctx.reply('📦 New Repo — Step 2 of 4', bbtb.cancelWithBack);
-    await ctx.reply(`Repo name: ${name} ✅\nChoose visibility:`, inline.createRepoVisibility);
+
+    const defaultsLib = require('../lib/defaults');
+    const d = await defaultsLib.getDefaults(ctx.from.id);
+    const defaultVis = d ? d.default_visibility : 'private';
+    const keyboard = Markup.inlineKeyboard([
+      [Markup.button.callback(defaultVis === 'private' ? '🔒 Private ✓ default' : '🔒 Private', 'create:visibility:private')],
+      [Markup.button.callback(defaultVis === 'public' ? '🌐 Public ✓ default' : '🌐 Public', 'create:visibility:public')],
+    ]);
+    await ctx.reply(`Repo name: ${name} ✅\nChoose visibility:`, keyboard);
     return ctx.wizard.next();
   },
 
@@ -93,18 +101,42 @@ const scene = new Scenes.WizardScene(
     const { name, isPrivate, description } = ctx.wizard.state.data;
     try {
       const repo = await github.createRepo(token, { name, isPrivate, description });
-      await activity.log(ctx.from.id, '➕', `Created repo → ${name}`);
+      const repoCache = require('../lib/repoCache');
+      repoCache.invalidateRepos(ctx.from.id);
+      await activity.log(ctx.from.id, '➕', `Created repo → ${name}`, {
+        detail: `visibility:${isPrivate ? 'private' : 'public'}`,
+      });
       await ctx.reply('📍 Main Menu', bbtb.mainMenu);
       await ctx.reply(
         `✅ Repo created: ${repo.name}\n🔗 ${repo.html_url}`,
         inline.createRepoSuccess(repo.name)
       );
+
+      // "Learn from me" — if your last 3 repos all chose the same visibility
+      // and it doesn't match your saved default, offer to update the default.
+      const defaults = require('../lib/defaults');
+      const suggestion = await defaults.checkVisibilityPattern(ctx.from.id);
+      if (suggestion) {
+        const label = suggestion === 'private' ? '🔒 Private' : '🌐 Public';
+        await ctx.reply(
+          `💡 You've chosen ${label} the last 3 times, even though your saved default is different. Update your default to ${label}?`,
+          Markup.inlineKeyboard([
+            [Markup.button.callback('✅ Yes, Update Default', `createrepo:learndefault:${suggestion}`)],
+            [Markup.button.callback('➖ Keep as is', 'createrepo:learndefault:skip')],
+          ])
+        );
+      }
     } catch (err) {
-      const reason = err.status === 422
-        ? `GitHub says "${name}" already exists on your account`
-        : err.message;
       await activity.log(ctx.from.id, '⚠️', `Create repo failed → ${name}`, { detail: err.message, isError: true });
-      await ctx.reply(format.errorMessage('Couldn\u2019t create repo', reason, 'Choose a different name and try again.'), bbtb.mainMenu);
+      const errorHelpers = require('../lib/errorHelpers');
+      if (errorHelpers.isAuthError(err)) {
+        await errorHelpers.replyGithubError(ctx, err, 'Couldn\u2019t create repo');
+      } else {
+        const reason = err.status === 422
+          ? `GitHub says "${name}" already exists on your account`
+          : err.message;
+        await ctx.reply(format.errorMessage('Couldn\u2019t create repo', reason, 'Choose a different name and try again.'), bbtb.mainMenu);
+      }
     }
     return ctx.scene.leave();
   }

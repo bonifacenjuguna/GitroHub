@@ -6,6 +6,7 @@ const oauth = require('../lib/oauth');
 const github = require('../lib/github');
 const users = require('../lib/users');
 const activity = require('../lib/activity');
+const logger = require('../lib/logger');
 
 const PAGE_TEMPLATE = fs.readFileSync(path.join(__dirname, '..', '..', 'public', 'callback.html'), 'utf8');
 
@@ -22,12 +23,45 @@ function renderPage(data) {
   return PAGE_TEMPLATE.replace('</head>', `${inject}</head>`);
 }
 
+// Health check ping cache — avoids re-pinging both DBs on every single
+// poll if Railway (or any external monitor) checks frequently.
+const HEALTH_CACHE_TTL_MS = 5000;
+let healthCache = null;
+
+async function getHealthStatus() {
+  if (healthCache && Date.now() - healthCache.timestamp < HEALTH_CACHE_TTL_MS) {
+    return healthCache.result;
+  }
+  const pgDb = require('../db/postgres');
+  const redisDb = require('../db/redis');
+  const [pgStatus, redisStatus] = await Promise.all([pgDb.ping(), redisDb.ping()]);
+  const result = { pgStatus, redisStatus };
+  healthCache = { result, timestamp: Date.now() };
+  return result;
+}
+
 function createApp(bot) {
   const app = express();
   app.use('/logo.png', express.static(path.join(__dirname, '..', '..', 'public', 'logo.png')));
 
   app.get('/', (req, res) => {
     res.send('GitroHub is running. This endpoint has nothing to show you directly — open the bot on Telegram.');
+  });
+
+  // Railway can poll this to detect a degraded instance and restart it
+  // proactively, rather than only reacting after a hard OOM kill.
+  app.get('/health', async (req, res) => {
+    const { pgStatus, redisStatus } = await getHealthStatus();
+    const mem = process.memoryUsage();
+    const healthy = pgStatus.ok && redisStatus.ok;
+
+    res.status(healthy ? 200 : 503).json({
+      status: healthy ? 'ok' : 'degraded',
+      postgres: pgStatus.ok,
+      redis: redisStatus.ok,
+      memoryMB: Math.round(mem.rss / 1024 / 1024),
+      uptimeSeconds: Math.round(process.uptime()),
+    });
   });
 
   app.get('/callback', async (req, res) => {
@@ -60,7 +94,11 @@ function createApp(bot) {
 
     try {
       const tokenData = await oauth.exchangeCodeForToken(code);
-      const ghUser = await github.getAuthenticatedUser(tokenData.access_token);
+      const repoCache = require('../lib/repoCache');
+      const ghUser = await repoCache.getUser(telegramId, tokenData.access_token);
+
+      const existingUser = await users.getUser(telegramId);
+      const isReconnect = !!(existingUser && existingUser.connected_at);
 
       await users.saveConnection(telegramId, {
         accessToken: tokenData.access_token,
@@ -70,13 +108,20 @@ function createApp(bot) {
 
       await activity.log(telegramId, '🔗', `Connected GitHub account (@${ghUser.login})`, {});
 
+      const accessLog = require('../lib/accessLog');
+      await accessLog.record(telegramId, isReconnect ? 'reconnected' : 'connected', `scope: ${tokenData.scope}`);
+
       // Proactively push the confirmation into the chat (per design: bot pushes
       // this automatically, no need for the user to tap anything back in Telegram)
-      const { successMessage, escapeMd } = require('../lib/format');
+      const { escapeMd } = require('../lib/format');
       const bbtb = require('../keyboards/bbtb');
+      const updatedUser = await users.getUser(telegramId);
+      const alertLine = updatedUser.alert_on_new_connection
+        ? '\n\n🔐 New session started — logged in 🔑 Access Log (Settings).'
+        : '';
       await bot.telegram.sendMessage(
         telegramId,
-        `✅ *GitHub Connected*\nLinked as: ${escapeMd(ghUser.login)}\nScope: repo, delete\\_repo \\(full control, including delete\\)`,
+        `✅ *GitHub Connected*\nLinked as: ${escapeMd(ghUser.login)}\nScope: repo, delete\\_repo \\(full control, including delete\\)${escapeMd(alertLine)}`,
         { parse_mode: 'MarkdownV2', reply_markup: bbtb.mainMenu.reply_markup }
       );
 
@@ -87,7 +132,7 @@ function createApp(bot) {
         botDeepLink,
       }));
     } catch (err) {
-      console.error('OAuth callback error:', err.message);
+      logger.error('OAuth callback error', { message: err.message });
       await activity.log(telegramId, '⚠️', 'GitHub connection failed', { detail: err.message, isError: true }).catch(() => {});
 
       return res.send(renderPage({
@@ -98,6 +143,15 @@ function createApp(bot) {
         botDeepLink,
       }));
     }
+  });
+
+  // Catch-all for anything unexpected in a route that wasn't already
+  // handled by its own try/catch — fails clean with a generic 500 instead
+  // of an unpredictable Express default error page or a hung response.
+  app.use((err, req, res, next) => {
+    logger.error('Unhandled Express error', { path: req.path, message: err.message });
+    if (res.headersSent) return next(err);
+    res.status(500).send('Something went wrong. Please try again.');
   });
 
   return app;
