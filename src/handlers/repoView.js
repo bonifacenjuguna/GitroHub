@@ -41,21 +41,26 @@ async function showRepoView(ctx, repoName) {
     ));
   }
 
-  // Language % breakdown (all languages, not just the dominant one) and real
-  // tree-derived size/file/folder counts — both best-effort, since an empty
-  // repo has no tree/languages at all and shouldn't block the rest of the card.
-  let langBreakdown = 'No language detected';
+  // Full language breakdown (no top-3 cap here — that's only for compact cards).
+  let langLine = 'No language detected';
   try {
     const languages = await repoCache.getLanguages(ctx.from.id, repo.owner.login, repo.name, token);
-    langBreakdown = format.languageBreakdown(languages);
+    langLine = format.languageBreakdown(languages, null);
   } catch (_) {
-    langBreakdown = repo.language || 'No language detected';
+    langLine = repo.language || 'No language detected';
   }
 
-  let treeStats = null;
+  // Real size + file/folder counts computed from the tree, not GitHub's
+  // laggy repo.size field — see the standing "Repo size not updating" fix.
+  let fileCount = '—';
+  let folderCount = '—';
+  let sizeText = format.formatBytes(repo.size * 1024); // fallback if the tree fetch fails
   try {
-    treeStats = await repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token);
-  } catch (_) { /* empty/new repo — fall back to repo.size below */ }
+    const stats = await repoCache.getRepoStats(ctx.from.id, repo.owner.login, repo.name, token);
+    fileCount = stats.fileCount;
+    folderCount = stats.folderCount;
+    sizeText = format.formatBytes(stats.totalBytes);
+  } catch (_) { /* best-effort — repo may be empty or the call may fail transiently */ }
 
   const [pinned, repoTags] = await Promise.all([
     pins.isPinned(ctx.from.id, repo.name),
@@ -63,27 +68,21 @@ async function showRepoView(ctx, repoName) {
   ]);
 
   const tagLine = repoTags.length > 0
-    ? `🏷️ ${format.escapeMd(repoTags.map((t) => `${t.emoji} ${t.name}`).join(' · '))}`
-    : '';
-
-  const card = format.repoCard(repo, {
-    pinned,
-    sizeBytes: treeStats ? treeStats.sizeBytes : undefined,
-    tagLine,
-  });
-
-  const fileFolderLine = treeStats
-    ? `▸ ${treeStats.fileCount} files · ${treeStats.folderCount} folders${treeStats.sizeIncomplete ? ' (size is a lower bound — some very large files weren\u2019t sized)' : ''}\n`
+    ? `\n🏷️ ${format.escapeMd(repoTags.map((t) => `${t.emoji} ${t.name}`).join(' · '))}`
     : '';
 
   const text =
-    `${card}\n\n` +
-    `💻 *LANGUAGES*\n${format.escapeMd(langBreakdown)}\n\n` +
+    `📦 *${format.escapeMd(repo.name)}*${pinned ? ' 📌' : ''}\n` +
+    `${format.visibilityLine(repo.private)} · ⭐ ${repo.stargazers_count} · 🍴 ${repo.forks_count} · 👁 ${repo.watchers_count}\n\n` +
+    `💻 *LANGUAGES*\n${format.escapeMd(langLine)}\n\n` +
     `📊 *DETAILS*\n` +
-    fileFolderLine +
-    `▸ Last updated: ${format.escapeMd(format.relativeTime(repo.updated_at))}\n` +
-    `▸ Last commit: ${format.escapeMd(format.relativeTime(repo.pushed_at))}\n` +
-    `▸ Created: ${format.escapeMd(format.relativeTime(repo.created_at))}`;
+    `├ Size: ${format.escapeMd(sizeText)}\n` +
+    `├ Files: ${format.escapeMd(String(fileCount))} · Folders: ${format.escapeMd(String(folderCount))}\n` +
+    `├ License: ${format.escapeMd(format.licenseLine(repo))}\n` +
+    `├ Last updated: ${format.escapeMd(format.relativeTime(repo.updated_at))}\n` +
+    `└ Created: ${format.escapeMd(format.relativeTime(repo.created_at))}\n\n` +
+    `📝 *DESCRIPTION*\n${repo.description ? `"${format.escapeMd(repo.description)}"` : 'No description yet'}` +
+    tagLine;
 
   ctx.session = ctx.session || {};
   ctx.session.currentRepo = repo.name;
@@ -101,21 +100,19 @@ async function showRepoDetails(ctx, repoName) {
 
   const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
-  let treeStats = null;
+  let fileCount = '—';
+  let sizeText = format.formatBytes(repo.size * 1024); // fallback if the tree fetch fails
   try {
-    treeStats = await repoCache.getTreeStats(ctx.from.id, user.login, repoName, token);
+    const stats = await repoCache.getRepoStats(ctx.from.id, user.login, repoName, token);
+    fileCount = stats.fileCount;
+    sizeText = format.formatBytes(stats.totalBytes);
   } catch (_) { /* best-effort, non-fatal */ }
-
-  const sizeBytes = treeStats ? treeStats.sizeBytes : (repo.size || 0) * 1024;
-  const fileLine = treeStats
-    ? `📂 ${treeStats.fileCount} files · ${treeStats.folderCount} folders · ${format.escapeMd(format.formatBytes(sizeBytes))} total\n\n`
-    : `📂 ${format.escapeMd(format.formatBytes(sizeBytes))} total\n\n`;
 
   const text =
     `🔍 *${format.escapeMd(repo.name)} — Full Details*\n\n` +
     `📊 *Stats*\n` +
     `⭐ ${repo.stargazers_count} stars · 🍴 ${repo.forks_count} forks · 👁 ${repo.watchers_count} watchers\n` +
-    fileLine +
+    `📂 ${format.escapeMd(String(fileCount))} files · ${format.escapeMd(sizeText)} total\n\n` +
     `🌐 *Activity*\n` +
     `Created: ${format.escapeMd(format.relativeTime(repo.created_at))}\n` +
     `Last push: ${format.escapeMd(format.relativeTime(repo.pushed_at))}\n` +

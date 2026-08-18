@@ -37,20 +37,55 @@ function languageLine(lang) {
   return lang ? `${languageEmoji(lang)} ${lang}` : '⚪ No language detected';
 }
 
-/** Turns { JavaScript: 12000, HTML: 4000 } into "JavaScript 75% · HTML 25%" (top 3) */
-function languageBreakdown(languages) {
+/**
+ * Turns { JavaScript: 12000, HTML: 4000 } into "JavaScript 75% · HTML 25%".
+ * `limit` caps how many languages are shown (default 3, for compact repo-card
+ * use in lists); pass `null`/`Infinity` to list every language GitHub
+ * reports — used by the full Repo View screen.
+ */
+function languageBreakdown(languages, limit = 3) {
   const entries = Object.entries(languages || {});
   if (entries.length === 0) return 'No language detected';
   const total = entries.reduce((sum, [, bytes]) => sum + bytes, 0);
+  const cap = limit == null ? entries.length : limit;
   return entries
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 3)
+    .slice(0, cap)
     .map(([lang, bytes]) => `${lang} ${Math.round((bytes / total) * 100)}%`)
     .join(' · ');
 }
 
 function visibilityLine(isPrivate) {
   return isPrivate ? '🔒 Private' : '🌐 Public';
+}
+
+function licenseLine(repo) {
+  return (repo && repo.license && (repo.license.spdx_id || repo.license.name)) || 'No license';
+}
+
+/**
+ * The standard section header used at the top of every repo-list-style
+ * screen (My Repos, Pinned, Search, Stats): "◆ TITLE ──────── N total"
+ */
+function sectionHeader(title, count, countLabel = 'total') {
+  return `◆ ${title} ${'─'.repeat(8)} ${count} ${countLabel}`;
+}
+
+/**
+ * Standard repo-card block, used everywhere a repo is listed as its own
+ * message-text entry (My Repos, Repo View summary line, Pinned, Search).
+ * Caller joins cards with the standard "──────────────────" divider.
+ */
+function repoCard(repo, { langLine, pinned = false, extraLines = [] } = {}) {
+  const sizeText = formatBytes((repo.size || 0) * 1024);
+  const lines = [
+    `${pinned ? '📌 ' : ''}${escapeMd(repo.name)}`,
+    `▸ ${escapeMd(langLine)} · ${visibilityLine(repo.private)} · ${escapeMd(sizeText)} · ${escapeMd(licenseLine(repo))}`,
+    `▸ ★ ${repo.stargazers_count}  🍴 ${repo.forks_count}  ·  🕒 ${escapeMd(relativeTime(repo.updated_at))}`,
+    `▸ ${repo.description ? `"${escapeMd(repo.description)}"` : 'No description yet'}`,
+  ];
+  for (const extra of extraLines) lines.push(`▸ ${extra}`);
+  return lines.join('\n');
 }
 
 /** Relative timestamp per the locked rule: "12m ago" / "2h ago" / "3d ago" / "Month Year" */
@@ -91,54 +126,6 @@ function successMessage(what, detail) {
   return msg;
 }
 
-/**
- * Locked bot-wide repo-card layout (v0.8.0 redesign) — used everywhere a
- * repo is listed: My Repos, Repo View, Pinned, Search results, Bulk Select
- * previews, and Stats. One function so every screen renders identically and
- * a future style change only touches one place.
- *
- *   📌 GitroHub
- *   ▸ JS · 🌐 Public · 2.4 MB · MIT
- *   ▸ ★ 0  🍴 0  ·  🕒 37m ago
- *   ▸ "A Telegram bot for tracking GitHub repos"
- *
- * `sizeBytes`, when provided (Repo View/Details, which already fetch the
- * tree), overrides GitHub's lagging cached `repo.size` field — see
- * lib/github.js getTreeStats(). List screens that don't already fetch a
- * per-repo tree fall back to repo.size to avoid an extra API call per row.
- */
-function repoCard(repo, { pinned = false, license, description, sizeBytes, tagLine = '' } = {}) {
-  const pin = pinned ? '📌 ' : '';
-  const name = `${pin}*${escapeMd(repo.name)}*`;
-  const lang = escapeMd(repo.language || 'No language');
-  const vis = visibilityLine(repo.private);
-  const bytes = typeof sizeBytes === 'number' ? sizeBytes : (repo.size || 0) * 1024;
-  const size = escapeMd(formatBytes(bytes));
-  const licName = license !== undefined ? license : (repo.license && (repo.license.name || repo.license.spdx_id));
-  const lic = escapeMd(licName && licName !== 'NOASSERTION' ? licName : 'No license');
-  const desc = description !== undefined ? description : repo.description;
-  const descLine = desc ? `"${escapeMd(desc)}"` : 'No description yet';
-  const updated = escapeMd(relativeTime(repo.updated_at || repo.pushed_at));
-
-  let card =
-    `${name}\n` +
-    `▸ ${lang} · ${vis} · ${size} · ${lic}\n` +
-    `▸ ★ ${repo.stargazers_count || 0}  🍴 ${repo.forks_count || 0}  ·  🕒 ${updated}\n` +
-    `▸ ${descLine}`;
-  if (tagLine) card += `\n${tagLine}`;
-  return card;
-}
-
-/** The solid divider used between cards in every repo list. */
-const CARD_DIVIDER = '──────────────────';
-
-/** Locked ◆ section header: "◆ REPOSITORIES ──────── 4 total" */
-function sectionHeader(title, countLabel) {
-  const upper = title.toUpperCase();
-  const dashes = '─'.repeat(Math.max(4, 24 - upper.length));
-  return `◆ ${escapeMd(upper)} ${dashes} ${escapeMd(countLabel)}`;
-}
-
 /** Escapes MarkdownV2 reserved characters for safe Telegram rendering */
 function escapeMd(text = '') {
   return String(text).replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
@@ -154,13 +141,13 @@ module.exports = {
   languageLine,
   languageBreakdown,
   visibilityLine,
+  licenseLine,
+  sectionHeader,
+  repoCard,
   relativeTime,
   formatBytes,
   errorMessage,
   successMessage,
   escapeMd,
   escapeCodeBlock,
-  repoCard,
-  CARD_DIVIDER,
-  sectionHeader,
 };

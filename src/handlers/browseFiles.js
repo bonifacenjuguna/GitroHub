@@ -161,7 +161,6 @@ async function _executeDeleteFile(ctx, repoName, filePath) {
     await github.deleteFile(token, user.login, repoName, filePath, sha, `Delete ${filePath} via GitroHub`);
     repoCache.invalidateRepos(ctx.from.id);
     repoCache.invalidateLanguages(ctx.from.id, repoName);
-    repoCache.invalidateTreeStats(ctx.from.id, repoName);
     await activity.log(ctx.from.id, '🗑', `Deleted file → ${filePath} (${repoName})`);
     await ctx.reply(format.successMessage(`Deleted "${filePath}"`));
   } catch (err) {

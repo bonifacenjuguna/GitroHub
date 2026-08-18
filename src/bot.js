@@ -1,10 +1,9 @@
-const { Telegraf, Scenes, session } = require('telegraf');
+const { Telegraf, Scenes, session, Markup } = require('telegraf');
 const config = require('./config');
 const ownerGate = require('./middleware/ownerGate');
 const redisStore = require('./middleware/redisSessionStore');
 const users = require('./lib/users');
 const bbtb = require('./keyboards/bbtb');
-const inline = require('./keyboards/inline');
 
 const startHandler = require('./handlers/start');
 const myRepos = require('./handlers/myRepos');
@@ -20,6 +19,7 @@ const bulkActions = require('./handlers/bulkActions');
 const myDefaults = require('./handlers/myDefaults');
 const storageData = require('./handlers/storageData');
 const accessLogScreen = require('./handlers/accessLogScreen');
+const stats = require('./handlers/stats');
 
 const createRepoScene = require('./scenes/createRepo');
 const renameRepoScene = require('./scenes/renameRepo');
@@ -116,13 +116,16 @@ function createBot() {
     '📁 My Repos': (ctx) => myRepos.showMyRepos(ctx),
     '➕ New Repo': (ctx) => ctx.scene.enter('createRepo'),
     '🔍 Search Repo': async (ctx) => {
-      await ctx.reply('🔍 Search for a repo:', inline.searchTypeMenu());
+      await ctx.reply('🔍 Search', Markup.inlineKeyboard([
+        [Markup.button.callback('📁 My Repos', 'search:target:mine')],
+        [Markup.button.callback('🌐 Public Repo', 'search:target:public')],
+      ]));
     },
     '⚙️ Settings': (ctx) => settings.showSettings(ctx),
     '🔗 Connect GitHub': (ctx) => startHandler.sendConnectPrompt(ctx),
 
     '⬆️ Back to Menu': async (ctx) => {
-      ctx.session.awaitingSearch = false;
+      ctx.session.searchMode = null;
       const connected = await users.isConnected(ctx.from.id);
       await ctx.reply('📍 Main Menu', connected ? bbtb.mainMenu : bbtb.disconnected);
     },
@@ -132,7 +135,7 @@ function createBot() {
     '🔄 Refresh': (ctx) => myRepos.showMyRepos(ctx),
     '⭐ Pinned': (ctx) => pinned.showPinned(ctx),
     '🧹 Bulk Select': (ctx) => bulkActions.startBulkSelect(ctx),
-    '📊 Stats': (ctx) => myRepos.showStats(ctx),
+    '📊 Stats': (ctx) => stats.showStats(ctx),
 
     '⬅️ Back to Repos': (ctx) => myRepos.showMyRepos(ctx),
 
@@ -189,7 +192,10 @@ function createBot() {
     '🔑 Access Log': (ctx) => accessLogScreen.showAccessLog(ctx),
 
     '🔁 Search Again': async (ctx) => {
-      await ctx.reply('🔍 Search for a repo:', inline.searchTypeMenu());
+      await ctx.reply('🔍 Search', Markup.inlineKeyboard([
+        [Markup.button.callback('📁 My Repos', 'search:target:mine')],
+        [Markup.button.callback('🌐 Public Repo', 'search:target:public')],
+      ]));
     },
 
     '📤 Upload Another': async (ctx) => {
@@ -223,8 +229,7 @@ function createBot() {
     // Clears EVERY session-flag-driven flow, not just search — otherwise a
     // stale flag (e.g. awaitingFullReset) stays stuck after Cancel and can
     // misfire on the next unrelated message the person sends.
-    ctx.session.awaitingSearch = false;
-    ctx.session.awaitingPublicRepo = false;
+    ctx.session.searchMode = null;
     ctx.session.awaitingFileSearch = false;
     delete ctx.session.creatingTag;
     delete ctx.session.editingDefault;
@@ -240,12 +245,12 @@ function createBot() {
     if (ctx.session.editingDefault) return myDefaults.handleTextInput(ctx);
     if (ctx.session.awaitingFullReset) return storageData.handleResetConfirmationText(ctx);
 
-    if (ctx.session.awaitingSearch) {
-      ctx.session.awaitingSearch = false;
-      return search.handleMyReposSearchInput(ctx, ctx.message.text);
+    if (ctx.session.searchMode === 'mine') {
+      ctx.session.searchMode = null;
+      return search.handleRepoSearch(ctx, ctx.message.text);
     }
-    if (ctx.session.awaitingPublicRepo) {
-      ctx.session.awaitingPublicRepo = false;
+    if (ctx.session.searchMode === 'public') {
+      ctx.session.searchMode = null;
       return search.handlePublicRepoInput(ctx, ctx.message.text);
     }
     if (ctx.session.awaitingFileSearch) {
@@ -259,17 +264,18 @@ function createBot() {
   bot.on('callback_query', async (ctx, next) => {
     const data = ctx.callbackQuery.data || '';
 
-    // Search entry-point split (📁 My Repos vs 🌐 Public Repo)
-    if (data === 'search:type:myrepos') {
+    // Search entry-point split — was one text box guessing intent from
+    // whether the input looked like a URL; now the person picks up front.
+    if (data === 'search:target:mine') {
       await ctx.answerCbQuery();
-      ctx.session.awaitingSearch = true;
-      await ctx.reply('🔍 Type a name or keyword to fuzzy-search your repos.', bbtb.cancelOnly);
+      ctx.session.searchMode = 'mine';
+      await ctx.reply('📁 Type a repo name or keyword to search your repos.', bbtb.cancelOnly);
       return;
     }
-    if (data === 'search:type:public') {
+    if (data === 'search:target:public') {
       await ctx.answerCbQuery();
-      ctx.session.awaitingPublicRepo = true;
-      await ctx.reply('🌐 Paste a GitHub repo link (e.g. https://github.com/owner/repo).', bbtb.cancelOnly);
+      ctx.session.searchMode = 'public';
+      await ctx.reply('🌐 Paste a GitHub repo link (e.g. github.com/owner/repo).', bbtb.cancelOnly);
       return;
     }
 
@@ -515,7 +521,14 @@ function createBot() {
     }
     if (data === 'settings:back') {
       await ctx.answerCbQuery();
-      return settings.showSettings(ctx);
+      // Notifications now lives inside My Defaults (folded in per the
+      // Settings BBTB row-count reduction), so its "Back" returns there
+      // instead of the top-level Settings screen.
+      return myDefaults.showDefaults(ctx);
+    }
+    if (data === 'defaults:notifications') {
+      await ctx.answerCbQuery();
+      return settings.showNotifications(ctx);
     }
     if (data.startsWith('activity:page:')) {
       await ctx.answerCbQuery();
@@ -529,7 +542,6 @@ function createBot() {
     }
 
     // My Defaults
-    if (data === 'defaults:notifications') { await ctx.answerCbQuery(); return settings.showNotifications(ctx); }
     if (data === 'defaults:visibility') { await ctx.answerCbQuery(); return myDefaults.editVisibility(ctx); }
     if (data.startsWith('defaults:setvisibility:')) { await ctx.answerCbQuery(); return myDefaults.setVisibility(ctx, data.split(':')[2]); }
     if (data === 'defaults:commit') { await ctx.answerCbQuery(); return myDefaults.startEditCommitMessage(ctx); }

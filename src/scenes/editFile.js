@@ -123,7 +123,6 @@ const scene = new Scenes.WizardScene(
       await github.putFile(token, user.login, repoName, filePath, newContent, `Update ${filePath} via GitroHub`, sha);
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, repoName);
-      repoCache.invalidateTreeStats(ctx.from.id, repoName);
       await activity.log(ctx.from.id, '✏️', `Edited file → ${filePath} (${repoName})`);
       await ctx.reply(format.successMessage(`Updated ${filePath}`));
     } catch (err) {

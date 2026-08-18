@@ -6,6 +6,7 @@ const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
 const myRepos = require('./myRepos');
+const tags = require('../lib/tags');
 
 async function showPinned(ctx) {
   const token = await requireConnected(ctx);
@@ -22,10 +23,8 @@ async function showPinned(ctx) {
     return;
   }
 
-  const user = await repoCache.getUser(ctx.from.id, token);
   const allRepos = await repoCache.getRepos(ctx.from.id, token);
   const repoByName = new Map(allRepos.map((r) => [r.name, r]));
-  const tags = require('../lib/tags');
   const tagMap = await tags.tagsForRepos(telegramId, pinList.map((p) => p.repo_name));
 
   const rows = [];
@@ -35,7 +34,10 @@ async function showPinned(ctx) {
     const repo = repoByName.get(pinList[i].repo_name);
     if (!repo) continue; // repo may have been deleted/renamed since pinning
 
-    const line = myRepos.renderRepoLine(repo, { pinned: true, tagLine: myRepos.tagLineFor(repo.name, tagMap) });
+    const line = await myRepos.renderRepoLine(telegramId, token, repo, {
+      pinned: true,
+      repoTags: tagMap[repo.name] || [],
+    });
     lines.push(line);
 
     const arrowRow = [];
@@ -45,7 +47,7 @@ async function showPinned(ctx) {
     rows.push(arrowRow);
   }
 
-  const text = `${format.sectionHeader('Pinned Repos', `${lines.length} total`)}\n\n` + lines.join(`\n${format.CARD_DIVIDER}\n`);
+  const text = `${format.escapeMd(format.sectionHeader('PINNED', lines.length))}\n\n` + lines.join('\n──────────────────\n');
 
   await ctx.reply('⭐ Pinned', bbtb.pinned);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });

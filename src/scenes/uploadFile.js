@@ -58,11 +58,13 @@ const scene = new Scenes.WizardScene(
           [Markup.button.callback('❌ Cancel', 'upload:sync:cancel')],
         ])
       );
-      // Advance the wizard cursor to the step that actually handles the
-      // button tap (below). Without this, Telegraf re-runs THIS step on the
-      // next update, sees syncConfirmed still false, and resends this same
-      // message forever — regardless of which button was tapped.
-      return ctx.wizard.selectStep(1);
+      // Advance the cursor so the NEXT update (the button tap) is handled by
+      // step 1 below, not by this same step again. Without this, Telegraf's
+      // WizardScene re-runs this exact step on every tap — since
+      // syncConfirmed is still false, it just resends this same prompt
+      // forever, no matter which button is pressed. This was the
+      // "Replace Folder loop" bug.
+      return ctx.wizard.next();
     }
 
     return promptForFile(ctx);
@@ -262,7 +264,6 @@ const scene = new Scenes.WizardScene(
       );
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, ctx.wizard.state.repoName);
-      repoCache.invalidateTreeStats(ctx.from.id, ctx.wizard.state.repoName);
       await activity.log(
         ctx.from.id,
         '⬆️',
@@ -277,9 +278,11 @@ const scene = new Scenes.WizardScene(
       let summary = `✅ Pushed ${changed.length} changes to ${ctx.wizard.state.repoName}`;
       if (toDelete.length) summary += `, removed ${toDelete.length}`;
       summary += `\nCommit: "${message}"`;
-
+      // Long Operations notification — previously only wired into Bulk
+      // Actions, so a big batch upload/replace never triggered it even
+      // though it can take just as long. Same shared threshold/pref check.
       const bulkActions = require('../handlers/bulkActions');
-      await bulkActions.maybeAddLongOpNotice(ctx, changed.length + toDelete.length, { label: 'files' });
+      await bulkActions.maybeAddLongOpNotice(ctx, changed.length + toDelete.length);
       await ctx.reply(summary, bbtb.mainMenu);
     } catch (err) {
       await activity.log(ctx.from.id, '⚠️', `Upload commit failed → ${ctx.wizard.state.repoName}`, { detail: err.message, isError: true });

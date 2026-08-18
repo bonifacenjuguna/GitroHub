@@ -56,8 +56,8 @@ async function startBulkSelect(ctx, { page = 1 } = {}) {
   if (pagination.length) rows.push(pagination);
 
   const text =
-    `${format.sectionHeader('Bulk Select', `${selected.length} selected`)}\n\n` +
-    `${selected.length > 0 ? format.escapeMd(previewNames(selected)) : format.escapeMd('None selected yet')}\n\n` +
+    `🧹 *Bulk Select*\n\n` +
+    `🧺 Selected \\(${selected.length}\\)${selected.length > 0 ? `: ${format.escapeMd(previewNames(selected))}` : ''}\n\n` +
     `Page ${page} of ${totalPages}`;
 
   await ctx.reply('🧹 Bulk Select', bbtb.bulkSelect);
@@ -130,7 +130,7 @@ async function showActionMenu(ctx) {
     return startBulkSelect(ctx);
   }
 
-  const text = `${format.sectionHeader('Selected', `${selected.length} repos`)}\n${format.escapeMd(previewNames(selected))}`;
+  const text = `🧹 *${selected.length} repos selected*\n${format.escapeMd(previewNames(selected))}`;
   const rows = [
     [Markup.button.callback('🗑 Delete All', 'bulk:action:delete')],
     [
@@ -249,17 +249,17 @@ async function _execute(ctx, action) {
 }
 
 /** Long Operations notification: for a batch big enough to actually take a
- * noticeable while (3+ items — lowered from 5+, which was unreachable at
- * typical real-world repo counts), send an extra "long operation done"
- * callout before the normal summary, when that preference is on. Shared
- * with Batch Upload (scenes/uploadFile.js), not just Bulk Actions. */
-async function maybeAddLongOpNotice(ctx, count, { label = 'repos' } = {}) {
+ * noticeable while (3+ repos — lowered from the original 5+, which was
+ * unreachable at typical repo counts), send an extra "long operation done"
+ * callout before the normal summary, when that preference is on. Shared by
+ * Bulk Actions here and by Batch Upload in uploadFile.js. */
+async function maybeAddLongOpNotice(ctx, count) {
   if (count < 3) return;
   try {
     const users = require('../lib/users');
     const prefs = await users.getNotificationPrefs(ctx.from.id);
     if (prefs && prefs.longOps) {
-      await ctx.reply(`🔔 Long operation finished — ${count} ${label} processed.`);
+      await ctx.reply(`🔔 Long operation finished — ${count} repos processed.`);
     }
   } catch (_) { /* best-effort */ }
 }
@@ -274,7 +274,6 @@ async function runAction(token, owner, repoName, action, telegramId) {
     await repoView.cleanupOrphanedData(telegramId, repoName);
     repoCache.invalidateRepos(telegramId);
     repoCache.invalidateLanguages(telegramId, repoName);
-    repoCache.invalidateTreeStats(telegramId, repoName);
     return;
   }
   if (action === 'private' || action === 'public') {
