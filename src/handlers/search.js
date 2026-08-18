@@ -22,6 +22,27 @@ async function handleSearchInput(ctx, query) {
   return handleRepoSearch(ctx, query);
 }
 
+/** 📁 My Repos search entry point — fuzzy-searches only your own repos.
+ * No longer guesses intent from a single shared box (see handlePublicRepoInput
+ * for the other half of the v0.8.0 search split) — a GitHub link pasted here
+ * is treated as a literal (probably not matching) search term, not auto-detected. */
+async function handleMyReposSearchInput(ctx, query) {
+  return handleRepoSearch(ctx, query);
+}
+
+/** 🌐 Public Repo entry point — expects a GitHub link, view/fork/download only. */
+async function handlePublicRepoInput(ctx, input) {
+  const parsed = parseGithubUrl(input);
+  if (!parsed) {
+    return ctx.reply(format.errorMessage(
+      'Not a GitHub repo link',
+      `"${input}" doesn\u2019t look like a github.com/owner/repo URL`,
+      'Paste a full repo link, e.g. https://github.com/owner/repo, or ❌ Cancel.'
+    ));
+  }
+  return handleExternalRepo(ctx, parsed.owner, parsed.repo);
+}
+
 async function handleRepoSearch(ctx, query) {
   const token = await requireConnected(ctx);
   if (!token) return;
@@ -43,26 +64,30 @@ async function handleRepoSearch(ctx, query) {
   const close = results.filter((r) => r.score <= 0.15).map((r) => r.item);
   const similar = results.filter((r) => r.score > 0.15).map((r) => r.item);
 
-  let text = `🔍 *Results for "${format.escapeMd(query)}"*\n\n`;
+  const sections = [];
   const rows = [];
   let counter = 1;
 
   if (close.length) {
-    text += '🎯 *Close Matches*\n';
-    for (const r of close) {
-      text += `${counter}\\. 📦 ${format.escapeMd(r.name)}\n   ${format.visibilityLine(r.private)} · ${format.languageLine(r.language)} · ⭐ ${r.stargazers_count}\n`;
+    const cards = close.map((r) => {
       rows.push([Markup.button.callback(`${counter}. ${r.name}`, `repo:${r.name}`)]);
+      const card = `${counter}\\. ` + format.repoCard(r);
       counter++;
-    }
+      return card;
+    });
+    sections.push(`🎯 *Close Matches*\n\n${cards.join(`\n${format.CARD_DIVIDER}\n`)}`);
   }
   if (similar.length) {
-    text += '\n🔁 *Similar Spelling*\n';
-    for (const r of similar) {
-      text += `${counter}\\. 📦 ${format.escapeMd(r.name)}\n   ${format.visibilityLine(r.private)} · ${format.languageLine(r.language)} · ⭐ ${r.stargazers_count}\n`;
+    const cards = similar.map((r) => {
       rows.push([Markup.button.callback(`${counter}. ${r.name}`, `repo:${r.name}`)]);
+      const card = `${counter}\\. ` + format.repoCard(r);
       counter++;
-    }
+      return card;
+    });
+    sections.push(`🔁 *Similar Spelling*\n\n${cards.join(`\n${format.CARD_DIVIDER}\n`)}`);
   }
+
+  const text = `${format.sectionHeader('Search Results', `"${query}"`)}\n\n${sections.join('\n\n')}`;
 
   await ctx.reply('🔍 Search Results', bbtb.searchAgain);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
@@ -167,6 +192,8 @@ async function executeForkExternal(ctx) {
 
 module.exports = {
   handleSearchInput,
+  handleMyReposSearchInput,
+  handlePublicRepoInput,
   handleRepoSearch,
   handleExternalRepo,
   downloadExternalZip,

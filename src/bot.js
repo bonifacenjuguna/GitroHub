@@ -4,6 +4,7 @@ const ownerGate = require('./middleware/ownerGate');
 const redisStore = require('./middleware/redisSessionStore');
 const users = require('./lib/users');
 const bbtb = require('./keyboards/bbtb');
+const inline = require('./keyboards/inline');
 
 const startHandler = require('./handlers/start');
 const myRepos = require('./handlers/myRepos');
@@ -115,8 +116,7 @@ function createBot() {
     '📁 My Repos': (ctx) => myRepos.showMyRepos(ctx),
     '➕ New Repo': (ctx) => ctx.scene.enter('createRepo'),
     '🔍 Search Repo': async (ctx) => {
-      ctx.session.awaitingSearch = true;
-      await ctx.reply('🔍 Type a repo name/keyword, or paste a GitHub repo link.', bbtb.cancelOnly);
+      await ctx.reply('🔍 Search for a repo:', inline.searchTypeMenu());
     },
     '⚙️ Settings': (ctx) => settings.showSettings(ctx),
     '🔗 Connect GitHub': (ctx) => startHandler.sendConnectPrompt(ctx),
@@ -132,6 +132,7 @@ function createBot() {
     '🔄 Refresh': (ctx) => myRepos.showMyRepos(ctx),
     '⭐ Pinned': (ctx) => pinned.showPinned(ctx),
     '🧹 Bulk Select': (ctx) => bulkActions.startBulkSelect(ctx),
+    '📊 Stats': (ctx) => myRepos.showStats(ctx),
 
     '⬅️ Back to Repos': (ctx) => myRepos.showMyRepos(ctx),
 
@@ -179,7 +180,6 @@ function createBot() {
       await ctx.scene.enter('uploadFile', { repoName, presetDir: dir, mode: 'replaceFolder' });
     },
 
-    '🔔 Notifications': (ctx) => settings.showNotifications(ctx),
     '📜 Activity': (ctx) => activityLog.showActivity(ctx),
     '🚪 Disconnect': (ctx) => settings.askDisconnect(ctx),
     '🔄 Refresh Status': (ctx) => settings.showSettings(ctx),
@@ -189,8 +189,7 @@ function createBot() {
     '🔑 Access Log': (ctx) => accessLogScreen.showAccessLog(ctx),
 
     '🔁 Search Again': async (ctx) => {
-      ctx.session.awaitingSearch = true;
-      await ctx.reply('🔍 Type a repo name/keyword, or paste a GitHub repo link.', bbtb.cancelOnly);
+      await ctx.reply('🔍 Search for a repo:', inline.searchTypeMenu());
     },
 
     '📤 Upload Another': async (ctx) => {
@@ -225,6 +224,7 @@ function createBot() {
     // stale flag (e.g. awaitingFullReset) stays stuck after Cancel and can
     // misfire on the next unrelated message the person sends.
     ctx.session.awaitingSearch = false;
+    ctx.session.awaitingPublicRepo = false;
     ctx.session.awaitingFileSearch = false;
     delete ctx.session.creatingTag;
     delete ctx.session.editingDefault;
@@ -242,7 +242,11 @@ function createBot() {
 
     if (ctx.session.awaitingSearch) {
       ctx.session.awaitingSearch = false;
-      return search.handleSearchInput(ctx, ctx.message.text);
+      return search.handleMyReposSearchInput(ctx, ctx.message.text);
+    }
+    if (ctx.session.awaitingPublicRepo) {
+      ctx.session.awaitingPublicRepo = false;
+      return search.handlePublicRepoInput(ctx, ctx.message.text);
     }
     if (ctx.session.awaitingFileSearch) {
       ctx.session.awaitingFileSearch = false;
@@ -254,6 +258,20 @@ function createBot() {
   // ─── Inline callback_query router ───────────────────────────
   bot.on('callback_query', async (ctx, next) => {
     const data = ctx.callbackQuery.data || '';
+
+    // Search entry-point split (📁 My Repos vs 🌐 Public Repo)
+    if (data === 'search:type:myrepos') {
+      await ctx.answerCbQuery();
+      ctx.session.awaitingSearch = true;
+      await ctx.reply('🔍 Type a name or keyword to fuzzy-search your repos.', bbtb.cancelOnly);
+      return;
+    }
+    if (data === 'search:type:public') {
+      await ctx.answerCbQuery();
+      ctx.session.awaitingPublicRepo = true;
+      await ctx.reply('🌐 Paste a GitHub repo link (e.g. https://github.com/owner/repo).', bbtb.cancelOnly);
+      return;
+    }
 
     // Repo list / filter / sort / pagination
     if (
@@ -511,6 +529,7 @@ function createBot() {
     }
 
     // My Defaults
+    if (data === 'defaults:notifications') { await ctx.answerCbQuery(); return settings.showNotifications(ctx); }
     if (data === 'defaults:visibility') { await ctx.answerCbQuery(); return myDefaults.editVisibility(ctx); }
     if (data.startsWith('defaults:setvisibility:')) { await ctx.answerCbQuery(); return myDefaults.setVisibility(ctx, data.split(':')[2]); }
     if (data === 'defaults:commit') { await ctx.answerCbQuery(); return myDefaults.startEditCommitMessage(ctx); }

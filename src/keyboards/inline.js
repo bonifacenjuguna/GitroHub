@@ -178,6 +178,15 @@ function activityPagination(page, totalPages, errorsOnly) {
   return Markup.inlineKeyboard(rows);
 }
 
+/** v0.8.0 search split — two explicit entry points instead of one box that
+ * guessed intent from the input (fuzzy name vs pasted URL). */
+function searchTypeMenu() {
+  return Markup.inlineKeyboard([
+    [Markup.button.callback('📁 My Repos', 'search:type:myrepos')],
+    [Markup.button.callback('🌐 Public Repo', 'search:type:public')],
+  ]);
+}
+
 module.exports = {
   repoList,
   filterMenu,
@@ -200,4 +209,5 @@ module.exports = {
   disconnectConfirm,
   connectButton,
   activityPagination,
+  searchTypeMenu,
 };

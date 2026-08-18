@@ -25,6 +25,8 @@ async function showPinned(ctx) {
   const user = await repoCache.getUser(ctx.from.id, token);
   const allRepos = await repoCache.getRepos(ctx.from.id, token);
   const repoByName = new Map(allRepos.map((r) => [r.name, r]));
+  const tags = require('../lib/tags');
+  const tagMap = await tags.tagsForRepos(telegramId, pinList.map((p) => p.repo_name));
 
   const rows = [];
   const lines = [];
@@ -33,7 +35,7 @@ async function showPinned(ctx) {
     const repo = repoByName.get(pinList[i].repo_name);
     if (!repo) continue; // repo may have been deleted/renamed since pinning
 
-    const line = await myRepos.renderRepoLine(token, repo);
+    const line = myRepos.renderRepoLine(repo, { pinned: true, tagLine: myRepos.tagLineFor(repo.name, tagMap) });
     lines.push(line);
 
     const arrowRow = [];
@@ -43,7 +45,7 @@ async function showPinned(ctx) {
     rows.push(arrowRow);
   }
 
-  const text = `📌 *Pinned Repos* \\(${lines.length}\\)\n\n` + lines.join('\n──────────────────────────\n');
+  const text = `${format.sectionHeader('Pinned Repos', `${lines.length} total`)}\n\n` + lines.join(`\n${format.CARD_DIVIDER}\n`);
 
   await ctx.reply('⭐ Pinned', bbtb.pinned);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });

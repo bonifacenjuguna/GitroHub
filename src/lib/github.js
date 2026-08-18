@@ -108,13 +108,14 @@ async function getRepo(token, owner, repo) {
   });
 }
 
-async function createRepo(token, { name, isPrivate, description }) {
+async function createRepo(token, { name, isPrivate, description, licenseTemplate }) {
   return withTimeout((async () => {
     const octo = client(token);
     const { data } = await octo.repos.createForAuthenticatedUser({
       name,
       private: isPrivate,
       description: description || undefined,
+      license_template: licenseTemplate || undefined,
       auto_init: true, // ensures a default branch + initial commit exist immediately
     });
     return data;
@@ -152,8 +153,10 @@ async function forkRepo(token, owner, repo) {
   })(), 'Fork repo');
 }
 
-/** Full recursive file tree — used for both Browse Files and file search */
-async function getTree(token, owner, repo, branch = null) {
+/** Fetches the full recursive git tree, unfiltered (files + folders). Shared
+ * by getTree() (files-only, for Browse Files/upload change-detection) and
+ * getTreeStats() (size/file/folder counts, for Repo View). */
+async function getRawTree(token, owner, repo, branch = null) {
   return withRetry(async () => {
     const octo = client(token);
     const repoData = branch ? { default_branch: branch } : await getRepo(token, owner, repo);
@@ -168,8 +171,41 @@ async function getTree(token, owner, repo, branch = null) {
       tree_sha: refData.object.sha,
       recursive: 'true',
     });
-    return data.tree.filter((entry) => entry.type === 'blob'); // files only
+    return data.tree;
   });
+}
+
+/** Full recursive file tree — used for both Browse Files and file search */
+async function getTree(token, owner, repo, branch = null) {
+  const tree = await getRawTree(token, owner, repo, branch);
+  return tree.filter((entry) => entry.type === 'blob'); // files only
+}
+
+/**
+ * Repo size/file/folder counts computed from the tree we already fetch —
+ * GitHub's own `repo.size` field (KB) is a periodically-recomputed cache on
+ * their end and visibly lags real changes (e.g. right after an upload), so
+ * we derive the real numbers from the same tree data instead of trusting it.
+ * Falls back to `null` sizeBytes for entries GitHub returns without a size
+ * (only happens for very large blobs it declines to size inline) — those are
+ * summed as 0 and callers should treat the total as a lower bound in that case.
+ */
+async function getTreeStats(token, owner, repo, branch = null) {
+  const tree = await getRawTree(token, owner, repo, branch);
+  let sizeBytes = 0;
+  let fileCount = 0;
+  let folderCount = 0;
+  let sizeIncomplete = false;
+  for (const entry of tree) {
+    if (entry.type === 'blob') {
+      fileCount++;
+      if (typeof entry.size === 'number') sizeBytes += entry.size;
+      else sizeIncomplete = true;
+    } else if (entry.type === 'tree') {
+      folderCount++;
+    }
+  }
+  return { sizeBytes, fileCount, folderCount, sizeIncomplete };
 }
 
 async function getFileContent(token, owner, repo, path) {
@@ -312,6 +348,7 @@ module.exports = {
   setVisibility,
   forkRepo,
   getTree,
+  getTreeStats,
   getFileContent,
   putFile,
   deleteFile,

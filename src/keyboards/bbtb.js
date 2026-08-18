@@ -17,6 +17,7 @@ const myRepos = Markup.keyboard([
   ['➕ New Repo', '🔎 Filter'],
   ['↕️ Sort', '🔄 Refresh'],
   ['⭐ Pinned', '🧹 Bulk Select'],
+  ['📊 Stats'],
   ['⬆️ Back to Menu'],
 ]).resize();
 
@@ -33,10 +34,9 @@ const browseFiles = Markup.keyboard([
 ]).resize();
 
 const settings = Markup.keyboard([
-  ['🔔 Notifications', '📜 Activity'],
-  ['⚙️ My Defaults', '📦 Storage & Data'],
-  ['🔑 Access Log', '🔄 Refresh Status'],
-  ['🚪 Disconnect'],
+  ['📜 Activity', '⚙️ My Defaults'],
+  ['📦 Storage & Data', '🔑 Access Log'],
+  ['🔄 Refresh Status', '🚪 Disconnect'],
   ['⬆️ Back to Menu'],
 ]).resize();
 

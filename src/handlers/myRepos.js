@@ -1,5 +1,4 @@
 const { Markup } = require('telegraf');
-const github = require('../lib/github');
 const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
@@ -57,34 +56,27 @@ async function filterLabel(state, telegramId) {
   return 'All';
 }
 
-async function renderRepoLine(token, r, extraLine = '') {
-  let langLine = 'No language detected';
-  try {
-    const languages = await repoCache.getLanguages(ctx.from.id, r.owner.login, r.name, token);
-    langLine = format.languageBreakdown(languages);
-  } catch (_) {
-    // best-effort — repo may be empty, fall back to the single-language guess
-    langLine = r.language || 'No language detected';
-  }
-  return (
-    `📦 *${format.escapeMd(r.name)}*\n` +
-    `${format.visibilityLine(r.private)} · ⭐ ${r.stargazers_count}\n` +
-    `${format.escapeMd(langLine)}` +
-    (extraLine ? `\n${extraLine}` : '')
-  );
+/**
+ * Renders one repo using the locked bot-wide card format (see
+ * format.repoCard). Kept as its own export (rather than every screen
+ * calling format.repoCard directly) so Pinned and any future screen render
+ * identically to My Repos with one shared call.
+ *
+ * Note: a prior version of this took a `ctx` that was never actually in
+ * scope (masked by a surrounding try/catch), which silently broke the
+ * per-repo language-breakdown lookup on every call. The new card format
+ * doesn't need that lookup at all — it shows repo.language directly — so
+ * this version has no hidden dependency on caller scope.
+ */
+function renderRepoLine(r, { pinned = false, tagLine = '' } = {}) {
+  return format.repoCard(r, { pinned, tagLine });
 }
 
-/** Adds a 📌 pin marker and 🏷️ tag chips to a rendered repo line, per repo */
-function decorateLine(baseLine, repoName, pinnedSet, tagMap) {
-  let line = baseLine;
-  if (pinnedSet.has(repoName)) {
-    line = line.replace(/^📦 \*(.+?)\*/, (m, name) => `📦 *${name}* 📌`);
-  }
+/** Builds the 🏷️ tag-chip line for a repo, if it has any tags. */
+function tagLineFor(repoName, tagMap) {
   const repoTags = tagMap[repoName];
-  if (repoTags && repoTags.length > 0) {
-    line += `\n🏷️ ${format.escapeMd(repoTags.map((t) => `${t.emoji} ${t.name}`).join(' · '))}`;
-  }
-  return line;
+  if (!repoTags || repoTags.length === 0) return '';
+  return `🏷️ ${format.escapeMd(repoTags.map((t) => `${t.emoji} ${t.name}`).join(' · '))}`;
 }
 
 async function showMyRepos(ctx, { edit = false } = {}) {
@@ -115,8 +107,8 @@ async function showMyRepos(ctx, { edit = false } = {}) {
   const pageRepos = filtered.slice((state.page - 1) * perPage, state.page * perPage);
 
   const fLabel = await filterLabel(state, telegramId);
-  let text = `📁 *Your Repositories* \\(${allRepos.length} total\\)\n`;
-  text += `Filter: ${format.escapeMd(fLabel)}   Sort: ${format.escapeMd(SORT_LABELS[state.sort])}\n\n`;
+  let text = `${format.sectionHeader('Repositories', `${allRepos.length} total`)}\n`;
+  text += `  Filter: ${format.escapeMd(fLabel)} · Sort: ${format.escapeMd(SORT_LABELS[state.sort])}\n\n`;
 
   if (pageRepos.length === 0) {
     text += format.escapeMd(`No repos match filter "${fLabel}".`);
@@ -127,13 +119,10 @@ async function showMyRepos(ctx, { edit = false } = {}) {
     ]);
     const pinnedSet = new Set(pinList.map((p) => p.repo_name));
 
-    const lines = await Promise.all(
-      pageRepos.map(async (r) => {
-        const base = await renderRepoLine(token, r);
-        return decorateLine(base, r.name, pinnedSet, tagMap);
-      })
+    const cards = pageRepos.map((r) =>
+      renderRepoLine(r, { pinned: pinnedSet.has(r.name), tagLine: tagLineFor(r.name, tagMap) })
     );
-    text += lines.join('\n──────────────────────────\n');
+    text += cards.join(`\n${format.CARD_DIVIDER}\n`);
     text += `\n\nPage ${state.page} of ${totalPages}`;
   }
 
@@ -147,6 +136,51 @@ async function showMyRepos(ctx, { edit = false } = {}) {
     await ctx.reply('📁 My Repos', bbtb.myRepos);
     await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
   }
+}
+
+async function showStats(ctx) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+
+  const allRepos = await repoCache.getRepos(ctx.from.id, token);
+
+  if (allRepos.length === 0) {
+    await ctx.reply('📊 Stats\n\nYou don\u2019t have any repos yet — create one to see stats here.');
+    return;
+  }
+
+  const publicCount = allRepos.filter((r) => !r.private).length;
+  const privateCount = allRepos.length - publicCount;
+  const totalStars = allRepos.reduce((sum, r) => sum + (r.stargazers_count || 0), 0);
+
+  const langCounts = {};
+  for (const r of allRepos) {
+    if (!r.language) continue;
+    langCounts[r.language] = (langCounts[r.language] || 0) + 1;
+  }
+  const topLangEntry = Object.entries(langCounts).sort((a, b) => b[1] - a[1])[0];
+  const topLanguage = topLangEntry ? `${topLangEntry[0]} (${topLangEntry[1]} repo${topLangEntry[1] === 1 ? '' : 's'})` : 'No language data';
+
+  const mostActive = [...allRepos].sort((a, b) => new Date(b.pushed_at || b.updated_at) - new Date(a.pushed_at || a.updated_at))[0];
+  const oldest = [...allRepos].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
+
+  const text =
+    `${format.sectionHeader('Stats', `${allRepos.length} total`)}\n\n` +
+    `▸ 🌐 Public: ${publicCount}  ·  🔒 Private: ${privateCount}\n` +
+    `▸ ⭐ Total stars: ${totalStars}\n` +
+    `▸ 💻 Top language: ${format.escapeMd(topLanguage)}\n\n` +
+    `📌 *Most active repo*\n` +
+    `${format.escapeMd(mostActive.name)} · 🕒 ${format.escapeMd(format.relativeTime(mostActive.pushed_at || mostActive.updated_at))}\n\n` +
+    `🕰️ *Oldest repo*\n` +
+    `${format.escapeMd(oldest.name)} · 📅 ${format.escapeMd(format.relativeTime(oldest.created_at))}`;
+
+  await ctx.reply(text, {
+    parse_mode: 'MarkdownV2',
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback(`📦 Open ${mostActive.name}`, `repo:${mostActive.name}`)],
+      [Markup.button.callback('⬅️ Back', 'repos:back')],
+    ]),
+  });
 }
 
 async function showFilterMenu(ctx) {
@@ -246,6 +280,7 @@ function setPage(telegramId, page) {
 
 module.exports = {
   showMyRepos,
+  showStats,
   showFilterMenu,
   showSortMenu,
   showLanguageFilterMenu,
@@ -256,4 +291,5 @@ module.exports = {
   setPage,
   getState,
   renderRepoLine,
+  tagLineFor,
 };

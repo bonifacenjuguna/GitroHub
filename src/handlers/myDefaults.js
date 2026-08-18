@@ -10,6 +10,11 @@ async function showDefaults(ctx) {
   const d = await defaults.getDefaults(ctx.from.id);
   if (!d) return;
 
+  const users = require('../lib/users');
+  const prefs = await users.getNotificationPrefs(ctx.from.id);
+  const onCount = prefs ? Object.values(prefs).filter(Boolean).length : 0;
+  const totalCount = prefs ? Object.keys(prefs).length : 4;
+
   const text =
     `⚙️ *My Defaults*\n\n` +
     `📦 New Repo visibility: ${d.default_visibility === 'private' ? '🔒 Private' : '🌐 Public'}\n` +
@@ -17,12 +22,15 @@ async function showDefaults(ctx) {
     `📁 Default upload path: ${d.default_upload_path ? format.escapeMd(d.default_upload_path) : '\\(Root\\)'}\n` +
     `↕️ Default repo sort: ${format.escapeMd(SORT_LABELS[d.default_sort] || d.default_sort)}\n` +
     `🔎 Default repo filter: ${format.escapeMd(FILTER_LABELS[d.default_filter] || d.default_filter)}\n` +
-    `🧠 Auto\\-suggest defaults: ${d.auto_suggest_defaults ? 'On' : 'Off'}`;
+    `🧠 Auto\\-suggest defaults: ${d.auto_suggest_defaults ? 'On' : 'Off'}\n\n` +
+    `🔔 *NOTIFICATIONS*\n` +
+    `${onCount}/${totalCount} categories on`;
 
   const rows = [
     [Markup.button.callback('🔒 Visibility', 'defaults:visibility'), Markup.button.callback('📝 Commit Message', 'defaults:commit')],
     [Markup.button.callback('📁 Upload Path', 'defaults:path'), Markup.button.callback('↕️ Sort & Filter', 'defaults:sortfilter')],
     [Markup.button.callback(d.auto_suggest_defaults ? '🧠 Turn Off Auto-Suggest' : '🧠 Turn On Auto-Suggest', 'defaults:togglelearn')],
+    [Markup.button.callback('🔔 Notifications', 'defaults:notifications')],
   ];
 
   await ctx.reply('⚙️ My Defaults', bbtb.backToSettings);

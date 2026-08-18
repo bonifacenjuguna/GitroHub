@@ -38,7 +38,7 @@ const scene = new Scenes.WizardScene(
       return;
     }
     ctx.wizard.state.data.name = name;
-    await ctx.reply('📦 New Repo — Step 2 of 4', bbtb.cancelWithBack);
+    await ctx.reply('📦 New Repo — Step 2 of 5', bbtb.cancelWithBack);
 
     const defaultsLib = require('../lib/defaults');
     const d = await defaultsLib.getDefaults(ctx.from.id);
@@ -64,7 +64,7 @@ const scene = new Scenes.WizardScene(
     await ctx.reply('Tap 🔒 Private or 🌐 Public above.');
   },
 
-  // Step 3 — receive description (or skip), show confirm
+  // Step 3 — receive description (or skip), ask README
   async (ctx) => {
     if (await handleGlobalActions(ctx)) return;
     if (ctx.message && ctx.message.text === '⏭️ Skip') {
@@ -76,17 +76,63 @@ const scene = new Scenes.WizardScene(
       return;
     }
 
-    const { name, isPrivate, description } = ctx.wizard.state.data;
-    let text = `📦 ${name}\n${isPrivate ? '🔒 Private' : '🌐 Public'}`;
-    if (description) text += `\n"${description}"`;
-    text += '\n\nReady to create this repository?';
-
-    await ctx.reply('📦 New Repo — Step 4 of 4', bbtb.cancelWithBack);
-    await ctx.reply(text, inline.createRepoConfirm);
+    await ctx.reply('📦 New Repo — Step 4 of 5', bbtb.cancelWithBack);
+    await ctx.reply(
+      '📄 Include a default README.md?',
+      Markup.inlineKeyboard([
+        [Markup.button.callback('✅ Yes', 'create:readme:yes')],
+        [Markup.button.callback('⏭️ Skip', 'create:readme:no')],
+      ])
+    );
     return ctx.wizard.next();
   },
 
-  // Step 4 — confirm and create
+  // Step 4 — receive README choice, ask license
+  async (ctx) => {
+    if (await handleGlobalActions(ctx)) return;
+    if (ctx.callbackQuery && ctx.callbackQuery.data.startsWith('create:readme:')) {
+      ctx.wizard.state.data.includeReadme = ctx.callbackQuery.data.endsWith('yes');
+      await ctx.answerCbQuery();
+      await ctx.reply('📦 New Repo — Step 5 of 5', bbtb.cancelWithBack);
+      await ctx.reply(
+        '⚖️ Choose a license (or skip for none):',
+        Markup.inlineKeyboard([
+          [Markup.button.callback('MIT', 'create:license:mit')],
+          [Markup.button.callback('Apache 2.0', 'create:license:apache-2.0')],
+          [Markup.button.callback('GPL v3', 'create:license:gpl-3.0')],
+          [Markup.button.callback('BSD', 'create:license:bsd-3-clause')],
+          [Markup.button.callback('⏭️ Skip', 'create:license:none')],
+        ])
+      );
+      return ctx.wizard.next();
+    }
+    await ctx.reply('Tap ✅ Yes or ⏭️ Skip above.');
+  },
+
+  // Step 5 — receive license choice, show confirm
+  async (ctx) => {
+    if (await handleGlobalActions(ctx)) return;
+    if (ctx.callbackQuery && ctx.callbackQuery.data.startsWith('create:license:')) {
+      const licenseKey = ctx.callbackQuery.data.split('create:license:')[1];
+      ctx.wizard.state.data.licenseTemplate = licenseKey === 'none' ? null : licenseKey;
+      await ctx.answerCbQuery();
+
+      const { name, isPrivate, description, includeReadme, licenseTemplate } = ctx.wizard.state.data;
+      const LICENSE_LABELS = { mit: 'MIT', 'apache-2.0': 'Apache 2.0', 'gpl-3.0': 'GPL v3', 'bsd-3-clause': 'BSD' };
+      let text = `📦 ${name}\n${isPrivate ? '🔒 Private' : '🌐 Public'}`;
+      if (description) text += `\n"${description}"`;
+      text += `\n📄 README: ${includeReadme ? 'Yes' : 'Skip'}`;
+      text += `\n⚖️ License: ${licenseTemplate ? LICENSE_LABELS[licenseTemplate] : 'None'}`;
+      text += '\n\nReady to create this repository?';
+
+      await ctx.reply('📦 New Repo — Confirm', bbtb.cancelWithBack);
+      await ctx.reply(text, inline.createRepoConfirm);
+      return ctx.wizard.next();
+    }
+    await ctx.reply('Tap a license option above.');
+  },
+
+  // Step 6 — confirm and create
   async (ctx) => {
     if (await handleGlobalActions(ctx)) return;
     if (!ctx.callbackQuery || ctx.callbackQuery.data !== 'create:confirm') {
@@ -98,11 +144,24 @@ const scene = new Scenes.WizardScene(
     const token = await requireConnected(ctx);
     if (!token) return ctx.scene.leave();
 
-    const { name, isPrivate, description } = ctx.wizard.state.data;
+    const { name, isPrivate, description, includeReadme, licenseTemplate } = ctx.wizard.state.data;
     try {
-      const repo = await github.createRepo(token, { name, isPrivate, description });
+      const repo = await github.createRepo(token, { name, isPrivate, description, licenseTemplate });
       const repoCache = require('../lib/repoCache');
       repoCache.invalidateRepos(ctx.from.id);
+
+      // auto_init always creates README.md (needed to guarantee a default
+      // branch exists for every other feature — Browse Files, Upload, etc.
+      // all assume one). If the person chose to skip README, remove that
+      // one file right after creation instead of ever creating the repo
+      // without a branch.
+      if (!includeReadme) {
+        try {
+          const existing = await github.getFileContent(token, repo.owner.login, repo.name, 'README.md');
+          await github.deleteFile(token, repo.owner.login, repo.name, 'README.md', existing.sha, 'Remove default README');
+        } catch (_) { /* best-effort — if this fails, an unwanted README is a minor issue, not worth failing repo creation over */ }
+      }
+
       await activity.log(ctx.from.id, '➕', `Created repo → ${name}`, {
         detail: `visibility:${isPrivate ? 'private' : 'public'}`,
       });

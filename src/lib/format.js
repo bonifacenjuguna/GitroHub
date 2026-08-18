@@ -91,6 +91,54 @@ function successMessage(what, detail) {
   return msg;
 }
 
+/**
+ * Locked bot-wide repo-card layout (v0.8.0 redesign) — used everywhere a
+ * repo is listed: My Repos, Repo View, Pinned, Search results, Bulk Select
+ * previews, and Stats. One function so every screen renders identically and
+ * a future style change only touches one place.
+ *
+ *   📌 GitroHub
+ *   ▸ JS · 🌐 Public · 2.4 MB · MIT
+ *   ▸ ★ 0  🍴 0  ·  🕒 37m ago
+ *   ▸ "A Telegram bot for tracking GitHub repos"
+ *
+ * `sizeBytes`, when provided (Repo View/Details, which already fetch the
+ * tree), overrides GitHub's lagging cached `repo.size` field — see
+ * lib/github.js getTreeStats(). List screens that don't already fetch a
+ * per-repo tree fall back to repo.size to avoid an extra API call per row.
+ */
+function repoCard(repo, { pinned = false, license, description, sizeBytes, tagLine = '' } = {}) {
+  const pin = pinned ? '📌 ' : '';
+  const name = `${pin}*${escapeMd(repo.name)}*`;
+  const lang = escapeMd(repo.language || 'No language');
+  const vis = visibilityLine(repo.private);
+  const bytes = typeof sizeBytes === 'number' ? sizeBytes : (repo.size || 0) * 1024;
+  const size = escapeMd(formatBytes(bytes));
+  const licName = license !== undefined ? license : (repo.license && (repo.license.name || repo.license.spdx_id));
+  const lic = escapeMd(licName && licName !== 'NOASSERTION' ? licName : 'No license');
+  const desc = description !== undefined ? description : repo.description;
+  const descLine = desc ? `"${escapeMd(desc)}"` : 'No description yet';
+  const updated = escapeMd(relativeTime(repo.updated_at || repo.pushed_at));
+
+  let card =
+    `${name}\n` +
+    `▸ ${lang} · ${vis} · ${size} · ${lic}\n` +
+    `▸ ★ ${repo.stargazers_count || 0}  🍴 ${repo.forks_count || 0}  ·  🕒 ${updated}\n` +
+    `▸ ${descLine}`;
+  if (tagLine) card += `\n${tagLine}`;
+  return card;
+}
+
+/** The solid divider used between cards in every repo list. */
+const CARD_DIVIDER = '──────────────────';
+
+/** Locked ◆ section header: "◆ REPOSITORIES ──────── 4 total" */
+function sectionHeader(title, countLabel) {
+  const upper = title.toUpperCase();
+  const dashes = '─'.repeat(Math.max(4, 24 - upper.length));
+  return `◆ ${escapeMd(upper)} ${dashes} ${escapeMd(countLabel)}`;
+}
+
 /** Escapes MarkdownV2 reserved characters for safe Telegram rendering */
 function escapeMd(text = '') {
   return String(text).replace(/([_*[\]()~`>#+\-=|{}.!\\])/g, '\\$1');
@@ -112,4 +160,7 @@ module.exports = {
   successMessage,
   escapeMd,
   escapeCodeBlock,
+  repoCard,
+  CARD_DIVIDER,
+  sectionHeader,
 };
