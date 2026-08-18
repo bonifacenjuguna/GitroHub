@@ -12,12 +12,12 @@ const github = require('./github');
 
 const REPO_LIST_TTL_MS = 60 * 1000;
 const LANGUAGE_TTL_MS = 60 * 1000;
-const STATS_TTL_MS = 60 * 1000;
+const TREE_STATS_TTL_MS = 60 * 1000;
 const USERNAME_TTL_MS = 10 * 60 * 1000; // username essentially never changes mid-session
 
 const repoListCache = new Map(); // telegramId -> { repos, timestamp }
 const languageCache = new Map(); // `${telegramId}:${repoName}` -> { languages, timestamp }
-const statsCache = new Map(); // `${telegramId}:${repoName}` -> { stats, timestamp }
+const treeStatsCache = new Map(); // `${telegramId}:${repoName}` -> { stats, timestamp }
 const usernameCache = new Map(); // telegramId -> { user, timestamp }
 
 async function getRepos(telegramId, token) {
@@ -41,15 +41,16 @@ async function getLanguages(telegramId, owner, repoName, token) {
   return languages;
 }
 
-/** File count, folder count, and true total size — see github.getRepoStats. */
-async function getRepoStats(telegramId, owner, repoName, token) {
+/** Repo size/file/folder counts, computed from the real file tree (see
+ * github.getTreeStats) instead of GitHub's lagging cached `repo.size`. */
+async function getTreeStats(telegramId, owner, repoName, token) {
   const key = `${telegramId}:${repoName}`;
-  const cached = statsCache.get(key);
-  if (cached && Date.now() - cached.timestamp < STATS_TTL_MS) {
+  const cached = treeStatsCache.get(key);
+  if (cached && Date.now() - cached.timestamp < TREE_STATS_TTL_MS) {
     return cached.stats;
   }
-  const stats = await github.getRepoStats(token, owner, repoName);
-  statsCache.set(key, { stats, timestamp: Date.now() });
+  const stats = await github.getTreeStats(token, owner, repoName);
+  treeStatsCache.set(key, { stats, timestamp: Date.now() });
   return stats;
 }
 
@@ -69,12 +70,14 @@ function invalidateRepos(telegramId) {
   repoListCache.delete(telegramId);
 }
 
-/** Languages and file-tree stats change together (both derived from repo
- * content), so every call site that invalidates one invalidates both here —
- * no need to touch every caller separately. */
 function invalidateLanguages(telegramId, repoName) {
   languageCache.delete(`${telegramId}:${repoName}`);
-  statsCache.delete(`${telegramId}:${repoName}`);
+}
+
+/** Call after anything that changes a repo's file tree (upload, replace,
+ * commit, delete) so Repo View's size/file/folder counts aren't stale. */
+function invalidateTreeStats(telegramId, repoName) {
+  treeStatsCache.delete(`${telegramId}:${repoName}`);
 }
 
 /** Called on disconnect — the cached username would otherwise be wrong for whoever connects next. */
@@ -84,9 +87,18 @@ function invalidateUser(telegramId) {
   for (const key of languageCache.keys()) {
     if (key.startsWith(`${telegramId}:`)) languageCache.delete(key);
   }
-  for (const key of statsCache.keys()) {
-    if (key.startsWith(`${telegramId}:`)) statsCache.delete(key);
+  for (const key of treeStatsCache.keys()) {
+    if (key.startsWith(`${telegramId}:`)) treeStatsCache.delete(key);
   }
 }
 
-module.exports = { getRepos, getLanguages, getRepoStats, getUser, invalidateRepos, invalidateLanguages, invalidateUser };
+module.exports = {
+  getRepos,
+  getLanguages,
+  getTreeStats,
+  getUser,
+  invalidateRepos,
+  invalidateLanguages,
+  invalidateTreeStats,
+  invalidateUser,
+};

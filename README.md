@@ -129,7 +129,7 @@ Railway's free/trial tier caps each service at **512MB RAM**. Node's V8 engine d
 
 GitroHub now defends against this on three layers:
 
-1. **`--max-old-space-size=384`** (set in `package.json`'s start script) forces V8 to respect a real ceiling and garbage-collect proactively, instead of growing unchecked. Leaves ~128MB headroom under the 512MB limit for buffers and native overhead that live outside V8's heap.
+1. **`--max-old-space-size=384`** (set via the `NODE_OPTIONS` environment variable — see `.env.example`) forces V8 to respect a real ceiling and garbage-collect proactively, instead of growing unchecked. Leaves ~128MB headroom under the 512MB limit for buffers and native overhead that live outside V8's heap.
 2. **A self-imposed RSS watchdog** (`MEMORY_WATCHDOG_MB`, default 400) checks actual memory every 30s and triggers a *clean* shutdown — closing Postgres and Redis properly — before the kernel ever needs to force-kill it. Railway restarts either way; this just avoids any risk of a write getting cut off mid-flight.
 3. **File content no longer round-trips through Redis.** During Upload, raw file bytes used to live in the Telegraf wizard state, which gets serialized to Redis on every single step — for a near-1MB zip, that meant repeatedly re-serializing significant payloads. Content now lives in a short-lived in-process cache (`lib/fileBufferCache.js`); only a lightweight reference goes into session state.
 

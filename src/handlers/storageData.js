@@ -107,7 +107,7 @@ async function showCleanupMenu(ctx) {
   await ctx.reply(
     `🧹 *Auto\\-Cleanup*\n\n` +
     `Activity Log retention: ${user.activity_retention_days} days\n` +
-    `🗑 Auto-delete pins/tags on repo deletion: ${user.auto_cleanup_on_delete ? 'On' : 'Off'}`,
+    `🗑 Auto\\-delete pins/tags on repo deletion: ${user.auto_cleanup_on_delete ? 'On' : 'Off'}`,
     {
       parse_mode: 'MarkdownV2',
       ...Markup.inlineKeyboard([

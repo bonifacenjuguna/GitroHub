@@ -22,23 +22,23 @@ async function handleSearchInput(ctx, query) {
   return handleRepoSearch(ctx, query);
 }
 
-/** 🌐 Public Repo entry point — the person already told us they mean a
- * public repo link, so a non-URL input is a real mistake, not something to
- * silently reinterpret as "search my own repos" (the old single-box flow's
- * source of confusion). */
+/** 📁 My Repos search entry point — fuzzy-searches only your own repos.
+ * No longer guesses intent from a single shared box (see handlePublicRepoInput
+ * for the other half of the v0.8.0 search split) — a GitHub link pasted here
+ * is treated as a literal (probably not matching) search term, not auto-detected. */
+async function handleMyReposSearchInput(ctx, query) {
+  return handleRepoSearch(ctx, query);
+}
+
+/** 🌐 Public Repo entry point — expects a GitHub link, view/fork/download only. */
 async function handlePublicRepoInput(ctx, input) {
   const parsed = parseGithubUrl(input);
   if (!parsed) {
-    await ctx.reply(
-      format.errorMessage(
-        'That doesn\u2019t look like a GitHub repo link',
-        `expected something like github.com/owner/repo`,
-        'Paste the link again, or ❌ Cancel.'
-      ),
-      bbtb.cancelOnly
-    );
-    ctx.session.searchMode = 'public'; // stay in this mode for the retry
-    return;
+    return ctx.reply(format.errorMessage(
+      'Not a GitHub repo link',
+      `"${input}" doesn\u2019t look like a github.com/owner/repo URL`,
+      'Paste a full repo link, e.g. https://github.com/owner/repo, or ❌ Cancel.'
+    ));
   }
   return handleExternalRepo(ctx, parsed.owner, parsed.repo);
 }
@@ -64,29 +64,30 @@ async function handleRepoSearch(ctx, query) {
   const close = results.filter((r) => r.score <= 0.15).map((r) => r.item);
   const similar = results.filter((r) => r.score > 0.15).map((r) => r.item);
 
-  let text = `${format.escapeMd(format.sectionHeader('SEARCH RESULTS', results.length, `for "${query}"`))}\n\n`;
+  const sections = [];
   const rows = [];
+  let counter = 1;
 
-  const renderGroup = async (label, group) => {
-    if (!group.length) return '';
-    let out = `${label}\n`;
-    const cards = await Promise.all(group.map(async (r) => {
-      let langLine = 'No language detected';
-      try {
-        const languages = await repoCache.getLanguages(ctx.from.id, r.owner.login, r.name, token);
-        langLine = format.languageBreakdown(languages);
-      } catch (_) {
-        langLine = r.language || 'No language detected';
-      }
-      rows.push([Markup.button.callback(`📦 ${r.name}`, `repo:${r.name}`)]);
-      return format.repoCard(r, { langLine });
-    }));
-    return out + cards.join('\n──────────────────\n');
-  };
+  if (close.length) {
+    const cards = close.map((r) => {
+      rows.push([Markup.button.callback(`${counter}. ${r.name}`, `repo:${r.name}`)]);
+      const card = `${counter}\\. ` + format.repoCard(r);
+      counter++;
+      return card;
+    });
+    sections.push(`🎯 *Close Matches*\n\n${cards.join(`\n${format.CARD_DIVIDER}\n`)}`);
+  }
+  if (similar.length) {
+    const cards = similar.map((r) => {
+      rows.push([Markup.button.callback(`${counter}. ${r.name}`, `repo:${r.name}`)]);
+      const card = `${counter}\\. ` + format.repoCard(r);
+      counter++;
+      return card;
+    });
+    sections.push(`🔁 *Similar Spelling*\n\n${cards.join(`\n${format.CARD_DIVIDER}\n`)}`);
+  }
 
-  const closeBlock = await renderGroup('🎯 *Close Matches*', close);
-  const similarBlock = await renderGroup('🔁 *Similar Spelling*', similar);
-  text += [closeBlock, similarBlock].filter(Boolean).join('\n\n');
+  const text = `${format.sectionHeader('Search Results', `"${query}"`)}\n\n${sections.join('\n\n')}`;
 
   await ctx.reply('🔍 Search Results', bbtb.searchAgain);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
@@ -191,6 +192,7 @@ async function executeForkExternal(ctx) {
 
 module.exports = {
   handleSearchInput,
+  handleMyReposSearchInput,
   handlePublicRepoInput,
   handleRepoSearch,
   handleExternalRepo,

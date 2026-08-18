@@ -108,18 +108,15 @@ async function getRepo(token, owner, repo) {
   });
 }
 
-async function createRepo(token, { name, isPrivate, description, initReadme = true, licenseTemplate = null }) {
+async function createRepo(token, { name, isPrivate, description, licenseTemplate }) {
   return withTimeout((async () => {
     const octo = client(token);
     const { data } = await octo.repos.createForAuthenticatedUser({
       name,
       private: isPrivate,
       description: description || undefined,
-      // auto_init ensures a default branch exists immediately — required
-      // for a license to be attached at creation even if the person skips
-      // the README, so this stays true whenever a license was chosen.
-      auto_init: initReadme || !!licenseTemplate,
       license_template: licenseTemplate || undefined,
+      auto_init: true, // ensures a default branch + initial commit exist immediately
     });
     return data;
   })(), 'Create repo');
@@ -156,53 +153,59 @@ async function forkRepo(token, owner, repo) {
   })(), 'Fork repo');
 }
 
-/** Shared fetch — full recursive git tree, unfiltered (files + folders). */
-async function fetchRawTree(token, owner, repo, branch = null) {
-  const octo = client(token);
-  const repoData = branch ? { default_branch: branch } : await getRepo(token, owner, repo);
-  const { data: refData } = await octo.git.getRef({
-    owner,
-    repo,
-    ref: `heads/${repoData.default_branch}`,
+/** Fetches the full recursive git tree, unfiltered (files + folders). Shared
+ * by getTree() (files-only, for Browse Files/upload change-detection) and
+ * getTreeStats() (size/file/folder counts, for Repo View). */
+async function getRawTree(token, owner, repo, branch = null) {
+  return withRetry(async () => {
+    const octo = client(token);
+    const repoData = branch ? { default_branch: branch } : await getRepo(token, owner, repo);
+    const { data: refData } = await octo.git.getRef({
+      owner,
+      repo,
+      ref: `heads/${repoData.default_branch}`,
+    });
+    const { data } = await octo.git.getTree({
+      owner,
+      repo,
+      tree_sha: refData.object.sha,
+      recursive: 'true',
+    });
+    return data.tree;
   });
-  const { data } = await octo.git.getTree({
-    owner,
-    repo,
-    tree_sha: refData.object.sha,
-    recursive: 'true',
-  });
-  return data.tree;
 }
 
 /** Full recursive file tree — used for both Browse Files and file search */
 async function getTree(token, owner, repo, branch = null) {
-  return withRetry(async () => {
-    const tree = await fetchRawTree(token, owner, repo, branch);
-    return tree.filter((entry) => entry.type === 'blob'); // files only
-  });
+  const tree = await getRawTree(token, owner, repo, branch);
+  return tree.filter((entry) => entry.type === 'blob'); // files only
 }
 
 /**
- * File count, folder count, and true total size in bytes, computed from the
- * actual tree instead of GitHub's repo.size field (which is in KB, rounded,
- * and known to lag behind recent pushes by minutes-to-hours).
+ * Repo size/file/folder counts computed from the tree we already fetch —
+ * GitHub's own `repo.size` field (KB) is a periodically-recomputed cache on
+ * their end and visibly lags real changes (e.g. right after an upload), so
+ * we derive the real numbers from the same tree data instead of trusting it.
+ * Falls back to `null` sizeBytes for entries GitHub returns without a size
+ * (only happens for very large blobs it declines to size inline) — those are
+ * summed as 0 and callers should treat the total as a lower bound in that case.
  */
-async function getRepoStats(token, owner, repo, branch = null) {
-  return withRetry(async () => {
-    const tree = await fetchRawTree(token, owner, repo, branch);
-    let fileCount = 0;
-    let folderCount = 0;
-    let totalBytes = 0;
-    for (const entry of tree) {
-      if (entry.type === 'blob') {
-        fileCount++;
-        totalBytes += entry.size || 0;
-      } else if (entry.type === 'tree') {
-        folderCount++;
-      }
+async function getTreeStats(token, owner, repo, branch = null) {
+  const tree = await getRawTree(token, owner, repo, branch);
+  let sizeBytes = 0;
+  let fileCount = 0;
+  let folderCount = 0;
+  let sizeIncomplete = false;
+  for (const entry of tree) {
+    if (entry.type === 'blob') {
+      fileCount++;
+      if (typeof entry.size === 'number') sizeBytes += entry.size;
+      else sizeIncomplete = true;
+    } else if (entry.type === 'tree') {
+      folderCount++;
     }
-    return { fileCount, folderCount, totalBytes };
-  });
+  }
+  return { sizeBytes, fileCount, folderCount, sizeIncomplete };
 }
 
 async function getFileContent(token, owner, repo, path) {
@@ -345,7 +348,7 @@ module.exports = {
   setVisibility,
   forkRepo,
   getTree,
-  getRepoStats,
+  getTreeStats,
   getFileContent,
   putFile,
   deleteFile,

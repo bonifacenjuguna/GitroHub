@@ -42,12 +42,11 @@ async function replyGithubError(ctx, err, actionDescription) {
       if (prefs && prefs.tokenHealth) {
         const accessLog = require('./accessLog');
         await accessLog.record(ctx.from.id, 'disconnected', 'Token rejected by GitHub mid-action (likely expired/revoked)');
-        // The Access Log entry above is silent by design (it's a record, not
-        // an alert). Token Health being ON means the person actually wants
-        // to be pushed a message for this — previously this branch only
-        // wrote the log entry and never sent anything, so the toggle had no
-        // visible effect.
-        await ctx.reply('🔔 Token Health: your GitHub session was rejected mid-action — it likely expired or was revoked.');
+        // The Access Log entry above is a silent record — Token Health being
+        // "on" should also mean an actual push, same as every other
+        // Notification category. Sent as its own message (not folded into
+        // the reconnect prompt below) so it reads as a distinct alert.
+        await ctx.reply(`🔔 Token Health: your GitHub token was rejected during "${actionDescription}" — it likely expired or was revoked.`);
       }
     } catch (_) { /* best-effort, never let logging failure mask the real error */ }
 
