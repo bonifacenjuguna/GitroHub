@@ -68,8 +68,8 @@ async function filterLabel(state, telegramId) {
  * doesn't need that lookup at all — it shows repo.language directly — so
  * this version has no hidden dependency on caller scope.
  */
-function renderRepoLine(r, { pinned = false, tagLine = '' } = {}) {
-  return format.repoCard(r, { pinned, tagLine });
+function renderRepoLine(r, { pinned = false, tagLine = '', sizeBytes } = {}) {
+  return format.repoCard(r, { pinned, tagLine, sizeBytes });
 }
 
 /** Builds the 🏷️ tag-chip line for a repo, if it has any tags. */
@@ -113,15 +113,29 @@ async function showMyRepos(ctx, { edit = false } = {}) {
   if (pageRepos.length === 0) {
     text += format.escapeMd(`No repos match filter "${fLabel}".`);
   } else {
-    const [pinList, tagMap] = await Promise.all([
+    const [pinList, tagMap, treeStatsResults] = await Promise.all([
       pins.list(telegramId),
       tags.tagsForRepos(telegramId, pageRepos.map((r) => r.name)),
+      // Real size, not GitHub's lagging cache (v0.8.1 #14 — this now
+      // matches Repo View's behavior). Only fetched for the 3 repos on
+      // THIS page, not the whole list, so pagination keeps this cheap —
+      // each page load costs one extra tree call per visible repo, not per
+      // repo you own.
+      Promise.all(pageRepos.map((r) =>
+        repoCache.getTreeStats(telegramId, r.owner.login, r.name, token).catch(() => null)
+      )),
     ]);
     const pinnedSet = new Set(pinList.map((p) => p.repo_name));
+    const sizeByRepo = new Map(pageRepos.map((r, i) => [r.name, treeStatsResults[i]]));
 
-    const cards = pageRepos.map((r) =>
-      renderRepoLine(r, { pinned: pinnedSet.has(r.name), tagLine: tagLineFor(r.name, tagMap) })
-    );
+    const cards = pageRepos.map((r) => {
+      const stats = sizeByRepo.get(r.name);
+      return renderRepoLine(r, {
+        pinned: pinnedSet.has(r.name),
+        tagLine: tagLineFor(r.name, tagMap),
+        sizeBytes: stats ? stats.sizeBytes : undefined,
+      });
+    });
     text += cards.join(`\n${format.CARD_DIVIDER}\n`);
     text += `\n\nPage ${state.page} of ${totalPages}`;
   }

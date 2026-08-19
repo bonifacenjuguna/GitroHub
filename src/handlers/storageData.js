@@ -3,6 +3,7 @@ const dataStore = require('../lib/dataStore');
 const users = require('../lib/users');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
+const actionLock = require('../lib/actionLock');
 
 async function showStorageData(ctx) {
   const counts = await dataStore.getCounts(ctx.from.id);
@@ -51,16 +52,21 @@ async function confirmClear(ctx, scope) {
     `⚠️ Clear ${labels[scope]}? This cannot be undone.`,
     Markup.inlineKeyboard([
       [Markup.button.callback('✅ Yes, Clear', `storage:doclear:${scope}`)],
-      [Markup.button.callback('❌ Cancel', 'storage:back')],
+      [Markup.button.callback('❌ Cancel', `storage:clearcancel:${scope}`)],
     ])
   );
 }
 
+/** actionLock-protected — see lib/actionLock.js. Clear was previously the
+ * only destructive Storage & Data action without double-tap protection. */
 async function executeClear(ctx, scope) {
   const telegramId = ctx.from.id;
-  if (scope === 'activity') await dataStore.clearActivityLog(telegramId);
-  if (scope === 'pins') await dataStore.clearPins(telegramId);
-  if (scope === 'defaults') await dataStore.clearDefaults(telegramId);
+  const { skipped } = await actionLock.withLock(telegramId, async () => {
+    if (scope === 'activity') await dataStore.clearActivityLog(telegramId);
+    if (scope === 'pins') await dataStore.clearPins(telegramId);
+    if (scope === 'defaults') await dataStore.clearDefaults(telegramId);
+  });
+  if (skipped) return; // a duplicate tap while the first is still running — silently ignore
 
   await ctx.reply(format.successMessage(`Cleared ${scope}`));
   return showStorageData(ctx);
@@ -102,39 +108,44 @@ async function executeExport(ctx, format_) {
   await ctx.replyWithDocument({ source: Buffer.from(content, 'utf8'), filename });
 }
 
-async function showCleanupMenu(ctx) {
+async function showCleanupMenu(ctx, { edit = false } = {}) {
   const user = await users.getUser(ctx.from.id);
-  await ctx.reply(
+  const text =
     `🧹 *Auto\\-Cleanup*\n\n` +
     `Activity Log retention: ${user.activity_retention_days} days\n` +
-    `🗑 Auto\\-delete pins/tags on repo deletion: ${user.auto_cleanup_on_delete ? 'On' : 'Off'}`,
-    {
-      parse_mode: 'MarkdownV2',
-      ...Markup.inlineKeyboard([
-        [
-          Markup.button.callback('30d', 'storage:retention:30'),
-          Markup.button.callback('90d', 'storage:retention:90'),
-          Markup.button.callback('1yr', 'storage:retention:365'),
-          Markup.button.callback('Forever', 'storage:retention:36500'),
-        ],
-        [Markup.button.callback(user.auto_cleanup_on_delete ? '🗑 Turn Off Auto-Delete' : '🗑 Turn On Auto-Delete', 'storage:toggleautodelete')],
-      ]),
-    }
-  );
+    `🗑 Auto\\-delete pins/tags on repo deletion: ${user.auto_cleanup_on_delete ? 'On' : 'Off'}`;
+  const keyboard = Markup.inlineKeyboard([
+    [
+      Markup.button.callback('30d', 'storage:retention:30'),
+      Markup.button.callback('90d', 'storage:retention:90'),
+      Markup.button.callback('1yr', 'storage:retention:365'),
+      Markup.button.callback('Forever', 'storage:retention:36500'),
+    ],
+    [Markup.button.callback(user.auto_cleanup_on_delete ? '🗑 Turn Off Auto-Delete' : '🗑 Turn On Auto-Delete', 'storage:toggleautodelete')],
+  ]);
+
+  // #34 — retention/auto-delete are a multi-toggle screen you flip
+  // repeatedly, same shape as Notifications, so it edits in place instead
+  // of resending a fresh menu every tap.
+  if (edit) {
+    try {
+      return await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
+    } catch (_) { /* fall through to a fresh send */ }
+  }
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
 }
 
 async function setRetention(ctx, days) {
   const { pool } = require('../db/postgres');
   await pool.query('UPDATE users SET activity_retention_days = $1 WHERE telegram_id = $2', [Number(days), ctx.from.id]);
-  await ctx.reply('✅ Retention updated.');
-  return showCleanupMenu(ctx);
+  return showCleanupMenu(ctx, { edit: true });
 }
 
 async function toggleAutoDelete(ctx) {
   const { pool } = require('../db/postgres');
   const user = await users.getUser(ctx.from.id);
   await pool.query('UPDATE users SET auto_cleanup_on_delete = $1 WHERE telegram_id = $2', [!user.auto_cleanup_on_delete, ctx.from.id]);
-  return showCleanupMenu(ctx);
+  return showCleanupMenu(ctx, { edit: true });
 }
 
 module.exports = {

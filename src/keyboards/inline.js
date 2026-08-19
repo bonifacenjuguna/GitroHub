@@ -29,7 +29,10 @@ const sortMenu = Markup.inlineKeyboard([
 /** Repo View info card — Rename, Pin/Unpin, Tags stay inline; Delete Repo is the destructive one */
 function repoActions(repoName, pinned = false) {
   return Markup.inlineKeyboard([
-    [Markup.button.callback('✏️ Rename', `repo:rename:${repoName}`)],
+    [
+      Markup.button.callback('✏️ Rename', `repo:rename:${repoName}`),
+      Markup.button.callback('✏️ Description', `repo:description:${repoName}`),
+    ],
     [
       Markup.button.callback(pinned ? '📌 Unpin' : '📌 Pin', `repo:pin:${repoName}`),
       Markup.button.callback('🏷️ Tags', `repo:tags:${repoName}`),
@@ -174,6 +177,15 @@ function activityPagination(page, totalPages, errorsOnly) {
   if (nav.length) rows.push(nav);
   rows.push([
     Markup.button.callback(errorsOnly ? '⬅️ Back to Full Log' : '⚠️ Errors Only', `activity:filter:${!errorsOnly}`),
+  ]);
+  // Access Log relocated here from its own Settings BBTB row (#47) — same
+  // content/flow as before, just reachable from inside Activity now.
+  // Refresh relocated here too (#49), same chained-fresh-message pattern
+  // as Settings' Refresh Status, instead of its own BBTB row that (per a
+  // v0.8.1 audit) was actually colliding with My Repos' Refresh button.
+  rows.push([
+    Markup.button.callback('🔑 Access Log', 'activity:accesslog'),
+    Markup.button.callback('🔄 Refresh', `activity:refresh:${errorsOnly}`),
   ]);
   return Markup.inlineKeyboard(rows);
 }

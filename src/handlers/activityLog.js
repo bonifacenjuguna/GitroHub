@@ -5,7 +5,7 @@ const bbtb = require('../keyboards/bbtb');
 const config = require('../config');
 const dataStore = require('../lib/dataStore');
 
-async function showActivity(ctx, { page = 1, errorsOnly = false, edit = false } = {}) {
+async function showActivity(ctx, { page = 1, errorsOnly = false, edit = false, skipBbtb = false } = {}) {
   const telegramId = ctx.from.id;
   const limit = config.ACTIVITY_PER_PAGE;
   const offset = (page - 1) * limit;
@@ -36,7 +36,10 @@ async function showActivity(ctx, { page = 1, errorsOnly = false, edit = false } 
   if (edit) {
     await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
   } else {
-    await ctx.reply('📜 Activity', bbtb.activityLog);
+    // BBTB marker only on first open — chained refresh taps (#49) pass
+    // skipBbtb since the reply keyboard is already showing correctly and
+    // resending it every tap would be exactly the clutter this pass fixed.
+    if (!skipBbtb) await ctx.reply('📜 Activity', bbtb.activityLog);
     await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
   }
 }

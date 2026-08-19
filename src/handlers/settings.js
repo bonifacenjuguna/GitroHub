@@ -1,4 +1,5 @@
 const os = require('os');
+const { Markup } = require('telegraf');
 const github = require('../lib/github');
 const users = require('../lib/users');
 const format = require('../lib/format');
@@ -19,7 +20,7 @@ function formatUptime(ms) {
   return `${d}d ${h}h ${m}m`;
 }
 
-async function showSettings(ctx) {
+async function showSettings(ctx, { skipBbtb = false } = {}) {
   const telegramId = ctx.from.id;
   const user = await users.getUser(telegramId);
   const connected = !!(user && user.github_token_enc);
@@ -75,9 +76,14 @@ async function showSettings(ctx) {
     await activity.log(telegramId, '⚠️', 'Redis unreachable', { detail: redisStatus.error, isError: true }).catch(() => {});
   }
 
+  // BBTB reply keyboard persists on screen once shown — only send the
+  // marker message on first open, not on every chained refresh tap (#48),
+  // or every refresh would needlessly resend it too (the exact clutter
+  // this whole redesign pass was about avoiding elsewhere).
+  if (!skipBbtb) await ctx.reply('⚙️ Settings', connected ? bbtb.settings : bbtb.disconnected);
   await ctx.reply(text, {
     parse_mode: 'MarkdownV2',
-    reply_markup: (connected ? bbtb.settings : bbtb.disconnected).reply_markup,
+    ...Markup.inlineKeyboard([[Markup.button.callback('🔄 Refresh Status', 'settings:refresh')]]),
   });
 }
 

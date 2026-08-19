@@ -44,26 +44,45 @@ async function handleStart(ctx) {
 
   const user = await users.getUser(telegramId);
 
-  // Repo count is a nice-to-have on the welcome message, not essential —
-  // race it against a short timeout so /start can never hang waiting on
-  // GitHub even if that call is slow, regardless of what's happening
-  // elsewhere.
-  let repoCountLine = '';
+  // Everything below the header is a nice-to-have, not essential — raced
+  // against a short timeout so /start can never hang waiting on GitHub or
+  // the DB, regardless of what's happening elsewhere.
+  let statsBlock = '';
   try {
     const token = await users.getDecryptedToken(telegramId);
-    const repos = await Promise.race([
-      repoCache.getRepos(ctx.from.id, token),
+    const pins = require('../lib/pins');
+    const activity = require('../lib/activity');
+
+    const [repos, pinList, recentActivity] = await Promise.race([
+      Promise.all([
+        repoCache.getRepos(ctx.from.id, token),
+        pins.list(telegramId),
+        activity.recent(telegramId, { limit: 1 }),
+      ]),
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 4000)),
     ]);
-    repoCountLine = `\n📁 ${repos.length} repos ready to manage`;
+
+    const totalStars = repos.reduce((sum, r) => sum + (r.stargazers_count || 0), 0);
+    const privateCount = repos.filter((r) => r.private).length;
+    const publicCount = repos.length - privateCount;
+    const lastActivityLine = recentActivity.rows[0]
+      ? `▸ 🕒 Last activity: ${format.relativeTime(recentActivity.rows[0].created_at)}\n`
+      : '';
+
+    statsBlock =
+      `▸ 📁 ${repos.length} repos · ⭐ ${totalStars} stars · 📌 ${pinList.length} pinned\n` +
+      `▸ 🔒 ${privateCount} private · 🌐 ${publicCount} public\n` +
+      lastActivityLine;
   } catch (_) {
-    // best-effort — don't block the welcome message if this fails or is slow
+    // best-effort — welcome message still shows without the stats block
   }
 
   await ctx.reply(
-    `👋 Welcome back, @${user.github_username}\n` +
-    `🟢 GitHub connected${repoCountLine}\n\n` +
-    `Tap a button below to get started.\n\n` +
+    `◆ WELCOME BACK\n` +
+    `@${user.github_username}\n\n` +
+    `▸ 🟢 GitHub connected\n` +
+    statsBlock +
+    `\nTap a button below to get started.\n` +
     `🔧 v${config.BOT_VERSION}`,
     bbtb.mainMenu
   );

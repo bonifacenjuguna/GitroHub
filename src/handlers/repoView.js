@@ -81,7 +81,6 @@ async function showRepoView(ctx, repoName) {
     `💻 *LANGUAGES*\n${format.escapeMd(langBreakdown)}\n\n` +
     `📊 *DETAILS*\n` +
     fileFolderLine +
-    `▸ Last updated: ${format.escapeMd(format.relativeTime(repo.updated_at))}\n` +
     `▸ Last commit: ${format.escapeMd(format.relativeTime(repo.pushed_at))}\n` +
     `▸ Created: ${format.escapeMd(format.relativeTime(repo.created_at))}`;
 
@@ -209,6 +208,116 @@ async function _executeToggleVisibility(ctx, repoName) {
   }
 }
 
+/** ✏️ Description — v0.8.1 #46. Low-risk/instantly-reversible, unlike
+ * Rename (which affects clone URLs), so no confirm step, matching how
+ * Description is entered during Create Repo (type it, move on). */
+async function askEditDescription(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+
+  ctx.session.editingDescription = repoName;
+  const user = await repoCache.getUser(ctx.from.id, token);
+  const repo = await github.getRepo(token, user.login, repoName);
+  await ctx.reply(
+    `✏️ Current description: ${repo.description ? `"${repo.description}"` : '(none)'}\n\nSend a new description, or ⏭️ Skip to clear it.`,
+    bbtb.cancelWithSkip
+  );
+}
+
+/** Called from the text router when ctx.session.editingDescription is set */
+async function handleDescriptionInput(ctx, text) {
+  const repoName = ctx.session.editingDescription;
+  delete ctx.session.editingDescription;
+  if (!repoName) return;
+
+  const token = await requireConnected(ctx);
+  if (!token) return;
+
+  const description = text === '⏭️ Skip' ? '' : text.trim();
+  try {
+    const user = await repoCache.getUser(ctx.from.id, token);
+    await github.updateDescription(token, user.login, repoName, description);
+    repoCache.invalidateRepos(ctx.from.id);
+    await activity.log(ctx.from.id, '✏️', `Description updated → ${repoName}`);
+    await ctx.reply(format.successMessage('Description updated'), bbtb.repoView);
+  } catch (err) {
+    await activity.log(ctx.from.id, '⚠️', `Description update failed → ${repoName}`, { detail: err.message, isError: true });
+    await ctx.reply(format.errorMessage('Couldn\u2019t update description', err.message, 'Try again.'));
+  }
+  return showRepoView(ctx, repoName);
+}
+
+const LICENSE_OPTIONS = [
+  ['mit', 'MIT'],
+  ['apache-2.0', 'Apache 2.0'],
+  ['gpl-3.0', 'GPL v3'],
+  ['bsd-3-clause', 'BSD'],
+];
+
+/** ⚖️ License — v0.8.1 #15. GitHub has no "set license" API field; a
+ * repo's detected license comes from GitHub actually scanning a LICENSE
+ * file (licensee). Same mechanism as the visibility flow otherwise:
+ * show current state, confirm before changing. */
+async function showLicenseMenu(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+
+  const { Markup } = require('telegraf');
+  const user = await repoCache.getUser(ctx.from.id, token);
+  const repo = await github.getRepo(token, user.login, repoName);
+  const current = repo.license ? (repo.license.name || repo.license.spdx_id) : 'No license';
+
+  const rows = LICENSE_OPTIONS.map(([key, label]) =>
+    [Markup.button.callback(label, `repo:license:confirm:${repoName}:${key}`)]
+  );
+  rows.push([Markup.button.callback('🚫 None', `repo:license:confirm:${repoName}:none`)]);
+  rows.push([Markup.button.callback('❌ Cancel', `repo:license:cancel:${repoName}`)]);
+
+  await ctx.reply(
+    `⚖️ *${format.escapeMd(repoName)}* — current license: ${format.escapeMd(current)}\n\nChoose a new one, or ❌ Cancel:`,
+    { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) }
+  );
+}
+
+async function executeSetLicense(ctx, repoName, licenseKey) {
+  const actionLock = require('../lib/actionLock');
+  const { skipped } = await actionLock.withLock(ctx.from.id, () => _executeSetLicense(ctx, repoName, licenseKey));
+  if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
+}
+
+async function _executeSetLicense(ctx, repoName, licenseKey) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+
+  try {
+    const user = await repoCache.getUser(ctx.from.id, token);
+    if (licenseKey === 'none') {
+      // Remove the existing LICENSE file, if any — this is what makes the
+      // repo show "No license" again (GitHub can't be told directly).
+      try {
+        const existing = await github.getFileContent(token, user.login, repoName, 'LICENSE');
+        await github.deleteFile(token, user.login, repoName, 'LICENSE', existing.sha, 'Remove license');
+      } catch (_) { /* no LICENSE file existed — nothing to remove */ }
+    } else {
+      const body = await github.getLicenseText(token, licenseKey);
+      let existingSha = null;
+      try {
+        const existing = await github.getFileContent(token, user.login, repoName, 'LICENSE');
+        existingSha = existing.sha;
+      } catch (_) { /* no existing LICENSE file — creating fresh */ }
+      await github.putFile(token, user.login, repoName, 'LICENSE', body, 'Update license', existingSha);
+    }
+    repoCache.invalidateRepos(ctx.from.id);
+    repoCache.invalidateTreeStats(ctx.from.id, repoName);
+    await activity.log(ctx.from.id, '⚖️', `License updated → ${repoName} (${licenseKey})`);
+    await ctx.reply(format.successMessage('License updated'), bbtb.repoView);
+  } catch (err) {
+    await activity.log(ctx.from.id, '⚠️', `License update failed → ${repoName}`, { detail: err.message, isError: true });
+    await ctx.reply(format.errorMessage('Couldn\u2019t update license', err.message, 'Try again.'));
+  }
+  return showRepoView(ctx, repoName);
+}
+
 async function downloadRepo(ctx, repoName) {
   const token = await requireConnected(ctx);
   if (!token) return;
@@ -238,6 +347,13 @@ async function downloadRepo(ctx, repoName) {
 }
 
 async function togglePin(ctx, repoName) {
+  // Gated behind requireConnected (v0.8.1 #25/#21) — this used to write to
+  // the DB first and only discover we were disconnected on the follow-up
+  // re-render, so a stale button could pin/unpin a repo with zero warning
+  // until AFTER the write already happened. Check first, write second.
+  const token = await requireConnected(ctx);
+  if (!token) return;
+
   const telegramId = ctx.from.id;
   const isPinned = await pins.isPinned(telegramId, repoName);
 
@@ -259,6 +375,10 @@ module.exports = {
   executeDeleteRepo,
   askToggleVisibility,
   executeToggleVisibility,
+  askEditDescription,
+  handleDescriptionInput,
+  showLicenseMenu,
+  executeSetLicense,
   downloadRepo,
   cleanupOrphanedData,
   togglePin,

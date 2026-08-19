@@ -5,6 +5,7 @@ const redisStore = require('./middleware/redisSessionStore');
 const users = require('./lib/users');
 const bbtb = require('./keyboards/bbtb');
 const inline = require('./keyboards/inline');
+const confirmFlow = require('./lib/confirmFlow');
 
 const startHandler = require('./handlers/start');
 const myRepos = require('./handlers/myRepos');
@@ -133,6 +134,14 @@ function createBot() {
     '⭐ Pinned': (ctx) => pinned.showPinned(ctx),
     '🧹 Bulk Select': (ctx) => bulkActions.startBulkSelect(ctx),
     '📊 Stats': (ctx) => myRepos.showStats(ctx),
+    // Bulk Select's keyboards use a shorter '⬆️ Menu' label than the rest
+    // of the bot's '⬆️ Back to Menu' (#39) — same destination, own entry
+    // since bot.hears matches on exact text.
+    '⬆️ Menu': async (ctx) => {
+      ctx.session.awaitingSearch = false;
+      const connected = await users.isConnected(ctx.from.id);
+      await ctx.reply('📍 Main Menu', connected ? bbtb.mainMenu : bbtb.disconnected);
+    },
 
     '⬅️ Back to Repos': (ctx) => myRepos.showMyRepos(ctx),
 
@@ -158,6 +167,11 @@ function createBot() {
       if (!repoName) return ctx.reply('Open a repo first from 📁 My Repos.');
       await repoView.askToggleVisibility(ctx, repoName);
     },
+    '⚖️ License': async (ctx) => {
+      const repoName = ctx.session.currentRepo;
+      if (!repoName) return ctx.reply('Open a repo first from 📁 My Repos.');
+      await repoView.showLicenseMenu(ctx, repoName);
+    },
 
     '🔍 Search Files': async (ctx) => {
       ctx.session.awaitingFileSearch = true;
@@ -182,11 +196,12 @@ function createBot() {
 
     '📜 Activity': (ctx) => activityLog.showActivity(ctx),
     '🚪 Disconnect': (ctx) => settings.askDisconnect(ctx),
-    '🔄 Refresh Status': (ctx) => settings.showSettings(ctx),
     '⬆️ Back to Settings': (ctx) => settings.showSettings(ctx),
-    '⚙️ My Defaults': (ctx) => myDefaults.showDefaults(ctx),
-    '📦 Storage & Data': (ctx) => storageData.showStorageData(ctx),
-    '🔑 Access Log': (ctx) => accessLogScreen.showAccessLog(ctx),
+    '⚙️ Defaults': (ctx) => myDefaults.showDefaults(ctx),
+    '📦 Storage': (ctx) => storageData.showStorageData(ctx),
+    // 🔄 Refresh Status and 🔑 Access Log are no longer BBTB buttons —
+    // relocated to inline (see #47/#48). Their handler functions are still
+    // reachable, now via the callback_query router below.
 
     '🔁 Search Again': async (ctx) => {
       await ctx.reply('🔍 Search for a repo:', inline.searchTypeMenu());
@@ -197,8 +212,8 @@ function createBot() {
       if (repoName) await ctx.scene.enter('uploadFile', { repoName });
     },
 
-    '✅ Done Selecting': (ctx) => bulkActions.showActionMenu(ctx),
-    '⬅️ Back to Selection': (ctx) => bulkActions.startBulkSelect(ctx),
+    '✅ Done': (ctx) => bulkActions.showActionMenu(ctx),
+    '◀️ Selection': (ctx) => bulkActions.startBulkSelect(ctx),
   };
 
   attachGlobalEscapes(createRepoScene, handlerMap, null, ['➕ New Repo']);
@@ -229,6 +244,7 @@ function createBot() {
     delete ctx.session.creatingTag;
     delete ctx.session.editingDefault;
     delete ctx.session.awaitingFullReset;
+    delete ctx.session.editingDescription;
     await sendCancelledMenu(ctx);
   });
 
@@ -239,6 +255,7 @@ function createBot() {
     if (ctx.session.creatingTag) return tags.handleCreateTagInput(ctx);
     if (ctx.session.editingDefault) return myDefaults.handleTextInput(ctx);
     if (ctx.session.awaitingFullReset) return storageData.handleResetConfirmationText(ctx);
+    if (ctx.session.editingDescription) return repoView.handleDescriptionInput(ctx, ctx.message.text);
 
     if (ctx.session.awaitingSearch) {
       ctx.session.awaitingSearch = false;
@@ -277,7 +294,8 @@ function createBot() {
     if (
       data.startsWith('repo:') &&
       !data.includes(':rename:') && !data.includes(':delete:') &&
-      !data.includes(':visibility:') && !data.includes(':pin:') && !data.includes(':tags:')
+      !data.includes(':visibility:') && !data.includes(':pin:') && !data.includes(':tags:') &&
+      !data.includes(':description:') && !data.includes(':license:')
     ) {
       await ctx.answerCbQuery();
       const repoName = data.split('repo:')[1];
@@ -305,13 +323,31 @@ function createBot() {
       const repoName = data.split('repo:rename:')[1];
       return ctx.scene.enter('renameRepo', { repoName });
     }
+    if (data.startsWith('repo:description:')) {
+      await ctx.answerCbQuery();
+      return repoView.askEditDescription(ctx, data.split('repo:description:')[1]);
+    }
+    if (data.startsWith('repo:license:confirm:')) {
+      await ctx.answerCbQuery();
+      const parts = data.split('repo:license:confirm:')[1].split(':');
+      const licenseKey = parts.pop();
+      const repoName = parts.join(':');
+      await confirmFlow.resolveConfirmation(ctx, 'confirmed', '⏳ Updating license…');
+      return repoView.executeSetLicense(ctx, repoName, licenseKey);
+    }
+    if (data.startsWith('repo:license:cancel:')) {
+      await ctx.answerCbQuery();
+      return confirmFlow.resolveConfirmation(ctx, 'cancelled', '❌ Cancelled — license unchanged.');
+    }
     if (data.startsWith('repo:delete:confirm:')) {
       await ctx.answerCbQuery();
-      return repoView.executeDeleteRepo(ctx, data.split('repo:delete:confirm:')[1]);
+      const repoName = data.split('repo:delete:confirm:')[1];
+      await confirmFlow.resolveConfirmation(ctx, 'confirmed', `⏳ Deleting ${repoName}…`);
+      return repoView.executeDeleteRepo(ctx, repoName);
     }
     if (data.startsWith('repo:delete:cancel:')) {
       await ctx.answerCbQuery();
-      return ctx.reply('Cancelled.');
+      return confirmFlow.resolveConfirmation(ctx, 'cancelled', '❌ Cancelled — repo was not deleted.');
     }
     if (data.startsWith('repo:delete:')) {
       await ctx.answerCbQuery();
@@ -319,11 +355,13 @@ function createBot() {
     }
     if (data.startsWith('repo:visibility:confirm:')) {
       await ctx.answerCbQuery();
-      return repoView.executeToggleVisibility(ctx, data.split('repo:visibility:confirm:')[1]);
+      const repoName = data.split('repo:visibility:confirm:')[1];
+      await confirmFlow.resolveConfirmation(ctx, 'confirmed', `⏳ Updating visibility for ${repoName}…`);
+      return repoView.executeToggleVisibility(ctx, repoName);
     }
     if (data.startsWith('repo:visibility:cancel:')) {
       await ctx.answerCbQuery();
-      return ctx.reply('Cancelled.');
+      return confirmFlow.resolveConfirmation(ctx, 'cancelled', '❌ Cancelled — visibility unchanged.');
     }
     if (data.startsWith('repo:pin:')) {
       await ctx.answerCbQuery();
@@ -371,6 +409,10 @@ function createBot() {
     if (data.startsWith('pin:down:')) {
       await ctx.answerCbQuery();
       return pinned.movePin(ctx, data.split('pin:down:')[1], 'down');
+    }
+    if (data === 'pinned:refresh') {
+      await ctx.answerCbQuery();
+      return pinned.showPinned(ctx, { edit: true });
     }
 
     // Upload entry points
@@ -471,11 +513,13 @@ function createBot() {
     }
     if (data.startsWith('file:delete:confirm:')) {
       await ctx.answerCbQuery();
-      return browseFiles.executeDeleteFile(ctx, ctx.session.currentRepo, data.split('file:delete:confirm:')[1]);
+      const filePath = data.split('file:delete:confirm:')[1];
+      await confirmFlow.resolveConfirmation(ctx, 'confirmed', `⏳ Deleting ${filePath}…`);
+      return browseFiles.executeDeleteFile(ctx, ctx.session.currentRepo, filePath);
     }
     if (data.startsWith('file:delete:cancel:')) {
       await ctx.answerCbQuery();
-      return ctx.reply('Cancelled.');
+      return confirmFlow.resolveConfirmation(ctx, 'cancelled', '❌ Cancelled — file was not deleted.');
     }
     if (data.startsWith('file:delete:')) {
       await ctx.answerCbQuery();
@@ -493,11 +537,12 @@ function createBot() {
     }
     if (data === 'external:fork:confirm') {
       await ctx.answerCbQuery();
+      await confirmFlow.resolveConfirmation(ctx, 'confirmed', '⏳ Forking…');
       return search.executeForkExternal(ctx);
     }
     if (data === 'external:fork:cancel' || data === 'external:cancel') {
       await ctx.answerCbQuery();
-      return ctx.reply('Cancelled.');
+      return confirmFlow.resolveConfirmation(ctx, 'cancelled', '❌ Cancelled — nothing was forked.');
     }
 
     // Settings / notifications / activity
@@ -507,11 +552,12 @@ function createBot() {
     }
     if (data === 'settings:disconnect:confirm') {
       await ctx.answerCbQuery();
+      await confirmFlow.resolveConfirmation(ctx, 'confirmed', '⏳ Disconnecting…');
       return settings.executeDisconnect(ctx);
     }
     if (data === 'settings:disconnect:cancel') {
       await ctx.answerCbQuery();
-      return ctx.reply('Cancelled.');
+      return confirmFlow.resolveConfirmation(ctx, 'cancelled', '❌ Cancelled — still connected.');
     }
     if (data === 'settings:back') {
       await ctx.answerCbQuery();
@@ -526,6 +572,15 @@ function createBot() {
       await ctx.answerCbQuery();
       const errorsOnly = data.split('activity:filter:')[1] === 'true';
       return activityLog.showActivity(ctx, { page: 1, errorsOnly, edit: true });
+    }
+    if (data.startsWith('activity:refresh:')) {
+      await ctx.answerCbQuery();
+      const errorsOnly = data.split('activity:refresh:')[1] === 'true';
+      return activityLog.showActivity(ctx, { page: 1, errorsOnly, skipBbtb: true });
+    }
+    if (data === 'activity:accesslog') {
+      await ctx.answerCbQuery();
+      return accessLogScreen.showAccessLog(ctx, { fromActivity: true });
     }
 
     // My Defaults
@@ -555,7 +610,16 @@ function createBot() {
     if (data === 'storage:clearmenu') { await ctx.answerCbQuery(); return storageData.showClearMenu(ctx); }
     if (data === 'storage:back') { await ctx.answerCbQuery(); return storageData.showStorageData(ctx); }
     if (data.startsWith('storage:clear:')) { await ctx.answerCbQuery(); return storageData.confirmClear(ctx, data.split('storage:clear:')[1]); }
-    if (data.startsWith('storage:doclear:')) { await ctx.answerCbQuery(); return storageData.executeClear(ctx, data.split('storage:doclear:')[1]); }
+    if (data.startsWith('storage:doclear:')) {
+      await ctx.answerCbQuery();
+      const scope = data.split('storage:doclear:')[1];
+      await confirmFlow.resolveConfirmation(ctx, 'confirmed', '⏳ Clearing…');
+      return storageData.executeClear(ctx, scope);
+    }
+    if (data.startsWith('storage:clearcancel:')) {
+      await ctx.answerCbQuery();
+      return confirmFlow.resolveConfirmation(ctx, 'cancelled', '❌ Cancelled — nothing was cleared.');
+    }
     if (data === 'storage:exportmenu') { await ctx.answerCbQuery(); return storageData.showExportMenu(ctx); }
     if (data.startsWith('storage:export:')) { await ctx.answerCbQuery(); return storageData.executeExport(ctx, data.split('storage:export:')[1]); }
     if (data === 'storage:cleanupmenu') { await ctx.answerCbQuery(); return storageData.showCleanupMenu(ctx); }
@@ -563,14 +627,16 @@ function createBot() {
     if (data === 'storage:toggleautodelete') { await ctx.answerCbQuery(); return storageData.toggleAutoDelete(ctx); }
 
     // Access Log
-    if (data === 'accesslog:togglealert') { await ctx.answerCbQuery(); return accessLogScreen.toggleAlert(ctx); }
+    if (data === 'accesslog:togglealert') { await ctx.answerCbQuery(); return accessLogScreen.toggleAlert(ctx, true); }
+    if (data === 'accesslog:backtoactivity') { await ctx.answerCbQuery(); return activityLog.showActivity(ctx, { skipBbtb: true }); }
+    if (data === 'settings:refresh') { await ctx.answerCbQuery(); return settings.showSettings(ctx, { skipBbtb: true }); }
 
     // Bulk Repo Actions
     if (data.startsWith('bulk:toggle:')) {
       await ctx.answerCbQuery();
       return bulkActions.toggleRepo(ctx, data.split('bulk:toggle:')[1], ctx.session.bulkPage || 1);
     }
-    if (data.startsWith('bulk:page:')) { await ctx.answerCbQuery(); return bulkActions.startBulkSelect(ctx, { page: Number(data.split(':')[2]) }); }
+    if (data.startsWith('bulk:page:')) { await ctx.answerCbQuery(); return bulkActions.startBulkSelect(ctx, { page: Number(data.split(':')[2]), edit: true }); }
     if (data === 'bulk:selectall') { await ctx.answerCbQuery(); return bulkActions.selectAll(ctx); }
     if (data === 'bulk:invert') { await ctx.answerCbQuery(); return bulkActions.invertSelection(ctx); }
     if (data === 'bulk:selectstale') { await ctx.answerCbQuery(); return bulkActions.selectStale(ctx); }
@@ -578,12 +644,16 @@ function createBot() {
     if (data === 'bulk:selectpublic') { await ctx.answerCbQuery(); return bulkActions.selectByVisibility(ctx, false); }
     if (data === 'bulk:tagmenu') { await ctx.answerCbQuery(); return bulkActions.showTagSelectMenu(ctx); }
     if (data.startsWith('bulk:selecttag:')) { await ctx.answerCbQuery(); return bulkActions.selectByTag(ctx, data.split('bulk:selecttag:')[1]); }
-    if (data === 'bulk:back') { await ctx.answerCbQuery(); return bulkActions.startBulkSelect(ctx); }
+    if (data === 'bulk:back') { await ctx.answerCbQuery(); return bulkActions.startBulkSelect(ctx, { page: ctx.session.bulkPage || 1, edit: true }); }
     if (data.startsWith('bulk:action:')) { await ctx.answerCbQuery(); return bulkActions.confirmAction(ctx, data.split('bulk:action:')[1]); }
-    if (data === 'bulk:cancel') { await ctx.answerCbQuery(); return ctx.reply('Cancelled.'); }
+    if (data === 'bulk:cancel') {
+      await ctx.answerCbQuery();
+      return confirmFlow.resolveConfirmation(ctx, 'cancelled', '❌ Cancelled — no changes made.');
+    }
     if (data.startsWith('bulk:execute:')) {
       await ctx.answerCbQuery();
       const action = data.split('bulk:execute:')[1];
+      await confirmFlow.resolveConfirmation(ctx, 'confirmed', '⏳ Working…');
       if (action === 'download') return bulkActions.executeDownloads(ctx);
       return bulkActions.execute(ctx, action);
     }

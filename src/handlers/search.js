@@ -168,26 +168,32 @@ async function forkExternal(ctx) {
   );
 }
 
+/** actionLock-protected — Fork was the one destructive action in this file
+ * without double-tap protection (see v0.8.1 #17). */
 async function executeForkExternal(ctx) {
   const { owner, repo } = ctx.session.externalRepo;
   const token = await requireConnected(ctx);
   if (!token) return;
 
-  try {
-    const forked = await github.forkRepo(token, owner, repo);
-    repoCache.invalidateRepos(ctx.from.id);
-    await activity.log(ctx.from.id, '🍴', `Forked → ${owner}/${repo}`);
-    await ctx.reply(
-      `✅ Forked\\! ${format.escapeMd(repo)} is now in your account\\.`,
-      { parse_mode: 'MarkdownV2', ...inline.createRepoSuccess(forked.name) }
-    );
-  } catch (err) {
-    const reason = err.message.includes('name already exists')
-      ? `you already have a repo named "${repo}" — GitHub forks must keep the original name`
-      : err.message;
-    await activity.log(ctx.from.id, '⚠️', `Fork failed → ${owner}/${repo}`, { detail: err.message, isError: true });
-    await ctx.reply(format.errorMessage('Fork failed', reason, 'Rename or delete your existing repo, then retry.'));
-  }
+  const actionLock = require('../lib/actionLock');
+  const { skipped } = await actionLock.withLock(ctx.from.id, async () => {
+    try {
+      const forked = await github.forkRepo(token, owner, repo);
+      repoCache.invalidateRepos(ctx.from.id);
+      await activity.log(ctx.from.id, '🍴', `Forked → ${owner}/${repo}`);
+      await ctx.reply(
+        `✅ Forked\\! ${format.escapeMd(repo)} is now in your account\\.`,
+        { parse_mode: 'MarkdownV2', ...inline.createRepoSuccess(forked.name) }
+      );
+    } catch (err) {
+      const reason = err.message.includes('name already exists')
+        ? `you already have a repo named "${repo}" — GitHub forks must keep the original name`
+        : err.message;
+      await activity.log(ctx.from.id, '⚠️', `Fork failed → ${owner}/${repo}`, { detail: err.message, isError: true });
+      await ctx.reply(format.errorMessage('Fork failed', reason, 'Rename or delete your existing repo, then retry.'));
+    }
+  });
+  if (skipped) await ctx.reply('⏳ Already forking — please wait a moment.');
 }
 
 module.exports = {

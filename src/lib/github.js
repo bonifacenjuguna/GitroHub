@@ -145,6 +145,27 @@ async function setVisibility(token, owner, repo, isPrivate) {
   })(), 'Change visibility');
 }
 
+async function updateDescription(token, owner, repo, description) {
+  return withTimeout((async () => {
+    const octo = client(token);
+    const { data } = await octo.repos.update({ owner, repo, description: description || '' });
+    return data;
+  })(), 'Update description');
+}
+
+/** GitHub's Repos API has no "set license" field — a repo's detected
+ * license comes from actually scanning a LICENSE file in the tree
+ * (licensee). To change it, we fetch the real license body text from
+ * GitHub's own /licenses/{key} endpoint and write/replace a LICENSE file —
+ * same mechanism a person clicking "Add license" on github.com uses. */
+async function getLicenseText(token, licenseKey) {
+  return withTimeout((async () => {
+    const octo = client(token);
+    const { data } = await octo.licenses.get({ license: licenseKey });
+    return data.body;
+  })(), 'Fetch license text');
+}
+
 async function forkRepo(token, owner, repo) {
   return withTimeout((async () => {
     const octo = client(token);
@@ -346,6 +367,8 @@ module.exports = {
   deleteRepo,
   renameRepo,
   setVisibility,
+  updateDescription,
+  getLicenseText,
   forkRepo,
   getTree,
   getTreeStats,

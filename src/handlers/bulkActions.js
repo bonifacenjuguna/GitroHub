@@ -16,7 +16,7 @@ function getSelection(ctx) {
   return ctx.session.bulkSelected;
 }
 
-async function startBulkSelect(ctx, { page = 1 } = {}) {
+async function startBulkSelect(ctx, { page = 1, edit = false } = {}) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
@@ -60,6 +60,19 @@ async function startBulkSelect(ctx, { page = 1 } = {}) {
     `${selected.length > 0 ? format.escapeMd(previewNames(selected)) : format.escapeMd('None selected yet')}\n\n` +
     `Page ${page} of ${totalPages}`;
 
+  // #33 — every checkbox tap, filter button, and page flip used to resend
+  // the whole screen as a brand-new message. Now it edits the same message
+  // in place (matching how Notifications already worked), so selecting 10
+  // repos doesn't produce 10 messages.
+  if (edit) {
+    try {
+      return await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
+    } catch (_) {
+      // Message unchanged (Telegram errors on a no-op edit) or too old to
+      // edit — fall through to a fresh send so the action never silently fails.
+    }
+  }
+
   await ctx.reply('🧹 Bulk Select', bbtb.bulkSelect);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
@@ -74,19 +87,19 @@ async function toggleRepo(ctx, repoName, page) {
   const idx = selected.indexOf(repoName);
   if (idx === -1) selected.push(repoName);
   else selected.splice(idx, 1);
-  return startBulkSelect(ctx, { page });
+  return startBulkSelect(ctx, { page, edit: true });
 }
 
 async function selectAll(ctx) {
   ctx.session.bulkSelected = [...(ctx.session.bulkAllRepoNames || [])];
-  return startBulkSelect(ctx);
+  return startBulkSelect(ctx, { page: ctx.session.bulkPage || 1, edit: true });
 }
 
 async function invertSelection(ctx) {
   const all = ctx.session.bulkAllRepoNames || [];
   const selected = new Set(getSelection(ctx));
   ctx.session.bulkSelected = all.filter((name) => !selected.has(name));
-  return startBulkSelect(ctx);
+  return startBulkSelect(ctx, { page: ctx.session.bulkPage || 1, edit: true });
 }
 
 async function selectStale(ctx) {
@@ -97,7 +110,7 @@ async function selectStale(ctx) {
   ctx.session.bulkSelected = allRepos
     .filter((r) => new Date(r.updated_at).getTime() < sixMonthsAgo)
     .map((r) => r.name);
-  return startBulkSelect(ctx);
+  return startBulkSelect(ctx, { page: ctx.session.bulkPage || 1, edit: true });
 }
 
 async function selectByVisibility(ctx, isPrivate) {
@@ -105,7 +118,7 @@ async function selectByVisibility(ctx, isPrivate) {
   if (!token) return;
   const allRepos = await repoCache.getRepos(ctx.from.id, token);
   ctx.session.bulkSelected = allRepos.filter((r) => r.private === isPrivate).map((r) => r.name);
-  return startBulkSelect(ctx);
+  return startBulkSelect(ctx, { page: ctx.session.bulkPage || 1, edit: true });
 }
 
 async function showTagSelectMenu(ctx) {
@@ -114,13 +127,20 @@ async function showTagSelectMenu(ctx) {
     Markup.button.callback(`${t.emoji} ${t.name} (${t.repo_count})`, `bulk:selecttag:${t.id}`),
   ]);
   rows.push([Markup.button.callback('⬅️ Back', 'bulk:back')]);
-  await ctx.reply('🏷️ Select all repos with this tag:', Markup.inlineKeyboard(rows));
+  // #29 — single-pick menu: edit briefly, then this whole message gets
+  // replaced by the re-rendered Bulk Select screen on pick (selectByTag
+  // below calls startBulkSelect with edit:true), so nothing lingers.
+  try {
+    await ctx.editMessageText('🏷️ Select all repos with this tag:', Markup.inlineKeyboard(rows));
+  } catch (_) {
+    await ctx.reply('🏷️ Select all repos with this tag:', Markup.inlineKeyboard(rows));
+  }
 }
 
 async function selectByTag(ctx, tagId) {
   const repoNames = await tags.reposWithTag(ctx.from.id, Number(tagId));
   ctx.session.bulkSelected = repoNames;
-  return startBulkSelect(ctx);
+  return startBulkSelect(ctx, { page: ctx.session.bulkPage || 1, edit: true });
 }
 
 async function showActionMenu(ctx) {

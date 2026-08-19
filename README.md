@@ -146,6 +146,50 @@ Returns `200` with `{ status: "ok", postgres, redis, memoryMB, uptimeSeconds }` 
 
 ## 📋 Changelog
 
+### v0.8.1 — Stability checkpoint: root-cause pass, not patches
+A deliberate hardening release before further features — every fix here traces one bug class to its root and applies it everywhere that class occurred, not just where it was first noticed.
+
+**Root-cause fixes (one mechanism, applied everywhere it was needed):**
+- **Fixed (the big one):** every Confirm/Cancel dialog — Delete Repo, Delete File, Bulk Actions, Toggle Visibility, Disconnect, Fork, Storage Clear — sent a brand-new "Cancelled." message instead of touching the original. Since Telegram buttons stay live until a message is edited, tapping Cancel and then the *original* Confirm button still fired the action, with zero warning. Fixed once, structurally: a shared `resolveConfirmation()` helper now edits the original message in place (strips the buttons, shows the outcome) the instant either button is tapped, across all 7 flows. A future confirm/cancel screen inherits the fix automatically instead of needing its own patch.
+- **Fixed:** `actionLock` double-tap protection extended to Fork and Storage Clear — the two destructive/duplicate-risk actions that didn't have it yet.
+- **Fixed:** Pin/Unpin and the entire Tags system (add/remove/create) had zero connection-state check anywhere — a stale button could write to the database while fully disconnected with no indication anything was wrong. Now gated behind the same connection check GitHub-touching actions already use, checked *before* the write, not after.
+- **Fixed:** Bulk Select's "back from tag picker" always reset to page 1 instead of the page you were on.
+
+**Data accuracy:**
+- **Fixed:** My Repos and Pinned lists still showed GitHub's lagging cached repo size — extended the real tree-based size calculation (already used in Repo View) to both, scoped per-page so it stays cheap.
+- **Removed:** Repo View's "Last Updated" line — for a single-owner bot, GitHub only ever bumps that field on the same events that bump "Last Commit," so the two were always identical and one was pure noise.
+
+**New features:**
+- **New:** ⚖️ License control — Repo View gains a License button next to Visibility. GitHub has no "set license" API field (it's detected by scanning a LICENSE file), so this fetches the real license text from GitHub's own endpoint and writes it via the same mechanism GitHub's own "Add license" button uses.
+- **New:** ✏️ Description editing, directly from Repo View — no more needing the website for a quick description change.
+- **New:** 🔑 Access Log relocated into 📜 Activity (same content and toggle, just reachable from one screen instead of two).
+- **New:** 🔄 Refresh Status (Settings) and 🔄 Refresh (Activity, Pinned) moved from BBTB rows to inline buttons that produce a fresh chained message each tap.
+
+**Interface — reduced clutter across the board:**
+- **Fixed:** several multi-toggle screens (Bulk Select's checkboxes and filter buttons, Storage's Auto-Cleanup menu, Pinned's reorder arrows) resent the entire screen as a new message on every single tap. Now edit the same message in place, matching how Notifications already worked.
+- **Redesigned:** every BBTB keyboard in the bot — My Repos, Repo View, Browse Files, Settings, Bulk Select's three keyboards, and several 2-row/2-button screens collapsed to 1 row — cut to fewer rows via 3-column layouts, with any label at real risk of truncation shortened to a synonym instead.
+- **Found during the BBTB pass:** 🔄 Refresh was a single label shared by My Repos, Activity, and Pinned's keyboards — since Telegram matches button taps by exact text bot-wide, tapping Refresh from Activity or Pinned was silently triggering My Repos' refresh instead of their own. Fixed as a side effect of relocating those to inline buttons with distinct callback data.
+- **Redesigned:** the /start welcome-back message now shows repo/star/pin counts, a public/private split, and last-activity time, formatted to match the ◆/▸ card style used everywhere else.
+- **Polished:** the OAuth callback page — a one-time confetti burst on success, a typewriter reveal on the "Linked as @username" line, and a small overshoot-bounce on the result box instead of a flat fade-in.
+
+### v0.8.0 — Card redesign, Search split, and new screens
+A large, deliberately-scoped feature pass, done after 3 stability rounds (v0.5.0–v0.7.2) specifically so it could build on a base that wasn't actively crash-looping.
+
+- **Fixed:** Auto-Cleanup's settings message crashed on send — an unescaped hyphen in `*Auto-Cleanup*` broke MarkdownV2 parsing.
+- **Fixed:** Repo View's size stat read GitHub's lazily-recomputed `repo.size` field — now computed from the actual file tree, always current.
+- **Fixed:** Token Health notifications only ever wrote a silent Access Log entry, never an actual push, despite the toggle implying otherwise.
+- **Fixed:** Long Operations' threshold (5+ repos) was unreachable at realistic account sizes — lowered to 3+, and extended to cover Batch Upload, not just Bulk Actions.
+- **Fixed:** My Repos' language-breakdown lookup silently referenced an out-of-scope variable on every call (masked by a surrounding try/catch), so it always fell back to the raw single-language field instead of the real breakdown.
+- **Fixed:** the Replace Folder confirmation screen looped forever regardless of which button was tapped — the wizard step never advanced its cursor after showing the prompt, so every subsequent tap re-ran the same step from scratch.
+- **Redesigned:** one shared repo-card format (◆ header, ▸ bullets, solid dividers) now used everywhere a repo is listed — My Repos, Repo View, Pinned, Search results, and Bulk Select.
+- **New:** 📁 My Repos vs 🌐 Public Repo — Search split into two explicit entry points instead of one box guessing intent from a pasted link vs. a typed name.
+- **New:** 📊 Stats screen — repo count, visibility split, total stars, top language, most active repo, oldest repo.
+- **New:** README and License steps added to the Create Repo wizard, matching GitHub's own creation flow.
+- **Redesigned:** Settings BBTB — Notifications folded into My Defaults as its own section.
+
+<details>
+<summary><strong>v0.1.0 – v0.7.2 — Getting the bot stable (click to expand)</strong></summary>
+
 ### v0.7.2 — Found the actual bug (not a timeout issue)
 v0.7.0 and v0.7.1 added timeouts everywhere on the theory that some piece of I/O was stalling. Real logs showed no timeout ever firing, which ruled that whole theory out — the real cause was structural, not a stall:
 
@@ -276,6 +320,8 @@ A big pass of fixes based on hands-on testing against a live account:
 
 ### v0.1.0 — Initial build
 - Owner-only gate, OAuth Web Flow with animated callback page, My Repos, Create/Rename/Delete repo, Visibility toggle, Upload, Browse Files, Download, Fork, Settings dashboard, Activity Log, Notifications.
+
+</details>
 
 ---
 

@@ -14,30 +14,29 @@ const mainMenu = Markup.keyboard([
 ]).resize();
 
 const myRepos = Markup.keyboard([
-  ['➕ New Repo', '🔎 Filter'],
-  ['↕️ Sort', '🔄 Refresh'],
-  ['⭐ Pinned', '🧹 Bulk Select'],
-  ['📊 Stats'],
-  ['⬆️ Back to Menu'],
+  ['🔎 Filter', '↕️ Sort', '📊 Stats'],
+  ['➕ New Repo', '🔄 Refresh', '⭐ Pinned'],
+  ['🧹 Bulk Select', '⬆️ Back to Menu'],
 ]).resize();
 
 const repoView = Markup.keyboard([
-  ['⬆️ Upload', '📁 Browse Files'],
-  ['⬇️ Download Repo', '🔒 Visibility'],
-  ['⬅️ Back to Repos', '⬆️ Back to Menu'],
+  ['⬆️ Upload', '📁 Browse Files', '⬇️ Download Repo'],
+  ['🔒 Visibility', '⚖️ License', '⬅️ Back to Repos'],
+  ['⬆️ Back to Menu'],
 ]).resize();
 
 const browseFiles = Markup.keyboard([
-  ['⬆️ Upload Here', '🔁 Replace Folder'],
-  ['🔍 Search Files'],
+  ['⬆️ Upload Here', '🔁 Replace Folder', '🔍 Search Files'],
   ['⬆️ Back to Repo'],
 ]).resize();
 
+// Refresh Status (#48) and Access Log (#47) both relocated off this
+// keyboard — Refresh is now an inline button on the Settings message
+// itself (chained fresh-message pattern), and Access Log is reachable
+// from inside Activity instead of its own Settings row.
 const settings = Markup.keyboard([
-  ['📜 Activity', '⚙️ My Defaults'],
-  ['📦 Storage & Data', '🔑 Access Log'],
-  ['🔄 Refresh Status', '🚪 Disconnect'],
-  ['⬆️ Back to Menu'],
+  ['📜 Activity', '⚙️ Defaults', '📦 Storage'],
+  ['🚪 Disconnect', '⬆️ Back to Menu'],
 ]).resize();
 
 const cancelOnly = Markup.keyboard([['❌ Cancel']]).resize();
@@ -51,43 +50,39 @@ const cancelWithBack = Markup.keyboard([
 ]).resize();
 
 const uploadSummary = Markup.keyboard([
-  ['📤 Upload Another'],
-  ['⬆️ Back to Repo'],
+  ['📤 Upload Another', '⬆️ Back to Repo'],
 ]).resize();
 
 const searchAgain = Markup.keyboard([
-  ['🔁 Search Again'],
-  ['⬆️ Back to Menu'],
+  ['🔁 Search Again', '⬆️ Back to Menu'],
 ]).resize();
 
+// Refresh relocated to an inline button on the Activity message itself
+// (#49, same chained pattern as Settings' Refresh Status).
 const activityLog = Markup.keyboard([
-  ['🔄 Refresh'],
   ['⬆️ Back to Settings'],
 ]).resize();
 
 const disconnected = Markup.keyboard([
-  ['🔗 Connect GitHub'],
-  ['⚙️ Settings'],
+  ['🔗 Connect GitHub', '⚙️ Settings'],
 ]).resize();
 
+// Refresh relocated to an inline button alongside the pin reorder arrows
+// (#50, same reasoning as Activity's Refresh above).
 const pinned = Markup.keyboard([
-  ['🔄 Refresh'],
   ['⬆️ Back to Menu'],
 ]).resize();
 
 const bulkSelect = Markup.keyboard([
-  ['✅ Done Selecting'],
-  ['❌ Cancel', '⬆️ Back to Menu'],
+  ['✅ Done', '❌ Cancel', '⬆️ Menu'],
 ]).resize();
 
 const bulkActionMenu = Markup.keyboard([
-  ['⬅️ Back to Selection'],
-  ['❌ Cancel', '⬆️ Back to Menu'],
+  ['◀️ Selection', '❌ Cancel', '⬆️ Menu'],
 ]).resize();
 
 const bulkComplete = Markup.keyboard([
-  ['📁 My Repos'],
-  ['⬆️ Back to Menu'],
+  ['📁 My Repos', '⬆️ Menu'],
 ]).resize();
 
 const backToSettings = Markup.keyboard([

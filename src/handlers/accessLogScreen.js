@@ -7,7 +7,7 @@ const bbtb = require('../keyboards/bbtb');
 const EVENT_ICON = { connected: '🟢', reconnected: '🟢', disconnected: '🔴' };
 const EVENT_LABEL = { connected: 'Connected', reconnected: 'Reconnected (scope updated)', disconnected: 'Disconnected' };
 
-async function showAccessLog(ctx) {
+async function showAccessLog(ctx, { fromActivity = false } = {}) {
   const [events, user] = await Promise.all([
     accessLog.recent(ctx.from.id, 10),
     users.getUser(ctx.from.id),
@@ -23,21 +23,26 @@ async function showAccessLog(ctx) {
   }
 
   const alertOn = user ? user.alert_on_new_connection : true;
-  await ctx.reply('🔑 Access Log', bbtb.backToSettings);
+  // Relocated here from its own Settings BBTB row (#47) — reachable from
+  // inside Activity now, so "back" goes to Activity, not Settings.
+  if (!fromActivity) await ctx.reply('🔑 Access Log', bbtb.backToSettings);
   await ctx.reply(text, {
     parse_mode: 'MarkdownV2',
-    ...Markup.inlineKeyboard([[Markup.button.callback(
-      alertOn ? '🔔 Turn Off New-Connection Alerts' : '🔕 Turn On New-Connection Alerts',
-      'accesslog:togglealert'
-    )]]),
+    ...Markup.inlineKeyboard([
+      [Markup.button.callback(
+        alertOn ? '🔔 Turn Off New-Connection Alerts' : '🔕 Turn On New-Connection Alerts',
+        'accesslog:togglealert'
+      )],
+      ...(fromActivity ? [[Markup.button.callback('⬅️ Back to Activity', 'accesslog:backtoactivity')]] : []),
+    ]),
   });
 }
 
-async function toggleAlert(ctx) {
+async function toggleAlert(ctx, fromActivity = false) {
   const { pool } = require('../db/postgres');
   const user = await users.getUser(ctx.from.id);
   await pool.query('UPDATE users SET alert_on_new_connection = $1 WHERE telegram_id = $2', [!user.alert_on_new_connection, ctx.from.id]);
-  return showAccessLog(ctx);
+  return showAccessLog(ctx, { fromActivity });
 }
 
 module.exports = { showAccessLog, toggleAlert };

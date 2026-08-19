@@ -1,8 +1,16 @@
 const { Markup } = require('telegraf');
 const tags = require('../lib/tags');
 const format = require('../lib/format');
+const requireConnected = require('../lib/requireConnected');
+
+// Every write function below is gated behind requireConnected (v0.8.1 #25/#22)
+// — previously NONE of them checked connection state at all, so a stale
+// button from an old message could add/remove/create tags for a repo with
+// zero indication anything was wrong, even fully disconnected.
 
 async function showRepoTags(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
   const telegramId = ctx.from.id;
   const current = await tags.tagsForRepo(telegramId, repoName);
 
@@ -25,6 +33,8 @@ async function showRepoTags(ctx, repoName) {
 }
 
 async function showAddTagMenu(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
   const telegramId = ctx.from.id;
   const [allTags, assigned] = await Promise.all([
     tags.listTags(telegramId),
@@ -47,12 +57,16 @@ async function showAddTagMenu(ctx, repoName) {
 }
 
 async function assignExistingTag(ctx, repoName, tagId) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
   await tags.assignTag(ctx.from.id, repoName, Number(tagId));
   await ctx.reply('✅ Tag added.');
   return showRepoTags(ctx, repoName);
 }
 
 async function showRemoveTagMenu(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
   const current = await tags.tagsForRepo(ctx.from.id, repoName);
   const rows = current.map((t) => [
     Markup.button.callback(`${t.emoji} ${t.name}`, `tags:removeconfirm:${repoName}:${t.id}`),
@@ -62,6 +76,8 @@ async function showRemoveTagMenu(ctx, repoName) {
 }
 
 async function removeTag(ctx, repoName, tagId) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
   await tags.removeTagFromRepo(ctx.from.id, repoName, Number(tagId));
   await ctx.reply('✅ Tag removed.');
 
@@ -83,6 +99,8 @@ async function removeTag(ctx, repoName, tagId) {
 }
 
 async function deleteTagDefinition(ctx, tagId, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
   await tags.deleteTag(ctx.from.id, Number(tagId));
   await ctx.reply('✅ Tag deleted.');
   return showRepoTags(ctx, repoName);
@@ -90,6 +108,8 @@ async function deleteTagDefinition(ctx, tagId, repoName) {
 
 /** Starts the 2-step "create a new tag" text-input flow (name, then emoji) */
 async function startCreateTag(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
   ctx.session.creatingTag = { repoName, step: 'name' };
   await ctx.reply(
     '🏷️ New tag — send a short name (e.g. "Client Work")',
@@ -120,6 +140,8 @@ async function handleCreateTagInput(ctx) {
   }
 
   if (state.step === 'emoji') {
+    const token = await requireConnected(ctx);
+    if (!token) { delete ctx.session.creatingTag; return; }
     // Basic sanity check — a real emoji is short; reject obvious plain text
     if (text.length > 4) {
       await ctx.reply(format.errorMessage('That doesn\u2019t look like an emoji', `"${text}" is too long`, 'Send a single emoji, e.g. 🤖'));
