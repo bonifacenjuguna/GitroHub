@@ -57,6 +57,17 @@ async function showRepoView(ctx, repoName) {
     treeStats = await repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token);
   } catch (_) { /* empty/new repo — fall back to repo.size below */ }
 
+  // #56 — language breakdown is also GitHub's own async background scan
+  // (linguist), not synchronous with a commit. "No language detected" is
+  // only genuinely correct for a truly empty repo (fileCount === 0) — if
+  // the repo actually has files but the breakdown still came back empty,
+  // that's the specific symptom of detection not having caught up yet
+  // (right after Create Repo, Replace Folder, or a first Upload), not a
+  // real absence of code. Caveat it instead of stating it as settled fact.
+  const langLagNote = (langBreakdown === 'No language detected' && treeStats && treeStats.fileCount > 0)
+    ? '\n_\\(GitHub may still be detecting this — check back in a minute if it should have one\\.\\)_'
+    : '';
+
   const [pinned, repoTags] = await Promise.all([
     pins.isPinned(ctx.from.id, repo.name),
     tags.tagsForRepo(ctx.from.id, repo.name),
@@ -78,7 +89,7 @@ async function showRepoView(ctx, repoName) {
 
   const text =
     `${card}\n\n` +
-    `💻 *LANGUAGES*\n${format.escapeMd(langBreakdown)}\n\n` +
+    `💻 *LANGUAGES*\n${format.escapeMd(langBreakdown)}${langLagNote}\n\n` +
     `📊 *DETAILS*\n` +
     fileFolderLine +
     `▸ Last commit: ${format.escapeMd(format.relativeTime(repo.pushed_at))}\n` +
@@ -136,18 +147,12 @@ async function executeDeleteRepo(ctx, repoName) {
   if (!token) return;
 
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, async () => {
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'deleteRepo', async () => {
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
       await github.deleteRepo(token, user.login, repoName);
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, repoName);
-      // v0.8.2 #2 — was missing here (present in the equivalent bulk-delete
-      // path in bulkActions.js runAction(), and in every other file-tree-
-      // changing action). Without it, a repo deleted and then recreated
-      // with the same name within the 60s cache TTL could briefly show the
-      // OLD repo's size/file/folder counts in Repo View.
-      repoCache.invalidateTreeStats(ctx.from.id, repoName);
       await activity.log(ctx.from.id, '🗑', `Deleted repo → ${repoName}`);
       await cleanupOrphanedData(ctx.from.id, repoName);
       await ctx.reply(format.successMessage(`Deleted repository "${repoName}"`), bbtb.mainMenu);
@@ -183,7 +188,7 @@ async function askToggleVisibility(ctx, repoName) {
 
 async function executeToggleVisibility(ctx, repoName) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, () => _executeToggleVisibility(ctx, repoName));
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'toggleVisibility', () => _executeToggleVisibility(ctx, repoName));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
@@ -259,10 +264,6 @@ const LICENSE_OPTIONS = [
   ['gpl-3.0', 'GPL v3'],
   ['bsd-3-clause', 'BSD'],
 ];
-const LICENSE_LABELS = {
-  ...Object.fromEntries(LICENSE_OPTIONS),
-  none: 'No license',
-};
 
 /** ⚖️ License — v0.8.1 #15. GitHub has no "set license" API field; a
  * repo's detected license comes from GitHub actually scanning a LICENSE
@@ -291,7 +292,7 @@ async function showLicenseMenu(ctx, repoName) {
 
 async function executeSetLicense(ctx, repoName, licenseKey) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, () => _executeSetLicense(ctx, repoName, licenseKey));
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'setLicense', () => _executeSetLicense(ctx, repoName, licenseKey));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
@@ -320,29 +321,23 @@ async function _executeSetLicense(ctx, repoName, licenseKey) {
     repoCache.invalidateRepos(ctx.from.id);
     repoCache.invalidateTreeStats(ctx.from.id, repoName);
     await activity.log(ctx.from.id, '⚖️', `License updated → ${repoName} (${licenseKey})`);
-
-    // v0.8.2 #3 — the success message now states the license we JUST SET
-    // directly, instead of only relying on the Repo View re-render below.
-    // GitHub doesn't set repo.license from the file write itself — it
-    // comes from an async Licensee scan of the tree that runs after the
-    // push and isn't guaranteed to have finished by the time we re-fetch
-    // a moment later. That's why the card used to look "unchanged" right
-    // after committing, and only reflected the new license once you left
-    // and came back (by which point GitHub's scan had caught up). We
-    // already know the true value here — no need to wait on GitHub's cache.
+    // #55 — GitHub's license detection is an async background scan
+    // (licensee), not synchronous with the commit. Re-showing the repo
+    // card immediately would display GitHub's still-stale answer as if it
+    // were current — misleading, since it visibly "catches up" a minute
+    // later with no action from the person. Confirm the commit succeeded
+    // without claiming the shown license is already accurate, and let
+    // them check back on their own terms instead of auto-rendering it.
+    const { Markup } = require('telegraf');
     await ctx.reply(
-      format.successMessage(`License updated: ${repoName} → ${LICENSE_LABELS[licenseKey] || licenseKey}`),
-      bbtb.repoView
+      `✅ License commit pushed to ${repoName}.\n\n⏳ GitHub can take a moment to actually detect the new license from the file — if it still shows the old one when you check, give it a minute and look again.`,
+      Markup.inlineKeyboard([[Markup.button.callback(`📦 View ${repoName}`, `repo:${repoName}`)]])
     );
   } catch (err) {
     await activity.log(ctx.from.id, '⚠️', `License update failed → ${repoName}`, { detail: err.message, isError: true });
     await ctx.reply(format.errorMessage('Couldn\u2019t update license', err.message, 'Try again.'));
+    return showRepoView(ctx, repoName);
   }
-  // The Repo View re-render below still runs so file-tree/size details stay
-  // current — just be aware the ⚖️ license line on the card itself may lag
-  // by up to a minute or so until GitHub's own scan catches up; the message
-  // above is the authoritative confirmation of what was actually written.
-  return showRepoView(ctx, repoName);
 }
 
 async function downloadRepo(ctx, repoName) {

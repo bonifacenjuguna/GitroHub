@@ -61,7 +61,7 @@ async function confirmClear(ctx, scope) {
  * only destructive Storage & Data action without double-tap protection. */
 async function executeClear(ctx, scope) {
   const telegramId = ctx.from.id;
-  const { skipped } = await actionLock.withLock(telegramId, async () => {
+  const { skipped } = await actionLock.withLock(telegramId, 'storageClear', async () => {
     if (scope === 'activity') await dataStore.clearActivityLog(telegramId);
     if (scope === 'pins') await dataStore.clearPins(telegramId);
     if (scope === 'defaults') await dataStore.clearDefaults(telegramId);

@@ -250,6 +250,8 @@ const scene = new Scenes.WizardScene(
 
     const changed = ctx.wizard.state.pendingFiles.filter((f) => f.status !== 'unchanged');
     const toDelete = ctx.wizard.state.toDelete || [];
+    const actionLock = require('../lib/actionLock');
+    const { skipped } = await actionLock.withLock(ctx.from.id, 'uploadCommit', async () => {
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
       await github.commitMultipleFiles(
@@ -287,6 +289,8 @@ const scene = new Scenes.WizardScene(
       const wasAuthError = await errorHelpers.replyGithubError(ctx, err, 'Upload failed');
       if (!wasAuthError) await ctx.reply('📍 Main Menu', bbtb.mainMenu);
     }
+    });
+    if (skipped) await ctx.reply('⏳ Already uploading — please wait a moment.');
     releasePendingFiles(ctx);
     return ctx.scene.leave();
   }

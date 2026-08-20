@@ -30,19 +30,27 @@ async function connect() {
 
 /**
  * Ping Redis and return round-trip latency in ms.
- * Used by Settings screen to show live DB health.
+ * Used by Settings screen to show live DB health. Cached for 5s — same
+ * reasoning as Postgres's ping cache (v0.8.1 hardening #A).
  */
+let cachedPing = null;
 async function ping() {
+  if (cachedPing && Date.now() - cachedPing.timestamp < 5000) {
+    return cachedPing.result;
+  }
   const start = Date.now();
+  let result;
   try {
     await Promise.race([
       client.ping(),
       new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
     ]);
-    return { ok: true, ms: Date.now() - start };
+    result = { ok: true, ms: Date.now() - start };
   } catch (err) {
-    return { ok: false, ms: null, error: err.message };
+    result = { ok: false, ms: null, error: err.message };
   }
+  cachedPing = { result, timestamp: Date.now() };
+  return result;
 }
 
 /** Closes the Redis connection cleanly — used on graceful shutdown (SIGTERM). */

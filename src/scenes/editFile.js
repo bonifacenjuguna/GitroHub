@@ -107,6 +107,8 @@ const scene = new Scenes.WizardScene(
     const token = await requireConnected(ctx);
     if (!token) return ctx.scene.leave();
 
+    const actionLock = require('../lib/actionLock');
+    const { skipped } = await actionLock.withLock(ctx.from.id, 'editFile', async () => {
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
       const current = await github.getFileContent(token, user.login, repoName, filePath);
@@ -116,8 +118,7 @@ const scene = new Scenes.WizardScene(
           `${filePath} was modified on GitHub since you opened it`,
           'Your changes weren\u2019t lost — view the latest version first to avoid overwriting it.'
         ));
-        await ctx.scene.leave();
-        return returnToFolder(ctx, repoName, filePath);
+        return;
       }
 
       await github.putFile(token, user.login, repoName, filePath, newContent, `Update ${filePath} via GitroHub`, sha);
@@ -131,6 +132,8 @@ const scene = new Scenes.WizardScene(
       const errorHelpers = require('../lib/errorHelpers');
       await errorHelpers.replyGithubError(ctx, err, 'Edit failed');
     }
+    });
+    if (skipped) await ctx.reply('⏳ Already saving — please wait a moment.');
     await ctx.scene.leave();
     return returnToFolder(ctx, repoName, filePath);
   }

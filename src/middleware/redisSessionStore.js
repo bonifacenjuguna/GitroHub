@@ -30,7 +30,7 @@ const redisStore = {
   },
   async set(key, value) {
     await withTimeout(
-      client.set(`tg-session:${key}`, JSON.stringify(value), { EX: config.WIZARD_SESSION_TTL_SECONDS }),
+      client.set(`tg-session:${key}`, JSON.stringify(value), { EX: config.SESSION_TTL_SECONDS }),
       'Session write'
     );
   },

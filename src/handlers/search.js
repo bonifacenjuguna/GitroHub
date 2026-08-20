@@ -176,7 +176,7 @@ async function executeForkExternal(ctx) {
   if (!token) return;
 
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, async () => {
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'fork', async () => {
     try {
       const forked = await github.forkRepo(token, owner, repo);
       repoCache.invalidateRepos(ctx.from.id);

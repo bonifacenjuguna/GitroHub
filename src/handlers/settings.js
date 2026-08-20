@@ -124,7 +124,7 @@ async function askDisconnect(ctx) {
 
 async function executeDisconnect(ctx) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, () => _executeDisconnect(ctx));
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'disconnect', () => _executeDisconnect(ctx));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 

@@ -147,7 +147,7 @@ async function askDeleteFile(ctx, repoName, filePath) {
 
 async function executeDeleteFile(ctx, repoName, filePath) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, () => _executeDeleteFile(ctx, repoName, filePath));
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'deleteFile', () => _executeDeleteFile(ctx, repoName, filePath));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 

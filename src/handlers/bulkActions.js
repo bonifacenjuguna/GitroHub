@@ -147,7 +147,7 @@ async function showActionMenu(ctx) {
   const selected = getSelection(ctx);
   if (selected.length === 0) {
     await ctx.reply('⚠️ Select at least one repo first.');
-    return startBulkSelect(ctx);
+    return startBulkSelect(ctx, { page: ctx.session.bulkPage || 1 });
   }
 
   const text = `${format.sectionHeader('Selected', `${selected.length} repos`)}\n${format.escapeMd(previewNames(selected))}`;
@@ -187,7 +187,7 @@ async function confirmAction(ctx, action) {
 
 async function execute(ctx, action) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, () => _execute(ctx, action));
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'bulkExecute', () => _execute(ctx, action));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
@@ -215,6 +215,18 @@ async function _execute(ctx, action) {
         // remaining item would fail the same way, so stop instead of
         // grinding through a doomed loop and reporting the same error N times.
         for (let j = i; j < selected.length; j++) results.push({ name: selected[j], ok: false, error: 'session expired' });
+        // Update the progress message one last time BEFORE breaking, or it
+        // stays frozen showing "⏳ pending" on items that are actually
+        // already known-failed until the summary arrives right after.
+        const finalLines = selected.map((n, idx) => `${results[idx].ok ? '✅' : '⚠️'} ${n}`);
+        try {
+          await ctx.telegram.editMessageText(
+            ctx.chat.id,
+            progressMsg.message_id,
+            undefined,
+            `${actionVerb(action)} ${selected.length} repos...\n\n${finalLines.join('\n')}`
+          );
+        } catch (_) { /* non-fatal — the summary below covers it regardless */ }
         await errorHelpers.replyGithubError(ctx, err, `Bulk ${action} stopped`);
         break;
       }
@@ -306,7 +318,7 @@ async function runAction(token, owner, repoName, action, telegramId) {
 
 async function executeDownloads(ctx) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, () => _executeDownloads(ctx));
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'bulkDownloads', () => _executeDownloads(ctx));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 

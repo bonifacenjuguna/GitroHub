@@ -37,7 +37,18 @@ module.exports = {
   REPOS_PER_PAGE: 3, // v0.8.1 #36 — richer card format needs fewer per page to stay glanceable on a phone
   FILES_PER_PAGE: 8,
   ACTIVITY_PER_PAGE: 6,
-  WIZARD_SESSION_TTL_SECONDS: 30 * 60, // 30 min, per our "stale session" rule
+  // Two DIFFERENT things were sharing one constant (v0.8.1 hardening #B):
+  // WIZARD_SESSION_TTL_SECONDS genuinely only governs abandoned-upload file
+  // buffers (in-process memory, correctly short-lived). SESSION_TTL_SECONDS
+  // is the actual Redis TTL on the GLOBAL Telegraf session store — every
+  // ctx.session field, bot-wide (ctx.session.currentRepo, bulk selections,
+  // etc.), not just active wizards. The old shared 30-min value meant
+  // things like "which repo you're currently viewing" silently vanished
+  // after 30 min of any idle time, even with Repo View's own buttons still
+  // on screen. Kept separate now, with the general one long enough to
+  // survive normal gaps in checking the bot throughout a day.
+  WIZARD_SESSION_TTL_SECONDS: 30 * 60, // 30 min — abandoned upload file buffers only
+  SESSION_TTL_SECONDS: Number(process.env.SESSION_TTL_SECONDS || 24 * 60 * 60), // 24h — general ctx.session state
 
   // Memory management — tuned for Railway's 512MB free-tier ceiling.
   // See README "Memory & stability" section for the full explanation.
