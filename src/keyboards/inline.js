@@ -56,11 +56,6 @@ function visibilityConfirm(repoName, currentlyPrivate) {
   ]);
 }
 
-const createRepoVisibility = Markup.inlineKeyboard([
-  [Markup.button.callback('🔒 Private', 'create:visibility:private')],
-  [Markup.button.callback('🌐 Public', 'create:visibility:public')],
-]);
-
 const createRepoConfirm = Markup.inlineKeyboard([
   [Markup.button.callback('✅ Create', 'create:confirm')],
   [Markup.button.callback('❌ Cancel', 'create:cancel')],
@@ -114,29 +109,6 @@ function deleteFileConfirm(path) {
   return Markup.inlineKeyboard([
     [Markup.button.callback('✅ Yes, Delete', `file:delete:confirm:${path}`)],
     [Markup.button.callback('❌ Cancel', `file:delete:cancel:${path}`)],
-  ]);
-}
-
-function uploadPathChoice() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('📁 Browse Folders', 'upload:choose:browse')],
-    [Markup.button.callback('📍 Root Directory', 'upload:choose:root')],
-  ]);
-}
-
-function uploadSummaryConfirm() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('📋 View File List', 'upload:summary:list')],
-    [Markup.button.callback('✅ Commit Changes', 'upload:commit'), Markup.button.callback('❌ Cancel', 'upload:cancel')],
-  ]);
-}
-
-function externalRepoActions() {
-  return Markup.inlineKeyboard([
-    [Markup.button.callback('⬇️ Download as ZIP', 'external:download')],
-    [Markup.button.callback('🍴 Fork to My Account', 'external:fork')],
-    [Markup.button.url('🔗 View on GitHub', '{{url}}')], // url patched by caller
-    [Markup.button.callback('⬅️ Cancel', 'external:cancel')],
   ]);
 }
 
@@ -206,16 +178,12 @@ module.exports = {
   repoActions,
   deleteRepoConfirm,
   visibilityConfirm,
-  createRepoVisibility,
   createRepoConfirm,
   cancelConfirm,
   createRepoSuccess,
   fileTree,
   fileActions,
   deleteFileConfirm,
-  uploadPathChoice,
-  uploadSummaryConfirm,
-  externalRepoActions,
   forkConfirm,
   notificationsMenu,
   disconnectConfirm,

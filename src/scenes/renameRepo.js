@@ -72,9 +72,23 @@ const scene = new Scenes.WizardScene(
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
       const repo = await github.renameRepo(token, user.login, oldName, newName);
-      const repoCache = require('../lib/repoCache');
+      // v0.8.2 #1 — this used to re-`require('../lib/repoCache')` into a
+      // local const right here, which shadowed the module-level `repoCache`
+      // import for this entire block (const/let are hoisted to the top of
+      // their block, just left uninitialized). That made the EARLIER
+      // `repoCache.getUser(...)` call above reference the local binding
+      // before it was assigned — "Cannot access 'repoCache' before
+      // initialization", on every single rename. Now just reuses the
+      // already-imported module-level `repoCache`.
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, oldName);
+      // Also drop any stale tree/size cache entry under the OLD name — it's
+      // now orphaned (nothing will ever look it up again under that name),
+      // but leaving it around for its 60s TTL was an inconsistency versus
+      // every other repo-mutating path, which invalidates all three caches
+      // together (see repoView.js executeDeleteRepo, browseFiles.js
+      // executeDeleteFile, editFile.js, uploadFile.js commit step).
+      repoCache.invalidateTreeStats(ctx.from.id, oldName);
       await activity.log(ctx.from.id, '✏️', `Renamed → ${oldName} → ${newName}`);
       await ctx.reply(`✅ Renamed: ${oldName} → ${repo.name}\n🔗 ${repo.html_url}`, bbtb.mainMenu);
     } catch (err) {
