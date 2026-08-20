@@ -140,6 +140,74 @@
   }
   @keyframes blink { 50% { opacity: 0; } }
 
+  /* ── New in this redesign: subtle film-grain texture over everything,
+     adds depth without being a distraction — very low opacity, static. */
+  .grain {
+    position: fixed; inset: 0; z-index: 3; pointer-events: none;
+    opacity: 0.035; mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ── New: card gets a physical "no" shake on failure, distinct from the
+     success path — a flat fade felt the same for both outcomes before. */
+  @keyframes shake {
+    10%, 90% { transform: translateX(-1px); }
+    20%, 80% { transform: translateX(2px); }
+    30%, 50%, 70% { transform: translateX(-4px); }
+    40%, 60% { transform: translateX(4px); }
+  }
+  .card.shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97); }
+
+  /* ── New: connection-beam — two small badges (GitroHub + GitHub) with a
+     pulse traveling between them while the link is being established,
+     visualizing "these two accounts are being connected" instead of just
+     an abstract spinner. Fades out once resolved. */
+  .link-beam {
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+    margin: 2px 0 16px; height: 22px;
+    opacity: 1; transition: opacity 0.4s ease;
+  }
+  .link-beam.hidden { opacity: 0; height: 0; margin: 0; pointer-events: none; }
+  .link-node {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 800; color: #fff;
+    flex-shrink: 0;
+  }
+  .link-node.gitrohub { background: linear-gradient(135deg, var(--blue), var(--cyan)); }
+  .link-node.github { background: #24292e; }
+  .link-node svg { width: 12px; height: 12px; }
+  .link-track {
+    position: relative; width: 64px; height: 2px;
+    background: rgba(255,255,255,0.1); border-radius: 2px; overflow: hidden;
+  }
+  .link-pulse {
+    position: absolute; top: -3px; width: 8px; height: 8px; border-radius: 50%;
+    background: var(--accent); box-shadow: 0 0 8px var(--accent);
+    animation: pulseTravel 1.4s ease-in-out infinite;
+  }
+  @keyframes pulseTravel {
+    0% { left: -4px; opacity: 0; }
+    15% { opacity: 1; }
+    85% { opacity: 1; }
+    100% { left: 60px; opacity: 0; }
+  }
+
+  /* ── New: a dedicated "hero" result icon — larger, with a proper
+     stroke-drawing entrance instead of a small inline glyph next to text. */
+  .result-icon-badge {
+    width: 44px; height: 44px; border-radius: 50%; margin: 0 auto 10px;
+    display: flex; align-items: center; justify-content: center;
+    background: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+  .result-icon-badge.fail { background: rgba(239, 68, 68, 0.12); border-color: rgba(239, 68, 68, 0.3); }
+  .result-icon-badge svg { width: 24px; height: 24px; }
+  .result-icon-badge path {
+    stroke-dasharray: 40; stroke-dashoffset: 40;
+    animation: drawIcon 0.5s 0.15s ease forwards;
+  }
+  @keyframes drawIcon { to { stroke-dashoffset: 0; } }
+
   /* #45 — result box gets a small overshoot instead of a flat fade-in, so
      success/fail feels landed rather than just appearing. */
   @keyframes resultPop {
@@ -191,6 +259,7 @@
 <body>
   <canvas id="bg"></canvas>
   <div class="glow-rotator" id="glowRotator"></div>
+  <div class="grain"></div>
 
   <div class="wrap">
     <div class="card" id="card">
@@ -204,9 +273,18 @@
       <h1>GitroHub</h1>
       <div class="subtitle" id="subtitle">Linking your GitHub account…</div>
 
+      <div class="link-beam" id="linkBeam">
+        <div class="link-node gitrohub">GH</div>
+        <div class="link-track"><div class="link-pulse"></div></div>
+        <div class="link-node github">
+          <svg viewBox="0 0 16 16" fill="none"><path d="M5 4 2 8l3 4M11 4l3 4-3 4M9 3 7 13" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+
       <div class="terminal" id="terminal"></div>
 
       <div class="result-box" id="resultBox">
+        <div class="result-icon-badge" id="resultIconBadge"></div>
         <div class="result-title" id="resultTitle"></div>
         <div class="result-detail" id="resultDetail"></div>
       </div>
@@ -355,6 +433,13 @@
   const iconSpinner = '<span class="icon-spinner"></span>';
   const iconCheck = '<svg class="icon-check" viewBox="0 0 24 24" fill="none"><path d="M4 12.5 L9.5 18 L20 6" stroke="#22c55e" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   const iconX = '<svg class="icon-x" viewBox="0 0 24 24" fill="none"><path d="M5 5 L19 19 M19 5 L5 19" stroke="#ef4444" stroke-width="2.4" stroke-linecap="round"/></svg>';
+  // Larger versions for the hero result badge, with the stroke-drawing
+  // entrance animation defined in CSS (.result-icon-badge path)
+  const heroCheck = '<svg viewBox="0 0 24 24" fill="none"><path d="M4 12.5 L9.5 18 L20 6" stroke="#22c55e" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  const heroX = '<svg viewBox="0 0 24 24" fill="none"><path d="M5 5 L19 19 M19 5 L5 19" stroke="#ef4444" stroke-width="2.6" stroke-linecap="round"/></svg>';
+  const linkBeam = document.getElementById('linkBeam');
+  const resultIconBadge = document.getElementById('resultIconBadge');
+  const card = document.getElementById('card');
 
   function addLine(text, state) {
     const line = document.createElement('div');
@@ -403,11 +488,13 @@
 
   function finishSuccess() {
     logoRing.classList.add('done');
+    linkBeam.classList.add('hidden'); // link is established — the "connecting" viz is no longer needed
     document.documentElement.style.setProperty('--accent', 'var(--green)');
     glowRotator.style.background = 'conic-gradient(from 0deg, transparent, #22c55e22, transparent 30%, transparent)';
     subtitle.textContent = 'Connection established';
     resultBox.classList.add('show');
-    resultTitle.innerHTML = iconCheck + ' GitHub Connected Successfully';
+    resultIconBadge.innerHTML = heroCheck;
+    resultTitle.innerHTML = 'GitHub Connected Successfully';
     typewrite(resultDetail, 'Linked as @' + DATA.username); // #44
     progressFill.style.width = '100%';
     countdownWrap.style.display = 'flex';
@@ -418,16 +505,20 @@
 
   function finishError() {
     logoRing.classList.add('done');
+    linkBeam.classList.add('hidden');
     document.documentElement.style.setProperty('--accent', 'var(--red)');
     glowRotator.style.background = 'conic-gradient(from 0deg, transparent, #ef444422, transparent 30%, transparent)';
     subtitle.textContent = 'Connection failed';
     resultBox.classList.add('show', 'fail');
-    resultTitle.innerHTML = iconX + ' Connection Failed';
+    resultIconBadge.classList.add('fail');
+    resultIconBadge.innerHTML = heroX;
+    resultTitle.innerHTML = 'Connection Failed';
     resultDetail.textContent = DATA.error || 'Something went wrong linking your account.';
     countdownWrap.style.display = 'flex';
     openTelegramBtn.classList.add('fail');
     openTelegramBtn.textContent = 'Return to Telegram';
     openTelegramBtn.href = DATA.botDeepLink;
+    card.classList.add('shake'); // physically distinct feel from success, not just a color swap
     startCountdown(8);
   }
 

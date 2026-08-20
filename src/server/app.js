@@ -42,7 +42,13 @@ async function getHealthStatus() {
 
 function createApp(bot) {
   const app = express();
-  app.use('/logo.png', express.static(path.join(__dirname, '..', '..', 'public', 'logo.png')));
+  // Bug fix: express.static() expects a DIRECTORY to serve from, not a
+  // single file path — the old `express.static(path/to/logo.png)` mounted
+  // at '/logo.png' never actually resolved correctly, which is why the
+  // callback page's logo silently failed to load. Serving the whole
+  // public/ directory at root is the standard, correct pattern — also
+  // future-proofs any other static assets added to public/ later.
+  app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
   app.get('/', (req, res) => {
     res.send('GitroHub is running. This endpoint has nothing to show you directly — open the bot on Telegram.');

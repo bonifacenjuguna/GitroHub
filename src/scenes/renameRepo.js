@@ -74,7 +74,6 @@ const scene = new Scenes.WizardScene(
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
       const repo = await github.renameRepo(token, user.login, oldName, newName);
-      const repoCache = require('../lib/repoCache');
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, oldName);
       await activity.log(ctx.from.id, '✏️', `Renamed → ${oldName} → ${newName}`);

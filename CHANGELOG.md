@@ -1,41 +1,32 @@
-# Changelog
+# GitroHub Changelog
 
-All notable changes to GitroHub are documented here, newest first. This file was split out from `README.md` in v0.8.2 so the README can stay a clean overview while the full history of what happened (and why) lives in one dedicated place.
+All notable changes to GitroHub, newest first. See [README.md](./README.md) for the current feature set and setup instructions.
 
----
-
-### v0.8.2 — Debugging pass: rename crash, license lag, and 3 more real bugs found by a full audit
-
-Prompted by a reproducible crash on every rename. Root-caused that one, then did a full pass over the rest of the app — confirm-flow coverage, cache-invalidation completeness, dead code, and every generated callback's data checked against the router again — rather than patching just the one reported symptom.
-
-**Fixed (the reported crash):**
-- **Fixed:** renaming *any* repo crashed with `Cannot access 'repoCache' before initialization`, every time. `renameRepo.js` imported `repoCache` once at the top of the file, but the final wizard step also had `const repoCache = require('../lib/repoCache');` sitting a few lines *after* it was already used — because `const`/`let` are hoisted to the top of their block (left uninitialized), that later re-declaration silently shadowed the earlier import for the whole block, including the `repoCache.getUser(...)` call above it. Removed the redundant local `require`; the rename step now just uses the module-level import like every other file does.
-
-**Fixed (the reported license lag):**
-- **Fixed:** changing a repo's license showed a generic "License updated" message and re-rendered Repo View immediately — but GitHub doesn't set `repo.license` from the file write itself, it comes from an async Licensee scan of the tree that isn't guaranteed to have finished by the time we re-fetch a second later. That's why the card looked unchanged right after committing, and only reflected the new license once you left and came back (by which point GitHub's scan had caught up). The success message now states the license that was actually just written, directly — no need to wait on GitHub's own cache for something we already know for certain.
-
-**Found during the follow-up audit, fixed the same way:**
-- **Fixed:** Delete Repo was missing a `repoCache.invalidateTreeStats(...)` call that every other repo-mutating action already has (bulk delete, delete file, edit file, upload commit). Left a stale file/folder/size cache entry around for up to 60s — harmless in practice, but inconsistent, and would show wrong stats if a repo were deleted and immediately recreated with the same name.
-- **Fixed (hygiene):** Rename now also invalidates the old repo name's tree-stats cache entry, for the same reason and for symmetry with the language-cache invalidation it already did.
-- **Fixed:** Create Repo's own "Cancel this repo creation?" dialog sent a brand-new "Repo creation cancelled." message instead of editing the original one — the exact bug class the v0.8.1 pass fixed everywhere else via `confirmFlow.resolveConfirmation()` (Delete Repo, Delete File, Bulk Actions, Toggle Visibility, Disconnect, Fork, Storage Clear, License). This one flow was missed because it's scene-internal rather than routed through `bot.js`'s shared `callback_query` handler. Now routed through the same helper, so it's consistent with every other confirm/cancel screen in the bot.
-- **Fixed:** the ❌ Cancel button on Create Repo's final "Ready to create this repository?" screen (`create:cancel`) was never actually handled anywhere — tapping it fell into the generic "wrong input" branch, which replied "Tap ✅ Create or ❌ Cancel above" (telling you to do the thing you'd just done) and never called `answerCbQuery()`, leaving Telegram's tap-loading spinner stuck until it timed out. Now cancels immediately, matching the same single-tap pattern Rename's and Edit File's own inline Cancel buttons already use.
-- **Fixed:** Create Repo's ⬅️ Back button only worked correctly when stepping back into a text-input step (name, description) — going back into any of the three button-driven steps (visibility, README, license) just said "Going back..." with no new prompt, leaving you stuck needing to scroll up and tap an old, still-technically-live button. Added proper re-rendering of the target step's prompt on Back, matching the pattern `uploadFile.js`'s scene already used correctly.
-- **Removed (dead code):** 4 unused exports from `keyboards/inline.js` — `createRepoVisibility`, `uploadPathChoice`, `uploadSummaryConfirm`, `externalRepoActions` — each superseded long ago by a richer, hand-built version assembled inline at the call site (dynamic default-marking, dynamic per-repo URLs), leaving the original static version orphaned. Confirmed unused via a full cross-reference of every `inline.*` export against every file that could call it.
-- **Removed (dead code):** Create Repo's own hand-duplicated copy of the "Cancel this wizard?" confirm keyboard, identical in every button label and callback shape to the already-exported (but previously unused) `inline.cancelConfirm(scenePrefix)` factory. Now reuses the one source of truth instead of maintaining two.
-
-**Verified, not changed** (audited and confirmed correct, no action needed):
-- Every BBTB button label cross-referenced against `bot.js`'s shared `handlerMap` and every scene file — all 35 distinct labels have a live handler, no collisions (the specific class of bug v0.8.1 found with 🔄 Refresh).
-- Every generated `callback_query` data string/prefix across the whole app (141 distinct call sites) cross-referenced against every `===`/`startsWith()` check in the router and every scene — all matched, no orphaned buttons besides the one `create:cancel` case fixed above.
-- `confirmFlow.resolveConfirmation()` coverage — now 8 of 8 confirm/cancel flows use it (the 7 from v0.8.1, plus License, plus this release's Create Repo fix).
-- Memory watchdog (`src/index.js`) — fast/slow check-interval switch, `unref()` on every timer, `shuttingDown` re-entry guard, and the shutdown sequence's connection-close order all traced by hand; no bug found.
-- Postgres pool and Redis client timeout configuration (`connectionTimeoutMillis`, `statement_timeout`, socket `connectTimeout`) — all present and sane; no bug found.
-- Cache-invalidation call sites for every other repo-mutating action (create, toggle visibility, description edit, bulk visibility change, fork) — each already invalidates exactly the caches it needs to and no others; no gaps found beyond the two listed above.
-- Storage & Data, Tags, and Pinned handlers — confirmed they correctly never touch `repoCache` (none of their actions change a repo's actual GitHub content, so there's nothing to invalidate).
-- Bulk Actions' auth-error mid-batch handling (the "stop cleanly, don't grind through every remaining repo" logic from v0.4.0) — re-traced by hand; still correct.
+**Jump to:** [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
 
 ---
 
-## 📋 Changelog
+---
+
+### v0.8.3 — Rename crash fix, callback page redesign, docs cleanup
+
+- **Fixed (crash):** renaming a repo threw `Cannot access 'repoCache' before initialization`. Root cause: a leftover redundant `require('../lib/repoCache')` inside the rename handler shadowed the already-imported top-level one — since `const` is hoisted within its enclosing scope, a reference to `repoCache` earlier in that same block hit the shadow before it was initialized. Removed the redundant require; scanned the whole codebase for the same shadowing pattern elsewhere — this was the only instance.
+- **Fixed:** the OAuth callback page's logo wasn't loading — `express.static()` was pointed at the logo *file* directly, but it can only serve *directories*. Fixed to serve the whole `public/` folder, the standard pattern.
+- **Redesigned:** `callback.html` — added a connection-beam animation (a pulse traveling between the GitroHub logo and a generic link badge, visualizing the two accounts connecting), a hero result icon with a stroke-drawing entrance animation, a subtle film-grain texture, and a physical shake on the failure state so it doesn't just feel like the success animation in a different color.
+- **Restructured:** the Changelog moved out of README.md into its own `CHANGELOG.md`, with working jump-links to each version and a short "highlights" pointer left in the README instead of the full history.
+- **Fixed (docs):** README's "Known limitations" section still said "v0.4.0" and claimed there was no double-tap idempotency protection — both false as of this version (actionLock has covered this since v0.6.0, hardened further in v0.8.1/v0.8.2). Also removed a reference to `lib/session.js` in the architecture tree — that file was deleted back in v0.7.1 and the docs never caught up.
+
+### v0.8.2 — Deep bug sweep on the v0.8.1 checkpoint
+A dedicated hunt for anything the checkpoint pass introduced or missed, before trusting v0.8.1 as the stable base — checked every core infra file (Postgres, Redis, session store, action locking) plus every handler touched during the checkpoint itself.
+
+- **Fixed:** `actionLock` was a single global lock per user shared across all 9 destructive actions — Delete Repo in flight would wrongly block an unrelated Fork on a different repo. Rescoped to lock per action type, not per user.
+- **Fixed:** none of the 4 wizard scenes (Create Repo, Rename, Edit File, Upload) had double-tap protection on their final commit step, unlike every other mutating action in the bot. Now consistently locked.
+- **Fixed:** the 30-minute session TTL was misleadingly named `WIZARD_SESSION_TTL_SECONDS` but actually governed *all* session state bot-wide, not just active wizards — meaning `ctx.session.currentRepo` (which Repo View's Visibility/License/Browse Files buttons depend on) silently expired after 30 minutes of any inactivity. Split into two correctly-scoped values: a short one for genuinely wizard-scoped file buffers, and a new 24-hour one for general session state.
+- **Fixed:** Postgres/Redis health pings had no caching despite the README already claiming 5s caching since v0.6.0 — combined with v0.8.1 making Settings' Refresh Status trivially spammable (inline, chained, one tap = another refresh button), this was real uncached DB+Redis load with zero debounce. Actually caches now.
+- **Fixed:** `requireConnected()` — called at the top of nearly every gated handler in the bot — did two separate database queries where one suffices.
+- **Fixed:** Bulk Actions' "you haven't selected anything" fallback reset to page 1 instead of preserving your page position — the same bug already fixed for the Back button, in a sibling code path that was missed the first time.
+- **Fixed:** Bulk Actions' live progress message froze mid-batch (stuck showing "⏳ pending") when a bad token triggered an early stop — the final progress-line update was being skipped right before the break.
+- **Fixed:** License updates showed a "success" message implying the repo card's license line was already current — GitHub's license detection is an async background scan, not synchronous with the commit, so it could still show the old license for a moment after. Now confirms the commit without claiming the shown data is settled, and the same honest caveat was added to Repo View's language section for the same underlying reason (Create Repo, Replace Folder, and first Upload all trigger the same async-detection lag).
 
 ### v0.8.1 — Stability checkpoint: root-cause pass, not patches
 A deliberate hardening release before further features — every fix here traces one bug class to its root and applies it everywhere that class occurred, not just where it was first noticed.
@@ -213,4 +204,6 @@ A big pass of fixes based on hands-on testing against a live account:
 - Owner-only gate, OAuth Web Flow with animated callback page, My Repos, Create/Rename/Delete repo, Visibility toggle, Upload, Browse Files, Download, Fork, Settings dashboard, Activity Log, Notifications.
 
 </details>
+
+---
 
