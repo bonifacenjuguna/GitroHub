@@ -53,10 +53,9 @@ async function showDirectory(ctx, repoName, dirPath = '', page = 1) {
 
     if (tree.length === 0) {
       const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
       return ctx.reply(
         '📁 This repo is empty — nothing uploaded yet\\.',
-        { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard([[style.callback('⬆️ Upload Files', `upload:start:${repoName}`)]]) }
+        { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard([[Markup.button.callback('⬆️ Upload Files', `upload:start:${repoName}`)]]) }
       );
     }
 
@@ -191,7 +190,7 @@ async function searchFiles(ctx, repoName, query) {
   text += matches.map((m, i) => `${i + 1}\\. 📄 ${format.escapeMd(m.path)}`).join('\n');
 
   const { Markup } = require('telegraf');
-  const rows = matches.map((m) => [style.callback(m.path, `browse:file:${m.path}`)]);
+  const rows = matches.map((m) => [Markup.button.callback(m.path, `browse:file:${m.path}`)]);
 
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }

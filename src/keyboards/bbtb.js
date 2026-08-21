@@ -1,5 +1,4 @@
 const { Markup } = require('telegraf');
-const style = require('./buttonStyle');
 
 /**
  * BBTB = "Buttons Below the Typing Bar" = Telegram Reply Keyboards.
@@ -7,35 +6,28 @@ const style = require('./buttonStyle');
  * Rule locked during design: BBTB carries frequent/reusable/low-risk
  * actions. Inline keyboards carry content + destructive/final confirms.
  * Every zone below matches what was agreed on screen-by-screen.
- *
- * v0.8.5 — button color styling (Bot API 9.4): since every actual
- * confirm/cancel PAIR lives in inline keyboards (per the rule above),
- * BBTB never has a "safe confirm" (green) case — just Cancel (red) and
- * everything else (blue, the default for frequent/low-risk actions).
  */
-const b = (label) => style.text(label, style.BLUE);
-const r = (label) => style.text(label, style.RED);
 
 const mainMenu = Markup.keyboard([
-  [b('📁 My Repos'), b('➕ New Repo')],
-  [b('🔍 Search Repo'), b('⚙️ Settings')],
+  ['📁 My Repos', '➕ New Repo'],
+  ['🔍 Search Repo', '⚙️ Settings'],
 ]).resize();
 
 const myRepos = Markup.keyboard([
-  [b('🔎 Filter'), b('↕️ Sort'), b('📊 Stats')],
-  [b('➕ New Repo'), b('🔄 Refresh'), b('⭐ Pinned')],
-  [b('🧹 Bulk Select'), b('⬆️ Back to Menu')],
+  ['🔎 Filter', '↕️ Sort', '📊 Stats'],
+  ['➕ New Repo', '🔄 Refresh', '⭐ Pinned'],
+  ['🧹 Bulk Select', '⬆️ Back to Menu'],
 ]).resize();
 
 const repoView = Markup.keyboard([
-  [b('⬆️ Upload'), b('📁 Browse Files'), b('⬇️ Download Repo')],
-  [b('🔒 Visibility'), b('⚖️ License'), b('⬅️ Back to Repos')],
-  [b('⬆️ Back to Menu')],
+  ['⬆️ Upload', '📁 Browse Files', '⬇️ Download Repo'],
+  ['🔒 Visibility', '⚖️ License', '⬅️ Back to Repos'],
+  ['⬆️ Back to Menu'],
 ]).resize();
 
 const browseFiles = Markup.keyboard([
-  [b('⬆️ Upload Here'), b('🔁 Replace Folder'), b('🔍 Search Files')],
-  [b('⬆️ Back to Repo')],
+  ['⬆️ Upload Here', '🔁 Replace Folder', '🔍 Search Files'],
+  ['⬆️ Back to Repo'],
 ]).resize();
 
 // Refresh Status (#48) and Access Log (#47) both relocated off this
@@ -43,58 +35,58 @@ const browseFiles = Markup.keyboard([
 // itself (chained fresh-message pattern), and Access Log is reachable
 // from inside Activity instead of its own Settings row.
 const settings = Markup.keyboard([
-  [b('📜 Activity'), b('⚙️ Defaults'), b('📦 Storage')],
-  [r('🚪 Disconnect'), b('⬆️ Back to Menu')],
+  ['📜 Activity', '⚙️ Defaults', '📦 Storage'],
+  ['🚪 Disconnect', '⬆️ Back to Menu'],
 ]).resize();
 
-const cancelOnly = Markup.keyboard([[r('❌ Cancel')]]).resize();
+const cancelOnly = Markup.keyboard([['❌ Cancel']]).resize();
 
 const cancelWithSkip = Markup.keyboard([
-  [b('⏭️ Skip'), r('❌ Cancel')],
+  ['⏭️ Skip', '❌ Cancel'],
 ]).resize();
 
 const cancelWithBack = Markup.keyboard([
-  [b('⬅️ Back'), r('❌ Cancel')],
+  ['⬅️ Back', '❌ Cancel'],
 ]).resize();
 
 const uploadSummary = Markup.keyboard([
-  [b('📤 Upload Another'), b('⬆️ Back to Repo')],
+  ['📤 Upload Another', '⬆️ Back to Repo'],
 ]).resize();
 
 const searchAgain = Markup.keyboard([
-  [b('🔁 Search Again'), b('⬆️ Back to Menu')],
+  ['🔁 Search Again', '⬆️ Back to Menu'],
 ]).resize();
 
 // Refresh relocated to an inline button on the Activity message itself
 // (#49, same chained pattern as Settings' Refresh Status).
 const activityLog = Markup.keyboard([
-  [b('⬆️ Back to Settings')],
+  ['⬆️ Back to Settings'],
 ]).resize();
 
 const disconnected = Markup.keyboard([
-  [b('🔗 Connect GitHub'), b('⚙️ Settings')],
+  ['🔗 Connect GitHub', '⚙️ Settings'],
 ]).resize();
 
 // Refresh relocated to an inline button alongside the pin reorder arrows
 // (#50, same reasoning as Activity's Refresh above).
 const pinned = Markup.keyboard([
-  [b('⬆️ Back to Menu')],
+  ['⬆️ Back to Menu'],
 ]).resize();
 
 const bulkSelect = Markup.keyboard([
-  [b('✅ Done'), r('❌ Cancel'), b('⬆️ Menu')],
+  ['✅ Done', '❌ Cancel', '⬆️ Menu'],
 ]).resize();
 
 const bulkActionMenu = Markup.keyboard([
-  [b('◀️ Selection'), r('❌ Cancel'), b('⬆️ Menu')],
+  ['◀️ Selection', '❌ Cancel', '⬆️ Menu'],
 ]).resize();
 
 const bulkComplete = Markup.keyboard([
-  [b('📁 My Repos'), b('⬆️ Menu')],
+  ['📁 My Repos', '⬆️ Menu'],
 ]).resize();
 
 const backToSettings = Markup.keyboard([
-  [b('⬆️ Back to Settings')],
+  ['⬆️ Back to Settings'],
 ]).resize();
 
 const remove = Markup.removeKeyboard();

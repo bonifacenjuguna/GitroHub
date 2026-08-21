@@ -1,5 +1,4 @@
 const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
 const defaults = require('../lib/defaults');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
@@ -28,10 +27,10 @@ async function showDefaults(ctx) {
     `${onCount}/${totalCount} categories on`;
 
   const rows = [
-    [style.callback('🔒 Visibility', 'defaults:visibility'), style.callback('📝 Commit Message', 'defaults:commit')],
-    [style.callback('📁 Upload Path', 'defaults:path'), style.callback('↕️ Sort & Filter', 'defaults:sortfilter')],
-    [style.callback(d.auto_suggest_defaults ? '🧠 Turn Off Auto-Suggest' : '🧠 Turn On Auto-Suggest', 'defaults:togglelearn')],
-    [style.callback('🔔 Notifications', 'defaults:notifications')],
+    [Markup.button.callback('🔒 Visibility', 'defaults:visibility'), Markup.button.callback('📝 Commit Message', 'defaults:commit')],
+    [Markup.button.callback('📁 Upload Path', 'defaults:path'), Markup.button.callback('↕️ Sort & Filter', 'defaults:sortfilter')],
+    [Markup.button.callback(d.auto_suggest_defaults ? '🧠 Turn Off Auto-Suggest' : '🧠 Turn On Auto-Suggest', 'defaults:togglelearn')],
+    [Markup.button.callback('🔔 Notifications', 'defaults:notifications')],
   ];
 
   await ctx.reply('⚙️ My Defaults', bbtb.backToSettings);
@@ -40,8 +39,8 @@ async function showDefaults(ctx) {
 
 async function editVisibility(ctx) {
   await ctx.reply('Choose your default visibility for new repos:', Markup.inlineKeyboard([
-    [style.callback('🔒 Private', 'defaults:setvisibility:private')],
-    [style.callback('🌐 Public', 'defaults:setvisibility:public')],
+    [Markup.button.callback('🔒 Private', 'defaults:setvisibility:private')],
+    [Markup.button.callback('🌐 Public', 'defaults:setvisibility:public')],
   ]));
 }
 
@@ -52,13 +51,13 @@ async function setVisibility(ctx, value) {
 }
 
 async function editSortFilter(ctx) {
-  const rows = Object.entries(SORT_LABELS).map(([key, label]) => [style.callback(label, `defaults:setsort:${key}`)]);
+  const rows = Object.entries(SORT_LABELS).map(([key, label]) => [Markup.button.callback(label, `defaults:setsort:${key}`)]);
   await ctx.reply('Choose your default sort order:', Markup.inlineKeyboard(rows));
 }
 
 async function setSort(ctx, value) {
   await defaults.setDefault(ctx.from.id, 'default_sort', value);
-  const rows = Object.entries(FILTER_LABELS).map(([key, label]) => [style.callback(label, `defaults:setfilter:${key}`)]);
+  const rows = Object.entries(FILTER_LABELS).map(([key, label]) => [Markup.button.callback(label, `defaults:setfilter:${key}`)]);
   await ctx.reply('Now choose your default filter:', Markup.inlineKeyboard(rows));
 }
 

@@ -7,7 +7,6 @@ const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
 const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
 
 const GITHUB_URL_RE = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9-]+)\/([a-zA-Z0-9._-]+?)(?:\.git)?\/?$/;
 
@@ -71,7 +70,7 @@ async function handleRepoSearch(ctx, query) {
 
   if (close.length) {
     const cards = close.map((r) => {
-      rows.push([style.callback(`${counter}. ${r.name}`, `repo:${r.name}`)]);
+      rows.push([Markup.button.callback(`${counter}. ${r.name}`, `repo:${r.name}`)]);
       const card = `${counter}\\. ` + format.repoCard(r);
       counter++;
       return card;
@@ -80,7 +79,7 @@ async function handleRepoSearch(ctx, query) {
   }
   if (similar.length) {
     const cards = similar.map((r) => {
-      rows.push([style.callback(`${counter}. ${r.name}`, `repo:${r.name}`)]);
+      rows.push([Markup.button.callback(`${counter}. ${r.name}`, `repo:${r.name}`)]);
       const card = `${counter}\\. ` + format.repoCard(r);
       counter++;
       return card;
@@ -117,10 +116,10 @@ async function handleExternalRepo(ctx, owner, repoName) {
       `${format.visibilityLine(repo.private)} · ${format.languageLine(repo.language)} · ⭐ ${repo.stargazers_count} · 🍴 ${repo.forks_count}`;
 
     const keyboard = Markup.inlineKeyboard([
-      [style.callback('⬇️ Download as ZIP', 'external:download')],
-      [style.callback('🍴 Fork to My Account', 'external:fork')],
+      [Markup.button.callback('⬇️ Download as ZIP', 'external:download')],
+      [Markup.button.callback('🍴 Fork to My Account', 'external:fork')],
       [Markup.button.url('🔗 View on GitHub', repo.html_url)],
-      [style.callback('⬅️ Cancel', 'external:cancel')],
+      [Markup.button.callback('⬅️ Cancel', 'external:cancel')],
     ]);
 
     await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });

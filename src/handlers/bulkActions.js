@@ -1,5 +1,4 @@
 const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
 const github = require('../lib/github');
 const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
@@ -31,29 +30,29 @@ async function startBulkSelect(ctx, { page = 1, edit = false } = {}) {
 
   const rows = [
     [
-      style.callback('✅ Select All', 'bulk:selectall'),
-      style.callback('↩️ Invert', 'bulk:invert'),
+      Markup.button.callback('✅ Select All', 'bulk:selectall'),
+      Markup.button.callback('↩️ Invert', 'bulk:invert'),
     ],
-    [style.callback('😴 Select Stale (6mo+)', 'bulk:selectstale')],
+    [Markup.button.callback('😴 Select Stale (6mo+)', 'bulk:selectstale')],
     [
-      style.callback('🔒 Select Private', 'bulk:selectprivate'),
-      style.callback('🌐 Select Public', 'bulk:selectpublic'),
+      Markup.button.callback('🔒 Select Private', 'bulk:selectprivate'),
+      Markup.button.callback('🌐 Select Public', 'bulk:selectpublic'),
     ],
   ];
 
   const userTags = await tags.listTags(ctx.from.id);
   if (userTags.length > 0) {
-    rows.push([style.callback('🏷️ Select by Tag', 'bulk:tagmenu')]);
+    rows.push([Markup.button.callback('🏷️ Select by Tag', 'bulk:tagmenu')]);
   }
 
   for (const r of pageRepos) {
     const checked = selected.includes(r.name) ? '☑️' : '⬜';
-    rows.push([style.callback(`${checked} ${r.name}`, `bulk:toggle:${r.name}`)]);
+    rows.push([Markup.button.callback(`${checked} ${r.name}`, `bulk:toggle:${r.name}`)]);
   }
 
   const pagination = [];
-  if (page > 1) pagination.push(style.callback('⬅️ Prev', `bulk:page:${page - 1}`));
-  if (page < totalPages) pagination.push(style.callback('Next ➡️', `bulk:page:${page + 1}`));
+  if (page > 1) pagination.push(Markup.button.callback('⬅️ Prev', `bulk:page:${page - 1}`));
+  if (page < totalPages) pagination.push(Markup.button.callback('Next ➡️', `bulk:page:${page + 1}`));
   if (pagination.length) rows.push(pagination);
 
   const text =
@@ -125,9 +124,9 @@ async function selectByVisibility(ctx, isPrivate) {
 async function showTagSelectMenu(ctx) {
   const userTags = await tags.listTags(ctx.from.id);
   const rows = userTags.map((t) => [
-    style.callback(`${t.emoji} ${t.name} (${t.repo_count})`, `bulk:selecttag:${t.id}`),
+    Markup.button.callback(`${t.emoji} ${t.name} (${t.repo_count})`, `bulk:selecttag:${t.id}`),
   ]);
-  rows.push([style.callback('⬅️ Back', 'bulk:back')]);
+  rows.push([Markup.button.callback('⬅️ Back', 'bulk:back')]);
   // #29 — single-pick menu: edit briefly, then this whole message gets
   // replaced by the re-rendered Bulk Select screen on pick (selectByTag
   // below calls startBulkSelect with edit:true), so nothing lingers.
@@ -153,12 +152,12 @@ async function showActionMenu(ctx) {
 
   const text = `${format.sectionHeader('Selected', `${selected.length} repos`)}\n${format.escapeMd(previewNames(selected))}`;
   const rows = [
-    [style.callback('🗑 Delete All', 'bulk:action:delete')],
+    [Markup.button.callback('🗑 Delete All', 'bulk:action:delete')],
     [
-      style.callback('🔒 Make All Private', 'bulk:action:private'),
-      style.callback('🌐 Make All Public', 'bulk:action:public'),
+      Markup.button.callback('🔒 Make All Private', 'bulk:action:private'),
+      Markup.button.callback('🌐 Make All Public', 'bulk:action:public'),
     ],
-    [style.callback('⬇️ Download All as Zips', 'bulk:action:download')],
+    [Markup.button.callback('⬇️ Download All as Zips', 'bulk:action:download')],
   ];
 
   await ctx.reply('🧹 Bulk Actions', bbtb.bulkActionMenu);
@@ -180,8 +179,8 @@ async function confirmAction(ctx, action) {
   await ctx.reply(
     `⚠️ ${l.verb} ${selected.length} repos${action === 'delete' ? ' permanently' : ''}?\n\n${list}\n\n${l.warn}`,
     Markup.inlineKeyboard([
-      [style.callback(`✅ Yes, ${l.verb} All ${selected.length}`, `bulk:execute:${action}`, style.RED)],
-      [style.callback('❌ Cancel', 'bulk:cancel', style.RED)],
+      [Markup.button.callback(`✅ Yes, ${l.verb} All ${selected.length}`, `bulk:execute:${action}`)],
+      [Markup.button.callback('❌ Cancel', 'bulk:cancel')],
     ])
   );
 }

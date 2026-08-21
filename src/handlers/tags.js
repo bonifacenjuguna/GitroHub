@@ -1,5 +1,4 @@
 const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
 const tags = require('../lib/tags');
 const format = require('../lib/format');
 const requireConnected = require('../lib/requireConnected');
@@ -20,12 +19,12 @@ async function showRepoTags(ctx, repoName) {
     : 'None yet';
 
   const rows = [
-    [style.callback('➕ Add Tag', `tags:add:${repoName}`)],
+    [Markup.button.callback('➕ Add Tag', `tags:add:${repoName}`)],
   ];
   if (current.length > 0) {
-    rows.push([style.callback('🗑 Remove Tag', `tags:removemenu:${repoName}`)]);
+    rows.push([Markup.button.callback('🗑 Remove Tag', `tags:removemenu:${repoName}`)]);
   }
-  rows.push([style.callback('⬅️ Back to Repo', `repo:${repoName}`)]);
+  rows.push([Markup.button.callback('⬅️ Back to Repo', `repo:${repoName}`)]);
 
   await ctx.reply(
     `🏷️ *Tags for ${format.escapeMd(repoName)}*\nCurrent: ${format.escapeMd(currentLine)}`,
@@ -45,10 +44,10 @@ async function showAddTagMenu(ctx, repoName) {
   const available = allTags.filter((t) => !assignedIds.has(t.id));
 
   const rows = available.map((t) => [
-    style.callback(`${t.emoji} ${t.name}`, `tags:assign:${repoName}:${t.id}`),
+    Markup.button.callback(`${t.emoji} ${t.name}`, `tags:assign:${repoName}:${t.id}`),
   ]);
-  rows.push([style.callback('➕ Create New Tag', `tags:create:${repoName}`)]);
-  rows.push([style.callback('⬅️ Back', `repo:tags:${repoName}`)]);
+  rows.push([Markup.button.callback('➕ Create New Tag', `tags:create:${repoName}`)]);
+  rows.push([Markup.button.callback('⬅️ Back', `repo:tags:${repoName}`)]);
 
   const text = available.length > 0
     ? `🏷️ Add a tag to ${format.escapeMd(repoName)}:`
@@ -70,9 +69,9 @@ async function showRemoveTagMenu(ctx, repoName) {
   if (!token) return;
   const current = await tags.tagsForRepo(ctx.from.id, repoName);
   const rows = current.map((t) => [
-    style.callback(`${t.emoji} ${t.name}`, `tags:removeconfirm:${repoName}:${t.id}`),
+    Markup.button.callback(`${t.emoji} ${t.name}`, `tags:removeconfirm:${repoName}:${t.id}`),
   ]);
-  rows.push([style.callback('⬅️ Back', `repo:tags:${repoName}`)]);
+  rows.push([Markup.button.callback('⬅️ Back', `repo:tags:${repoName}`)]);
   await ctx.reply('🗑 Tap a tag to remove it:', Markup.inlineKeyboard(rows));
 }
 
@@ -90,8 +89,8 @@ async function removeTag(ctx, repoName, tagId) {
     await ctx.reply(
       `🏷️ "${tag.emoji} ${tag.name}" isn't used on any repos anymore. Delete this tag entirely?`,
       Markup.inlineKeyboard([
-        [style.callback('🗑 Delete Tag', `tags:deletetag:${tagId}:${repoName}`)],
-        [style.callback('➖ Keep It', `repo:tags:${repoName}`)],
+        [Markup.button.callback('🗑 Delete Tag', `tags:deletetag:${tagId}:${repoName}`)],
+        [Markup.button.callback('➖ Keep It', `repo:tags:${repoName}`)],
       ])
     );
     return;

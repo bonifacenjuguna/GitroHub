@@ -1,5 +1,4 @@
 const { Scenes, Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
 const github = require('../lib/github');
 const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
@@ -36,8 +35,8 @@ const scene = new Scenes.WizardScene(
     ctx.wizard.state.newName = newName;
 
     const keyboard = Markup.inlineKeyboard([
-      [style.callback('✅ Confirm Rename', 'rename:confirm', style.GREEN)],
-      [style.callback('❌ Cancel', 'rename:cancel', style.RED)],
+      [Markup.button.callback('✅ Confirm Rename', 'rename:confirm')],
+      [Markup.button.callback('❌ Cancel', 'rename:cancel')],
     ]);
 
     await ctx.reply(

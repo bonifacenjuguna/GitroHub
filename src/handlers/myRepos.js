@@ -1,5 +1,4 @@
 const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
 const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
@@ -192,8 +191,8 @@ async function showStats(ctx) {
   await ctx.reply(text, {
     parse_mode: 'MarkdownV2',
     ...Markup.inlineKeyboard([
-      [style.callback(`📦 Open ${mostActive.name}`, `repo:${mostActive.name}`)],
-      [style.callback('⬅️ Back', 'repos:back')],
+      [Markup.button.callback(`📦 Open ${mostActive.name}`, `repo:${mostActive.name}`)],
+      [Markup.button.callback('⬅️ Back', 'repos:back')],
     ]),
   });
 }
@@ -229,10 +228,10 @@ async function showLanguageFilterMenu(ctx) {
   const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
 
   const rows = entries.map(([lang, count]) => [
-    style.callback(`${lang} (${count})`, `filter:lang:${lang}`),
+    Markup.button.callback(`${lang} (${count})`, `filter:lang:${lang}`),
   ]);
-  rows.push([style.callback('📊 Language Overview', 'filter:langoverview')]);
-  rows.push([style.callback('⬅️ Back', 'repos:back')]);
+  rows.push([Markup.button.callback('📊 Language Overview', 'filter:langoverview')]);
+  rows.push([Markup.button.callback('⬅️ Back', 'repos:back')]);
 
   await ctx.reply('💻 Filter by language:', Markup.inlineKeyboard(rows));
 }
@@ -261,7 +260,7 @@ async function showLanguageOverview(ctx) {
 
   await ctx.reply(text, {
     parse_mode: 'MarkdownV2',
-    ...Markup.inlineKeyboard([[style.callback('⬅️ Back to Filter', 'repos:langfiltermenu')]]),
+    ...Markup.inlineKeyboard([[Markup.button.callback('⬅️ Back to Filter', 'repos:langfiltermenu')]]),
   });
 }
 
@@ -271,8 +270,8 @@ async function showTagFilterMenu(ctx) {
     await ctx.reply('🏷️ You don\u2019t have any tags yet — create one from a repo\u2019s Tags screen first.');
     return;
   }
-  const rows = userTags.map((t) => [style.callback(`${t.emoji} ${t.name} (${t.repo_count})`, `filter:tag:${t.id}`)]);
-  rows.push([style.callback('⬅️ Back', 'repos:back')]);
+  const rows = userTags.map((t) => [Markup.button.callback(`${t.emoji} ${t.name} (${t.repo_count})`, `filter:tag:${t.id}`)]);
+  rows.push([Markup.button.callback('⬅️ Back', 'repos:back')]);
   await ctx.reply('🏷️ Filter by tag:', Markup.inlineKeyboard(rows));
 }
 

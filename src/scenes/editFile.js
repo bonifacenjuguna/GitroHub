@@ -1,5 +1,4 @@
 const { Scenes, Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
 const github = require('../lib/github');
 const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
@@ -78,8 +77,8 @@ const scene = new Scenes.WizardScene(
     await ctx.reply(
       `✏️ Confirm edit to ${filePath}\n${diffLabel}`,
       Markup.inlineKeyboard([
-        [style.callback('✅ Commit Change', 'edit:confirm', style.GREEN)],
-        [style.callback('❌ Cancel', 'edit:cancel', style.RED)],
+        [Markup.button.callback('✅ Commit Change', 'edit:confirm')],
+        [Markup.button.callback('❌ Cancel', 'edit:cancel')],
       ])
     );
     return ctx.wizard.next();

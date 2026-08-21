@@ -1,5 +1,4 @@
 const { Scenes, Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
 const github = require('../lib/github');
 const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
@@ -8,8 +7,8 @@ const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
 
 const cancelConfirmKeyboard = Markup.inlineKeyboard([
-  [style.callback('✅ Yes, Cancel', 'createrepo:cancel:confirm', style.RED)],
-  [style.callback('⬅️ No, Go Back', 'createrepo:cancel:abort')],
+  [Markup.button.callback('✅ Yes, Cancel', 'createrepo:cancel:confirm')],
+  [Markup.button.callback('⬅️ No, Go Back', 'createrepo:cancel:abort')],
 ]);
 
 const scene = new Scenes.WizardScene(
@@ -45,8 +44,8 @@ const scene = new Scenes.WizardScene(
     const d = await defaultsLib.getDefaults(ctx.from.id);
     const defaultVis = d ? d.default_visibility : 'private';
     const keyboard = Markup.inlineKeyboard([
-      [style.callback(defaultVis === 'private' ? '🔒 Private ✓ default' : '🔒 Private', 'create:visibility:private')],
-      [style.callback(defaultVis === 'public' ? '🌐 Public ✓ default' : '🌐 Public', 'create:visibility:public')],
+      [Markup.button.callback(defaultVis === 'private' ? '🔒 Private ✓ default' : '🔒 Private', 'create:visibility:private')],
+      [Markup.button.callback(defaultVis === 'public' ? '🌐 Public ✓ default' : '🌐 Public', 'create:visibility:public')],
     ]);
     await ctx.reply(`Repo name: ${name} ✅\nChoose visibility:`, keyboard);
     return ctx.wizard.next();
@@ -81,8 +80,8 @@ const scene = new Scenes.WizardScene(
     await ctx.reply(
       '📄 Include a default README.md?',
       Markup.inlineKeyboard([
-        [style.callback('✅ Yes', 'create:readme:yes')],
-        [style.callback('⏭️ Skip', 'create:readme:no')],
+        [Markup.button.callback('✅ Yes', 'create:readme:yes')],
+        [Markup.button.callback('⏭️ Skip', 'create:readme:no')],
       ])
     );
     return ctx.wizard.next();
@@ -98,11 +97,11 @@ const scene = new Scenes.WizardScene(
       await ctx.reply(
         '⚖️ Choose a license (or skip for none):',
         Markup.inlineKeyboard([
-          [style.callback('MIT', 'create:license:mit')],
-          [style.callback('Apache 2.0', 'create:license:apache-2.0')],
-          [style.callback('GPL v3', 'create:license:gpl-3.0')],
-          [style.callback('BSD', 'create:license:bsd-3-clause')],
-          [style.callback('⏭️ Skip', 'create:license:none')],
+          [Markup.button.callback('MIT', 'create:license:mit')],
+          [Markup.button.callback('Apache 2.0', 'create:license:apache-2.0')],
+          [Markup.button.callback('GPL v3', 'create:license:gpl-3.0')],
+          [Markup.button.callback('BSD', 'create:license:bsd-3-clause')],
+          [Markup.button.callback('⏭️ Skip', 'create:license:none')],
         ])
       );
       return ctx.wizard.next();
@@ -183,8 +182,8 @@ const scene = new Scenes.WizardScene(
         await ctx.reply(
           `💡 You've chosen ${label} the last 3 times, even though your saved default is different. Update your default to ${label}?`,
           Markup.inlineKeyboard([
-            [style.callback('✅ Yes, Update Default', `createrepo:learndefault:${suggestion}`, style.GREEN)],
-            [style.callback('➖ Keep as is', 'createrepo:learndefault:skip')],
+            [Markup.button.callback('✅ Yes, Update Default', `createrepo:learndefault:${suggestion}`)],
+            [Markup.button.callback('➖ Keep as is', 'createrepo:learndefault:skip')],
           ])
         );
       }
