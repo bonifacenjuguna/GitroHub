@@ -1,4 +1,5 @@
 const { Markup } = require('telegraf');
+const style = require('../keyboards/buttonStyle');
 const github = require('../lib/github');
 const repoCache = require('../lib/repoCache');
 const pins = require('../lib/pins');
@@ -55,9 +56,9 @@ async function showPinned(ctx, { edit = false } = {}) {
     lines.push(line);
 
     const arrowRow = [];
-    if (i > 0) arrowRow.push(Markup.button.callback('⬆️', `pin:up:${repo.name}`));
-    if (i < pinList.length - 1) arrowRow.push(Markup.button.callback('⬇️', `pin:down:${repo.name}`));
-    arrowRow.push(Markup.button.callback(`Open ${repo.name}`, `repo:${repo.name}`));
+    if (i > 0) arrowRow.push(style.callback('⬆️', `pin:up:${repo.name}`));
+    if (i < pinList.length - 1) arrowRow.push(style.callback('⬇️', `pin:down:${repo.name}`));
+    arrowRow.push(style.callback(`Open ${repo.name}`, `repo:${repo.name}`));
     rows.push(arrowRow);
   }
 
@@ -65,7 +66,7 @@ async function showPinned(ctx, { edit = false } = {}) {
   // Repos' Refresh button — see #49's discovery). #35 — reorder arrows and
   // refresh all edit this same message in place instead of resending the
   // whole pinned list on every tap.
-  rows.push([Markup.button.callback('🔄 Refresh', 'pinned:refresh')]);
+  rows.push([style.callback('🔄 Refresh', 'pinned:refresh')]);
 
   const text = `${format.sectionHeader('Pinned Repos', `${lines.length} total`)}\n\n` + lines.join(`\n${format.CARD_DIVIDER}\n`);
 

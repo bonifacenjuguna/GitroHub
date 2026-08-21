@@ -1,4 +1,5 @@
 const { Markup } = require('telegraf');
+const style = require('../keyboards/buttonStyle');
 const accessLog = require('../lib/accessLog');
 const users = require('../lib/users');
 const format = require('../lib/format');
@@ -29,11 +30,11 @@ async function showAccessLog(ctx, { fromActivity = false } = {}) {
   await ctx.reply(text, {
     parse_mode: 'MarkdownV2',
     ...Markup.inlineKeyboard([
-      [Markup.button.callback(
+      [style.callback(
         alertOn ? '🔔 Turn Off New-Connection Alerts' : '🔕 Turn On New-Connection Alerts',
         'accesslog:togglealert'
       )],
-      ...(fromActivity ? [[Markup.button.callback('⬅️ Back to Activity', 'accesslog:backtoactivity')]] : []),
+      ...(fromActivity ? [[style.callback('⬅️ Back to Activity', 'accesslog:backtoactivity')]] : []),
     ]),
   });
 }

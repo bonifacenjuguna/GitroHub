@@ -1,5 +1,6 @@
 const os = require('os');
 const { Markup } = require('telegraf');
+const style = require('../keyboards/buttonStyle');
 const github = require('../lib/github');
 const users = require('../lib/users');
 const format = require('../lib/format');
@@ -83,7 +84,7 @@ async function showSettings(ctx, { skipBbtb = false } = {}) {
   if (!skipBbtb) await ctx.reply('⚙️ Settings', connected ? bbtb.settings : bbtb.disconnected);
   await ctx.reply(text, {
     parse_mode: 'MarkdownV2',
-    ...Markup.inlineKeyboard([[Markup.button.callback('🔄 Refresh Status', 'settings:refresh')]]),
+    ...Markup.inlineKeyboard([[style.callback('🔄 Refresh Status', 'settings:refresh')]]),
   });
 }
 

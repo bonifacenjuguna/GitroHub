@@ -2,11 +2,22 @@
 
 All notable changes to GitroHub, newest first. See [README.md](./README.md) for the current feature set and setup instructions.
 
-**Jump to:** [v0.8.4](#v084--memory-and-watchdog-hardening) · [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
+**Jump to:** [v0.8.5](#v085--button-color-styling-bot-api-94) · [v0.8.4](#v084--memory-and-watchdog-hardening) · [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
 
 ---
 
 ---
+
+### v0.8.5 — Button color styling (Bot API 9.4)
+
+Telegram's Bot API 9.4 (Feb 2026) added a `style` field to buttons — three preset colors: danger (red), success (green), primary (blue). Applied across every keyboard in the bot, inline and BBTB.
+
+- **New:** every button now carries a deliberate color instead of relying on emoji alone to signal intent.
+  - 🔴 **Red** — every Cancel button, plus the action-executing "Yes" side of destructive confirms (Delete Repo, Delete File, Disconnect, Storage Clear, Bulk Actions)
+  - 🟢 **Green** — the action-executing "Confirm/Yes" side of safe operations (Rename, License change, Fork, Create Repo, Upload/Commit, Replace Folder's sync warning)
+  - 🔵 **Blue** — everything else: navigation, entry points into a flow (even ones that lead somewhere destructive), Filter/Sort, picks, pagination
+- **Built defensively:** rather than depend on whether the installed Telegraf version's own types have caught up to this Bot API version, `style` is attached directly onto whatever button object Telegraf's `Markup.button.*` already produces — Telegram just reads the JSON it's sent, so this works regardless of Telegraf's own support timeline.
+- **Note on entry points:** a button that only opens a confirmation screen (e.g. Settings' "Disconnect," which just leads to a Yes/No prompt) is colored by its own flavor, not strictly by "did this button just navigate vs. actually execute" — a judgment call, easy to adjust if any specific one reads wrong in practice.
 
 ### v0.8.4 — Memory and watchdog hardening
 
