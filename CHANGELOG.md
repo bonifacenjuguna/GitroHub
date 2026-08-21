@@ -2,11 +2,23 @@
 
 All notable changes to GitroHub, newest first. See [README.md](./README.md) for the current feature set and setup instructions.
 
-**Jump to:** [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
+**Jump to:** [v0.8.4](#v084--memory-and-watchdog-hardening) · [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
 
 ---
 
 ---
+
+### v0.8.4 — Memory and watchdog hardening
+
+A dedicated deep pass specifically on memory behavior, the shutdown/watchdog path, and anything else likely to break under real usage — analyzed fully before any fix, consistent with the checkpoint discipline.
+
+- **Fixed (undermined the watchdog's whole purpose):** the shutdown sequence had no overall deadline. `httpServer.close()` waits for every connection — including idle keep-alive ones — to close on its own rather than forcing them; Redis's `client.quit()` has known hangs under certain reconnect states. Either one hanging meant `process.exit()` never ran, so instead of a clean preemptive restart, the process would just sit there — still consuming memory — until Railway's kernel eventually force-killed it anyway. Every shutdown step now has its own timeout, and the whole sequence is capped by a hard 8-second deadline that force-exits regardless of what's hanging.
+- **Fixed (real resource leak):** every GitHub API timeout was a `Promise.race()` — it only stopped *us* from waiting, it never actually cancelled the underlying request. A slow GitHub response kept running in the background indefinitely, still holding a socket and buffers, and the retry logic made it worse by firing a completely independent second request on top of a still-running first one. Every call in `github.js` now uses a real `AbortController`, threaded through via `request: { signal }`, so a timeout genuinely tears down the in-flight request.
+- **Fixed:** Pinned Repos has no pagination, and its tree-stats fetch used an uncapped `Promise.all()` — pin 15-20 repos and opening the screen fired that many concurrent GitHub requests at once. Added a small reusable bounded-concurrency helper (`lib/concurrency.js`) and capped it to 3 at a time, matching the effective concurrency My Repos' pagination already had for free.
+- **Fixed:** Rename and single-repo Delete both skipped `invalidateTreeStats()` on success, unlike every other write path — a small but permanent in-memory cache leak on every rename/delete. Swept the whole codebase for the same gap; these were the only two.
+- **Improved:** the memory watchdog's check interval is now adaptive — it stays fast (5s) whenever RSS is within 20% of the restart ceiling, not just during a fixed 2-minute post-boot window, closing a real blind spot where a spike well after startup could blow past the ceiling within the old flat 30s gap.
+- **Improved:** added a debounced early-warning log at 80% of the memory ceiling. Whether the ceiling's exact margin under `--max-old-space-size` is truly correct isn't something static analysis alone can answer — this doesn't change the threshold, it makes the trend visible in the logs before a restart happens, so a wrong margin would show up as real data instead of staying an open question.
+- **Noted, not fixed:** `redisSessionStore.js` has the same "timeout doesn't cancel" shape as the GitHub fix above. Left alone deliberately — Redis's real hang risk here is lower (same private network, tiny payloads, already has a connect timeout), and this file runs on every single interaction, so an unverifiable syntax mistake here would have far more blast radius than in a single GitHub feature. Worth revisiting if this is ever actually tested live.
 
 ### v0.8.3 — Rename crash fix, callback page redesign, docs cleanup
 

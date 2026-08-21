@@ -153,6 +153,7 @@ async function executeDeleteRepo(ctx, repoName) {
       await github.deleteRepo(token, user.login, repoName);
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, repoName);
+      repoCache.invalidateTreeStats(ctx.from.id, repoName);
       await activity.log(ctx.from.id, '🗑', `Deleted repo → ${repoName}`);
       await cleanupOrphanedData(ctx.from.id, repoName);
       await ctx.reply(format.successMessage(`Deleted repository "${repoName}"`), bbtb.mainMenu);

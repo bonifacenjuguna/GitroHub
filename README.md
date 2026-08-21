@@ -150,11 +150,12 @@ Returns `200` with `{ status: "ok", postgres, redis, memoryMB, uptimeSeconds }` 
 
 Moved to its own file for readability: **[CHANGELOG.md](./CHANGELOG.md)**.
 
-Highlights of the latest release (**v0.8.3**):
-- Fixed a crash on repo rename (`Cannot access 'repoCache' before initialization`)
-- Fixed the OAuth callback page's logo not loading
-- Redesigned the callback page: connection-beam animation, hero result icon, film grain, fail-state shake
-- Changelog moved to its own file — you're reading the result of that right now
+Highlights of the latest release (**v0.8.4**):
+- Shutdown sequence now has a hard deadline — a hang in HTTP/Redis/Postgres close no longer silently defeats the memory watchdog
+- Every GitHub API call now genuinely cancels on timeout (real `AbortController`), instead of just giving up on waiting while the request kept running in the background
+- Pinned Repos' concurrent request count is now capped, instead of scaling directly with how many repos you've pinned
+- Fixed a small permanent cache leak on Rename/Delete
+- Memory watchdog checks faster automatically as usage approaches the ceiling, not just during a fixed post-boot window
 
 ---
 

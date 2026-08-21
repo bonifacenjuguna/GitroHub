@@ -39,77 +39,98 @@ function isRateLimitError(err) {
  * idempotent READ operations below; wrapping writes (create/delete/put)
  * would risk double-executing a mutation if the first attempt actually
  * succeeded but the response was lost in transit.
- */
-/**
- * Retries ONE time, with a short delay, for transient failures only —
- * network blips and 5xx server errors. Deliberately only used on
- * idempotent READ operations below; wrapping writes (create/delete/put)
- * would risk double-executing a mutation if the first attempt actually
- * succeeded but the response was lost in transit.
  *
  * Also races every call against a hard timeout. This matters more than it
  * might look: incoming Telegram updates are now processed one at a time
  * (see bot.js), so a single GitHub call that hangs indefinitely would
  * block every subsequent interaction — including /start — behind it.
  * Bounding every call here is what makes that serialization safe.
+ *
+ * IMPORTANT (v0.8.4 hardening): earlier versions raced the request against
+ * a timeout with Promise.race(), which only stops US from waiting — it
+ * never actually cancelled the underlying HTTP request. A slow GitHub
+ * response kept running in the background indefinitely, still holding a
+ * socket and buffers, completely invisible to our own error handling —
+ * and withRetry made this worse by firing a SECOND independent request on
+ * top of a still-running first one. Every function below now uses a real
+ * AbortController and passes `request: { signal }` into its Octokit
+ * call(s), so a timeout genuinely tears down the in-flight request instead
+ * of just giving up on waiting for it.
  */
 const REQUEST_TIMEOUT_MS = 15000;
 
-function withTimeout(promise, label) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${REQUEST_TIMEOUT_MS}ms`)), REQUEST_TIMEOUT_MS)),
-  ]);
+/**
+ * Runs fn(signal) with a real, enforced timeout — fn must pass `signal`
+ * into every Octokit call it makes via `request: { signal }`, or that
+ * call won't actually be cancelled when the timeout fires (it'll just
+ * become an orphaned background request again, same as before). The
+ * timeout error message is kept in the exact same format as the old
+ * Promise.race version so nothing reading `err.message` elsewhere breaks.
+ */
+async function withAbortTimeout(fn, label, timeoutMs = REQUEST_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fn(controller.signal);
+  } catch (err) {
+    if (controller.signal.aborted) {
+      throw new Error(`${label} timed out after ${timeoutMs}ms`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
-async function withRetry(fn) {
+async function withRetry(fn, label = 'GitHub API request') {
   try {
-    return await withTimeout(fn(), 'GitHub API request');
+    return await withAbortTimeout(fn, label);
   } catch (err) {
     const transient = (err.status >= 500 && err.status < 600) || !err.status;
     if (!transient || isRateLimitError(err)) throw err; // rate limits shouldn't be retried immediately
     await new Promise((resolve) => setTimeout(resolve, 600));
-    return withTimeout(fn(), 'GitHub API request (retry)');
+    return withAbortTimeout(fn, `${label} (retry)`);
   }
 }
 
 async function getAuthenticatedUser(token) {
-  return withRetry(async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.users.getAuthenticated();
+    const { data } = await octo.users.getAuthenticated({ request: { signal } });
     return data; // { login, avatar_url, ... }
-  });
+  })(), 'Get authenticated user');
 }
 
 async function getRateLimit(token) {
-  return withRetry(async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.rateLimit.get();
+    const { data } = await octo.rateLimit.get({ request: { signal } });
     return data.resources.core; // { limit, remaining, reset }
-  });
+  })(), 'Get rate limit');
 }
 
 async function listRepos(token, { sort = 'updated', direction = 'desc' } = {}) {
-  return withRetry(async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
     return octo.paginate(octo.repos.listForAuthenticatedUser, {
       per_page: 100,
       sort,
       direction,
+      request: { signal },
     });
-  });
+  })(), 'List repos');
 }
 
 async function getRepo(token, owner, repo) {
-  return withRetry(async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.repos.get({ owner, repo });
+    const { data } = await octo.repos.get({ owner, repo, request: { signal } });
     return data;
-  });
+  })(), 'Get repo');
 }
 
 async function createRepo(token, { name, isPrivate, description, licenseTemplate }) {
-  return withTimeout((async () => {
+  return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
     const { data } = await octo.repos.createForAuthenticatedUser({
       name,
@@ -117,38 +138,39 @@ async function createRepo(token, { name, isPrivate, description, licenseTemplate
       description: description || undefined,
       license_template: licenseTemplate || undefined,
       auto_init: true, // ensures a default branch + initial commit exist immediately
+      request: { signal },
     });
     return data;
   })(), 'Create repo');
 }
 
 async function deleteRepo(token, owner, repo) {
-  return withTimeout((async () => {
+  return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
-    await octo.repos.delete({ owner, repo });
+    await octo.repos.delete({ owner, repo, request: { signal } });
   })(), 'Delete repo');
 }
 
 async function renameRepo(token, owner, repo, newName) {
-  return withTimeout((async () => {
+  return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.repos.update({ owner, repo, name: newName });
+    const { data } = await octo.repos.update({ owner, repo, name: newName, request: { signal } });
     return data;
   })(), 'Rename repo');
 }
 
 async function setVisibility(token, owner, repo, isPrivate) {
-  return withTimeout((async () => {
+  return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.repos.update({ owner, repo, private: isPrivate });
+    const { data } = await octo.repos.update({ owner, repo, private: isPrivate, request: { signal } });
     return data;
   })(), 'Change visibility');
 }
 
 async function updateDescription(token, owner, repo, description) {
-  return withTimeout((async () => {
+  return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.repos.update({ owner, repo, description: description || '' });
+    const { data } = await octo.repos.update({ owner, repo, description: description || '', request: { signal } });
     return data;
   })(), 'Update description');
 }
@@ -159,17 +181,17 @@ async function updateDescription(token, owner, repo, description) {
  * GitHub's own /licenses/{key} endpoint and write/replace a LICENSE file —
  * same mechanism a person clicking "Add license" on github.com uses. */
 async function getLicenseText(token, licenseKey) {
-  return withTimeout((async () => {
+  return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.licenses.get({ license: licenseKey });
+    const { data } = await octo.licenses.get({ license: licenseKey, request: { signal } });
     return data.body;
   })(), 'Fetch license text');
 }
 
 async function forkRepo(token, owner, repo) {
-  return withTimeout((async () => {
+  return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.repos.createFork({ owner, repo });
+    const { data } = await octo.repos.createFork({ owner, repo, request: { signal } });
     return data;
   })(), 'Fork repo');
 }
@@ -178,22 +200,24 @@ async function forkRepo(token, owner, repo) {
  * by getTree() (files-only, for Browse Files/upload change-detection) and
  * getTreeStats() (size/file/folder counts, for Repo View). */
 async function getRawTree(token, owner, repo, branch = null) {
-  return withRetry(async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
     const repoData = branch ? { default_branch: branch } : await getRepo(token, owner, repo);
     const { data: refData } = await octo.git.getRef({
       owner,
       repo,
       ref: `heads/${repoData.default_branch}`,
+      request: { signal },
     });
     const { data } = await octo.git.getTree({
       owner,
       repo,
       tree_sha: refData.object.sha,
       recursive: 'true',
+      request: { signal },
     });
     return data.tree;
-  });
+  })(), 'Get file tree');
 }
 
 /** Full recursive file tree — used for both Browse Files and file search */
@@ -230,13 +254,13 @@ async function getTreeStats(token, owner, repo, branch = null) {
 }
 
 async function getFileContent(token, owner, repo, path) {
-  return withRetry(async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.repos.getContent({ owner, repo, path });
+    const { data } = await octo.repos.getContent({ owner, repo, path, request: { signal } });
     if (Array.isArray(data)) throw new Error('Path is a directory, not a file');
     const content = Buffer.from(data.content, data.encoding).toString('utf8');
     return { content, sha: data.sha, size: data.size };
-  });
+  })(), 'Get file content');
 }
 
 /**
@@ -244,7 +268,7 @@ async function getFileContent(token, owner, repo, path) {
  * For multi-file zip uploads, use commitMultipleFiles() instead (one commit total).
  */
 async function putFile(token, owner, repo, path, content, message, existingSha = null) {
-  return withTimeout((async () => {
+  return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
     const { data } = await octo.repos.createOrUpdateFileContents({
       owner,
@@ -253,15 +277,16 @@ async function putFile(token, owner, repo, path, content, message, existingSha =
       message,
       content: Buffer.from(content, 'utf8').toString('base64'),
       sha: existingSha || undefined,
+      request: { signal },
     });
     return data;
   })(), 'Update file');
 }
 
 async function deleteFile(token, owner, repo, path, sha, message) {
-  return withTimeout((async () => {
+  return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.repos.deleteFile({ owner, repo, path, message, sha });
+    const { data } = await octo.repos.deleteFile({ owner, repo, path, message, sha, request: { signal } });
     return data;
   })(), 'Delete file');
 }
@@ -275,59 +300,63 @@ async function deleteFile(token, owner, repo, path, sha, message) {
  * Given a large batch/zip can genuinely need several sequential API calls,
  * this gets a longer timeout window than the single-call operations above —
  * still bounded, just sized for what a real multi-file commit can take.
+ * All calls (including the parallel blob creations) share ONE AbortController,
+ * so if the 45s ceiling is hit, every still-in-flight request — not just the
+ * one we happened to be awaiting — actually gets torn down together.
  */
 async function commitMultipleFiles(token, owner, repo, files, message, deletions = []) {
-  return Promise.race([
-    (async () => {
-      const octo = client(token);
-      const repoData = await getRepo(token, owner, repo);
-      const branch = repoData.default_branch;
+  return withAbortTimeout((signal) => (async () => {
+    const octo = client(token);
+    const repoData = await getRepo(token, owner, repo);
+    const branch = repoData.default_branch;
 
-      const { data: refData } = await octo.git.getRef({ owner, repo, ref: `heads/${branch}` });
-      const latestCommitSha = refData.object.sha;
+    const { data: refData } = await octo.git.getRef({ owner, repo, ref: `heads/${branch}`, request: { signal } });
+    const latestCommitSha = refData.object.sha;
 
-      const { data: latestCommit } = await octo.git.getCommit({
-        owner,
-        repo,
-        commit_sha: latestCommitSha,
-      });
-      const baseTreeSha = latestCommit.tree.sha;
+    const { data: latestCommit } = await octo.git.getCommit({
+      owner,
+      repo,
+      commit_sha: latestCommitSha,
+      request: { signal },
+    });
+    const baseTreeSha = latestCommit.tree.sha;
 
-      const blobs = await Promise.all(
-        files.map(async (f) => {
-          const { data: blob } = await octo.git.createBlob({
-            owner,
-            repo,
-            content: Buffer.from(f.content).toString('base64'),
-            encoding: 'base64',
-          });
-          return { path: f.path, mode: '100644', type: 'blob', sha: blob.sha };
-        })
-      );
+    const blobs = await Promise.all(
+      files.map(async (f) => {
+        const { data: blob } = await octo.git.createBlob({
+          owner,
+          repo,
+          content: Buffer.from(f.content).toString('base64'),
+          encoding: 'base64',
+          request: { signal },
+        });
+        return { path: f.path, mode: '100644', type: 'blob', sha: blob.sha };
+      })
+    );
 
-      const deletionEntries = deletions.map((path) => ({ path, mode: '100644', type: 'blob', sha: null }));
+    const deletionEntries = deletions.map((path) => ({ path, mode: '100644', type: 'blob', sha: null }));
 
-      const { data: newTree } = await octo.git.createTree({
-        owner,
-        repo,
-        base_tree: baseTreeSha,
-        tree: [...blobs, ...deletionEntries],
-      });
+    const { data: newTree } = await octo.git.createTree({
+      owner,
+      repo,
+      base_tree: baseTreeSha,
+      tree: [...blobs, ...deletionEntries],
+      request: { signal },
+    });
 
-      const { data: newCommit } = await octo.git.createCommit({
-        owner,
-        repo,
-        message,
-        tree: newTree.sha,
-        parents: [latestCommitSha],
-      });
+    const { data: newCommit } = await octo.git.createCommit({
+      owner,
+      repo,
+      message,
+      tree: newTree.sha,
+      parents: [latestCommitSha],
+      request: { signal },
+    });
 
-      await octo.git.updateRef({ owner, repo, ref: `heads/${branch}`, sha: newCommit.sha });
+    await octo.git.updateRef({ owner, repo, ref: `heads/${branch}`, sha: newCommit.sha, request: { signal } });
 
-      return newCommit;
-    })(),
-    new Promise((_, reject) => setTimeout(() => reject(new Error('Commit timed out after 45000ms')), 45000)),
-  ]);
+    return newCommit;
+  })(), 'Commit files', 45000);
 }
 
 /** Codeload zip URL — kept for reference/fallback links in error messages only */
@@ -342,20 +371,20 @@ function zipDownloadUrl(owner, repo, branch = 'main') {
  * goes through Octokit with the user's token and works for private AND public repos.
  */
 async function downloadZip(token, owner, repo, ref) {
-  return withTimeout((async () => {
+  return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
-    const response = await octo.repos.downloadZipballArchive({ owner, repo, ref });
+    const response = await octo.repos.downloadZipballArchive({ owner, repo, ref, request: { signal } });
     return Buffer.from(response.data);
   })(), 'Download zip');
 }
 
 /** Fetches per-language byte counts (used to compute language % breakdown) */
 async function getLanguages(token, owner, repo) {
-  return withRetry(async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.repos.listLanguages({ owner, repo });
+    const { data } = await octo.repos.listLanguages({ owner, repo, request: { signal } });
     return data; // { JavaScript: 12345, HTML: 6789, ... } bytes per language
-  });
+  })(), 'Get languages');
 }
 
 module.exports = {

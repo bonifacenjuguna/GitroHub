@@ -27,13 +27,16 @@ async function showPinned(ctx, { edit = false } = {}) {
   const repoByName = new Map(allRepos.map((r) => [r.name, r]));
   const tags = require('../lib/tags');
   const tagMap = await tags.tagsForRepos(telegramId, pinList.map((p) => p.repo_name));
-  const treeStatsResults = await Promise.all(
-    pinList.map((p) => {
-      const repo = repoByName.get(p.repo_name);
-      if (!repo) return null;
-      return repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token).catch(() => null);
-    })
-  );
+  // Bounded to 3 concurrent fetches regardless of how many repos are
+  // pinned (v0.8.4 hardening) — Pinned has no pagination cap like My
+  // Repos does, so an unbounded Promise.all() here scaled the number of
+  // simultaneous GitHub requests directly with pin count.
+  const { mapWithConcurrency } = require('../lib/concurrency');
+  const treeStatsResults = await mapWithConcurrency(pinList, 3, (p) => {
+    const repo = repoByName.get(p.repo_name);
+    if (!repo) return null;
+    return repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token).catch(() => null);
+  });
   const sizeByRepo = new Map(pinList.map((p, i) => [p.repo_name, treeStatsResults[i]]));
 
   const rows = [];

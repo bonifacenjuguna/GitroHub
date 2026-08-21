@@ -76,6 +76,7 @@ const scene = new Scenes.WizardScene(
       const repo = await github.renameRepo(token, user.login, oldName, newName);
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, oldName);
+      repoCache.invalidateTreeStats(ctx.from.id, oldName);
       await activity.log(ctx.from.id, '✏️', `Renamed → ${oldName} → ${newName}`);
       await ctx.reply(`✅ Renamed: ${oldName} → ${repo.name}\n🔗 ${repo.html_url}`, bbtb.mainMenu);
     } catch (err) {
