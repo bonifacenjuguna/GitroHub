@@ -8,8 +8,8 @@ const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
 
 const cancelConfirmKeyboard = Markup.inlineKeyboard([
-  [style.callback('✅ Yes, Cancel', 'createrepo:cancel:confirm', style.GREEN)],
-  [style.callback('⬅️ No, Go Back', 'createrepo:cancel:abort')],
+  [style.callback('✅ Yes, Cancel', 'createrepo:cancel:confirm', style.RED)],
+  [style.callback('⬅️ No, Go Back', 'createrepo:cancel:abort', style.GREEN)],
 ]);
 
 const scene = new Scenes.WizardScene(

@@ -78,8 +78,8 @@ const scene = new Scenes.WizardScene(
     await ctx.reply(
       `✏️ Confirm edit to ${filePath}\n${diffLabel}`,
       Markup.inlineKeyboard([
-        [style.callback('✅ Commit Change', 'edit:confirm', style.BLUE)],
-        [style.callback('❌ Cancel', 'edit:cancel', style.GREEN)],
+        [style.callback('✅ Commit Change', 'edit:confirm', style.GREEN)],
+        [style.callback('❌ Cancel', 'edit:cancel', style.RED)],
       ])
     );
     return ctx.wizard.next();

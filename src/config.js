@@ -27,7 +27,7 @@ module.exports = {
   DATABASE_URL: required('DATABASE_URL'),
   REDIS_URL: required('REDIS_URL'),
 
-  BOT_VERSION: process.env.BOT_VERSION || '0.8.6',
+  BOT_VERSION: process.env.BOT_VERSION || '0.8.7',
 
   // Hard limits (from design spec)
   MAX_ZIP_SIZE_BYTES: 1 * 1024 * 1024, // 1MB

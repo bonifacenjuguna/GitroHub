@@ -150,11 +150,10 @@ Returns `200` with `{ status: "ok", postgres, redis, memoryMB, uptimeSeconds }` 
 
 Moved to its own file for readability: **[CHANGELOG.md](./CHANGELOG.md)**.
 
-Highlights of the latest release (**v0.8.6**):
-- Rebuilt button coloring after seeing v0.8.5 rendered live — Delete Repo's Yes/Cancel both showing red made it impossible to tell which was dangerous
-- Red narrowed to exactly 5 buttons in the whole bot — only the ones that actually execute something irreversible
-- Cancel is now green everywhere, not red — green means "the safe way out," consistently
-- New colorless tier for incidental picks, so the 3 real colors actually stand out instead of everything looking equally important
+Highlights of the latest release (**v0.8.7**):
+- Colors now follow the outcome (gain vs. loss), not the button's role — cancelling a Delete is safe (green), but cancelling a Create Repo you just set up throws away progress (red)
+- Bulk Actions' confirm dialog now colors itself based on which action was picked, instead of one static color pair for delete/private/public/download alike
+- Pagination is unconditionally blue now, closing an inconsistency where "Back" was blue but "Next page" wasn't
 
 ---
 

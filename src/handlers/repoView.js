@@ -281,10 +281,10 @@ const style = require('../keyboards/buttonStyle');
   const current = repo.license ? (repo.license.name || repo.license.spdx_id) : 'No license';
 
   const rows = LICENSE_OPTIONS.map(([key, label]) =>
-    [style.callback(label, `repo:license:confirm:${repoName}:${key}`, style.BLUE)]
+    [style.callback(label, `repo:license:confirm:${repoName}:${key}`, style.GREEN)]
   );
-  rows.push([style.callback('🚫 None', `repo:license:confirm:${repoName}:none`, style.BLUE)]);
-  rows.push([style.callback('❌ Cancel', `repo:license:cancel:${repoName}`, style.GREEN)]);
+  rows.push([style.callback('🚫 None', `repo:license:confirm:${repoName}:none`, style.GREEN)]);
+  rows.push([style.callback('❌ Cancel', `repo:license:cancel:${repoName}`, style.RED)]);
 
   await ctx.reply(
     `⚖️ *${format.escapeMd(repoName)}* — current license: ${format.escapeMd(current)}\n\nChoose a new one, or ❌ Cancel:`,

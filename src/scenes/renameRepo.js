@@ -36,8 +36,8 @@ const scene = new Scenes.WizardScene(
     ctx.wizard.state.newName = newName;
 
     const keyboard = Markup.inlineKeyboard([
-      [style.callback('✅ Confirm Rename', 'rename:confirm', style.BLUE)],
-      [style.callback('❌ Cancel', 'rename:cancel', style.GREEN)],
+      [style.callback('✅ Confirm Rename', 'rename:confirm', style.GREEN)],
+      [style.callback('❌ Cancel', 'rename:cancel', style.RED)],
     ]);
 
     await ctx.reply(

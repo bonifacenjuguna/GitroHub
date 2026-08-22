@@ -2,11 +2,23 @@
 
 All notable changes to GitroHub, newest first. See [README.md](./README.md) for the current feature set and setup instructions.
 
-**Jump to:** [v0.8.6](#v086--button-color-remapping-after-seeing-it-live) · [v0.8.5](#v085--button-color-styling-bot-api-94) · [v0.8.4](#v084--memory-and-watchdog-hardening) · [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
+**Jump to:** [v0.8.7](#v087--colors-redesigned-around-outcome-not-button-role) · [v0.8.6](#v086--button-color-remapping-after-seeing-it-live) · [v0.8.5](#v085--button-color-styling-bot-api-94) · [v0.8.4](#v084--memory-and-watchdog-hardening) · [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
 
 ---
 
 ---
+
+### v0.8.7 — Colors redesigned around outcome, not button role
+
+v0.8.6 colored buttons by their ROLE (Confirm vs. Cancel) and by whether they moved you somewhere. Both broke under scrutiny: "Cancel" isn't inherently safe — cancelling a Delete is safe, but cancelling a Create Repo you just spent time setting up throws away real progress. Colors now follow the OUTCOME for that specific flow, not the button's label.
+
+- **Redesigned:** for any destructive action (Delete Repo/File, Disconnect, Storage Clear, Bulk Delete), confirm = 🔴 (you lose something), cancel = 🟢 (you keep it) — unchanged from v0.8.6, this pairing was already right.
+- **Flipped:** for any constructive action (Create Repo, Rename, Edit File, License, Fork, Upload/Commit, Replace Folder), confirm = 🟢 (you gain something) and cancel = 🔴 (you walk away from progress you already started) — the opposite of v0.8.6, where these were blue/green.
+- **New, branching by context:** Bulk Actions' shared confirm dialog now colors itself differently depending on which action was picked — Bulk Delete gets the destructive red/green pairing; Bulk Public/Private/Download (no real gain or loss either way) gets blue on both sides, matching how the single-repo Visibility toggle already works.
+- **Clarified:** navigation is unconditionally blue now, including pagination (Prev/Next) — closing an inconsistency where "Back" was blue but "Next page" wasn't, even though both are the same kind of action (moving through content, not deciding anything).
+- **Clarified:** a plain "Cancel" that isn't paired with any gain/loss (e.g. backing out of viewing an external repo) stays blue — it's pure navigation, not part of the red/green system at all.
+- **Note:** BBTB's own Cancel buttons (used for lightweight things like a Search prompt) stay green rather than picking up red — that tier is reserved for abandoning a real, multi-step flow (a wizard), not backing out of a single text prompt.
+- Final distribution: 14 red / 16 green / 67 blue / 79 colorless, out of 176 total — verified by count, not assumed.
 
 ### v0.8.6 — Button color remapping after seeing it live
 

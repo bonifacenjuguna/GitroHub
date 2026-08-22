@@ -52,8 +52,8 @@ async function startBulkSelect(ctx, { page = 1, edit = false } = {}) {
   }
 
   const pagination = [];
-  if (page > 1) pagination.push(style.callback('⬅️ Prev', `bulk:page:${page - 1}`));
-  if (page < totalPages) pagination.push(style.callback('Next ➡️', `bulk:page:${page + 1}`));
+  if (page > 1) pagination.push(style.callback('⬅️ Prev', `bulk:page:${page - 1}`, style.BLUE));
+  if (page < totalPages) pagination.push(style.callback('Next ➡️', `bulk:page:${page + 1}`, style.BLUE));
   if (pagination.length) rows.push(pagination);
 
   const text =
@@ -180,8 +180,12 @@ async function confirmAction(ctx, action) {
   await ctx.reply(
     `⚠️ ${l.verb} ${selected.length} repos${action === 'delete' ? ' permanently' : ''}?\n\n${list}\n\n${l.warn}`,
     Markup.inlineKeyboard([
-      [style.callback(`✅ Yes, ${l.verb} All ${selected.length}`, `bulk:execute:${action}`, style.RED)],
-      [style.callback('❌ Cancel', 'bulk:cancel', style.GREEN)],
+      // Delete matches single-repo Delete Repo exactly (real loss = red,
+      // backing out = green). Private/Public/Download aren't a gain or
+      // loss either way — same reasoning as the single-repo Visibility
+      // toggle already being blue/blue — so both sides stay blue instead.
+      [style.callback(`✅ Yes, ${l.verb} All ${selected.length}`, `bulk:execute:${action}`, action === 'delete' ? style.RED : style.BLUE)],
+      [style.callback('❌ Cancel', 'bulk:cancel', action === 'delete' ? style.GREEN : style.BLUE)],
     ])
   );
 }

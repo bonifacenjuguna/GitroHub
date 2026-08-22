@@ -5,8 +5,8 @@ const style = require('./buttonStyle');
 function repoList(repos, page, totalPages, filterLabel, sortLabel) {
   const rows = repos.map((r) => [style.callback(`📦 ${r.name}`, `repo:${r.name}`, style.BLUE)]);
   const pagination = [];
-  if (page > 1) pagination.push(style.callback('⬅️ Prev', `repos:page:${page - 1}`));
-  if (page < totalPages) pagination.push(style.callback('Next ➡️', `repos:page:${page + 1}`));
+  if (page > 1) pagination.push(style.callback('⬅️ Prev', `repos:page:${page - 1}`, style.BLUE));
+  if (page < totalPages) pagination.push(style.callback('Next ➡️', `repos:page:${page + 1}`, style.BLUE));
   if (pagination.length) rows.push(pagination);
   return Markup.inlineKeyboard(rows);
 }
@@ -53,7 +53,7 @@ function visibilityConfirm(repoName, currentlyPrivate) {
   const label = currentlyPrivate ? '🌐 Switch to Public' : '🔒 Switch to Private';
   return Markup.inlineKeyboard([
     [style.callback(label, `repo:visibility:confirm:${repoName}`, style.BLUE)],
-    [style.callback('❌ Cancel', `repo:visibility:cancel:${repoName}`, style.GREEN)],
+    [style.callback('❌ Cancel', `repo:visibility:cancel:${repoName}`, style.BLUE)],
   ]);
 }
 
@@ -63,13 +63,13 @@ const createRepoVisibility = Markup.inlineKeyboard([
 ]);
 
 const createRepoConfirm = Markup.inlineKeyboard([
-  [style.callback('✅ Create', 'create:confirm', style.BLUE)],
-  [style.callback('❌ Cancel', 'create:cancel', style.GREEN)],
+  [style.callback('✅ Create', 'create:confirm', style.GREEN)],
+  [style.callback('❌ Cancel', 'create:cancel', style.RED)],
 ]);
 
 const cancelConfirm = (scenePrefix) => Markup.inlineKeyboard([
-  [style.callback('✅ Yes, Cancel', `${scenePrefix}:cancel:confirm`, style.GREEN)],
-  [style.callback('⬅️ No, Go Back', `${scenePrefix}:cancel:abort`, style.BLUE)],
+  [style.callback('✅ Yes, Cancel', `${scenePrefix}:cancel:confirm`, style.RED)],
+  [style.callback('⬅️ No, Go Back', `${scenePrefix}:cancel:abort`, style.GREEN)],
 ]);
 
 function createRepoSuccess(repoName) {
@@ -90,8 +90,8 @@ function fileTree(entries, currentPath, pagination = null) {
 
   if (pagination && pagination.totalPages > 1) {
     const nav = [];
-    if (pagination.page > 1) nav.push(style.callback('⬅️ Prev', `browse:dirpage:${pagination.page - 1}:${currentPath}`));
-    if (pagination.page < pagination.totalPages) nav.push(style.callback('Next ➡️', `browse:dirpage:${pagination.page + 1}:${currentPath}`));
+    if (pagination.page > 1) nav.push(style.callback('⬅️ Prev', `browse:dirpage:${pagination.page - 1}:${currentPath}`, style.BLUE));
+    if (pagination.page < pagination.totalPages) nav.push(style.callback('Next ➡️', `browse:dirpage:${pagination.page + 1}:${currentPath}`, style.BLUE));
     if (nav.length) rows.push(nav);
   }
 
@@ -128,7 +128,7 @@ function uploadPathChoice() {
 function uploadSummaryConfirm() {
   return Markup.inlineKeyboard([
     [style.callback('📋 View File List', 'upload:summary:list')],
-    [style.callback('✅ Commit Changes', 'upload:commit', style.BLUE), style.callback('❌ Cancel', 'upload:cancel', style.GREEN)],
+    [style.callback('✅ Commit Changes', 'upload:commit', style.GREEN), style.callback('❌ Cancel', 'upload:cancel', style.RED)],
   ]);
 }
 
@@ -137,14 +137,14 @@ function externalRepoActions() {
     [style.callback('⬇️ Download as ZIP', 'external:download', style.BLUE)],
     [style.callback('🍴 Fork to My Account', 'external:fork', style.BLUE)],
     [Markup.button.url('🔗 View on GitHub', '{{url}}')], // url patched by caller
-    [style.callback('⬅️ Cancel', 'external:cancel', style.GREEN)],
+    [style.callback('⬅️ Cancel', 'external:cancel', style.BLUE)],
   ]);
 }
 
 function forkConfirm() {
   return Markup.inlineKeyboard([
-    [style.callback('✅ Confirm Fork', 'external:fork:confirm', style.BLUE)],
-    [style.callback('❌ Cancel', 'external:fork:cancel', style.GREEN)],
+    [style.callback('✅ Confirm Fork', 'external:fork:confirm', style.GREEN)],
+    [style.callback('❌ Cancel', 'external:fork:cancel', style.RED)],
   ]);
 }
 
@@ -173,8 +173,8 @@ function connectButton(url) {
 function activityPagination(page, totalPages, errorsOnly) {
   const rows = [];
   const nav = [];
-  if (page > 1) nav.push(style.callback('⬅️ Prev', `activity:page:${page - 1}:${errorsOnly}`));
-  if (page < totalPages) nav.push(style.callback('Next ➡️', `activity:page:${page + 1}:${errorsOnly}`));
+  if (page > 1) nav.push(style.callback('⬅️ Prev', `activity:page:${page - 1}:${errorsOnly}`, style.BLUE));
+  if (page < totalPages) nav.push(style.callback('Next ➡️', `activity:page:${page + 1}:${errorsOnly}`, style.BLUE));
   if (nav.length) rows.push(nav);
   rows.push([
     style.callback(errorsOnly ? '⬅️ Back to Full Log' : '⚠️ Errors Only', `activity:filter:${!errorsOnly}`),

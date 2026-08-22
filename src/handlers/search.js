@@ -120,7 +120,7 @@ async function handleExternalRepo(ctx, owner, repoName) {
       [style.callback('⬇️ Download as ZIP', 'external:download', style.BLUE)],
       [style.callback('🍴 Fork to My Account', 'external:fork', style.BLUE)],
       [Markup.button.url('🔗 View on GitHub', repo.html_url)],
-      [style.callback('⬅️ Cancel', 'external:cancel', style.GREEN)],
+      [style.callback('⬅️ Cancel', 'external:cancel', style.BLUE)],
     ]);
 
     await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });

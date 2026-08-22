@@ -55,8 +55,8 @@ const scene = new Scenes.WizardScene(
         `• Any file already here that you DON'T include will be deleted\n\n` +
         `⚠️ This is a full sync, not a normal upload.`,
         Markup.inlineKeyboard([
-          [style.callback('Understood, Continue', 'upload:sync:continue', style.BLUE)],
-          [style.callback('❌ Cancel', 'upload:sync:cancel', style.GREEN)],
+          [style.callback('Understood, Continue', 'upload:sync:continue', style.GREEN)],
+          [style.callback('❌ Cancel', 'upload:sync:cancel', style.RED)],
         ])
       );
       // Advance the wizard cursor to the step that actually handles the
