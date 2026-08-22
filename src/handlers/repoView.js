@@ -275,15 +275,16 @@ async function showLicenseMenu(ctx, repoName) {
   if (!token) return;
 
   const { Markup } = require('telegraf');
+const style = require('../keyboards/buttonStyle');
   const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
   const current = repo.license ? (repo.license.name || repo.license.spdx_id) : 'No license';
 
   const rows = LICENSE_OPTIONS.map(([key, label]) =>
-    [Markup.button.callback(label, `repo:license:confirm:${repoName}:${key}`)]
+    [style.callback(label, `repo:license:confirm:${repoName}:${key}`, style.BLUE)]
   );
-  rows.push([Markup.button.callback('🚫 None', `repo:license:confirm:${repoName}:none`)]);
-  rows.push([Markup.button.callback('❌ Cancel', `repo:license:cancel:${repoName}`)]);
+  rows.push([style.callback('🚫 None', `repo:license:confirm:${repoName}:none`, style.BLUE)]);
+  rows.push([style.callback('❌ Cancel', `repo:license:cancel:${repoName}`, style.GREEN)]);
 
   await ctx.reply(
     `⚖️ *${format.escapeMd(repoName)}* — current license: ${format.escapeMd(current)}\n\nChoose a new one, or ❌ Cancel:`,
@@ -332,7 +333,7 @@ async function _executeSetLicense(ctx, repoName, licenseKey) {
     const { Markup } = require('telegraf');
     await ctx.reply(
       `✅ License commit pushed to ${repoName}.\n\n⏳ GitHub can take a moment to actually detect the new license from the file — if it still shows the old one when you check, give it a minute and look again.`,
-      Markup.inlineKeyboard([[Markup.button.callback(`📦 View ${repoName}`, `repo:${repoName}`)]])
+      Markup.inlineKeyboard([[style.callback(`📦 View ${repoName}`, `repo:${repoName}`)]])
     );
   } catch (err) {
     await activity.log(ctx.from.id, '⚠️', `License update failed → ${repoName}`, { detail: err.message, isError: true });

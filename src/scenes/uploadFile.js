@@ -1,4 +1,5 @@
 const { Scenes, Markup } = require('telegraf');
+const style = require('../keyboards/buttonStyle');
 const github = require('../lib/github');
 const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
@@ -54,8 +55,8 @@ const scene = new Scenes.WizardScene(
         `• Any file already here that you DON'T include will be deleted\n\n` +
         `⚠️ This is a full sync, not a normal upload.`,
         Markup.inlineKeyboard([
-          [Markup.button.callback('Understood, Continue', 'upload:sync:continue')],
-          [Markup.button.callback('❌ Cancel', 'upload:sync:cancel')],
+          [style.callback('Understood, Continue', 'upload:sync:continue', style.BLUE)],
+          [style.callback('❌ Cancel', 'upload:sync:cancel', style.GREEN)],
         ])
       );
       // Advance the wizard cursor to the step that actually handles the
@@ -396,14 +397,14 @@ async function processSingleFile(ctx, buffer, filename, isBackNav = false) {
   const defaultsLib = require('../lib/defaults');
   const d = await defaultsLib.getDefaults(ctx.from.id);
   const pathButtons = [
-    [Markup.button.callback('📁 Browse Folders', 'upload:choose:browse')],
-    [Markup.button.callback('📍 Root Directory', 'upload:choose:root')],
+    [style.callback('📁 Browse Folders', 'upload:choose:browse')],
+    [style.callback('📍 Root Directory', 'upload:choose:root')],
   ];
   if (d && d.default_upload_path) {
-    pathButtons.push([Markup.button.callback(`⭐ Use Default (${d.default_upload_path}/)`, 'upload:choose:default')]);
+    pathButtons.push([style.callback(`⭐ Use Default (${d.default_upload_path}/)`, 'upload:choose:default')]);
   }
   if (ctx.wizard.state.suggestedDir && ctx.wizard.state.suggestedDir !== (d && d.default_upload_path)) {
-    pathButtons.push([Markup.button.callback(`🕘 Last Used Here (${ctx.wizard.state.suggestedDir}/)`, 'upload:choose:suggested')]);
+    pathButtons.push([style.callback(`🕘 Last Used Here (${ctx.wizard.state.suggestedDir}/)`, 'upload:choose:suggested')]);
   }
   await ctx.reply(
     `📄 Received: ${f.filename} (${format.formatBytes(f.size)})\nWhere should this go?${structureLine}`,
@@ -496,7 +497,7 @@ async function showSummary(ctx) {
       `📦 Upload Summary → ${ctx.wizard.state.repoName}\n` +
       `➖ No changes detected — ${files.length === 1 ? `"${names}" matches` : `all ${files.length} files match`} what's already in the repo.\n\n` +
       `Nothing to upload.`,
-      Markup.inlineKeyboard([[Markup.button.callback('📦 Open Repo', `repo:${ctx.wizard.state.repoName}`)]])
+      Markup.inlineKeyboard([[style.callback('📦 Open Repo', `repo:${ctx.wizard.state.repoName}`)]])
     );
     return ctx.scene.leave();
   }
@@ -518,8 +519,8 @@ async function showSummary(ctx) {
 
   await ctx.reply(text, {
     ...Markup.inlineKeyboard([
-      [Markup.button.callback('📋 View File List', 'upload:summary:list')],
-      [Markup.button.callback('✅ Commit Changes', 'upload:commit'), Markup.button.callback('❌ Cancel', 'upload:cancel')],
+      [style.callback('📋 View File List', 'upload:summary:list')],
+      [style.callback('✅ Commit Changes', 'upload:commit'), style.callback('❌ Cancel', 'upload:cancel')],
     ]),
   });
   return ctx.wizard.selectStep(3);

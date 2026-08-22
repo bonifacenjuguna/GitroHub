@@ -1,4 +1,5 @@
 const { Markup } = require('telegraf');
+const style = require('../keyboards/buttonStyle');
 const dataStore = require('../lib/dataStore');
 const users = require('../lib/users');
 const format = require('../lib/format');
@@ -16,9 +17,9 @@ async function showStorageData(ctx) {
     `🔐 Encrypted GitHub token: ${counts.hasToken ? '1' : '0'}`;
 
   const rows = [
-    [Markup.button.callback('🗑 Clear Data', 'storage:clearmenu')],
-    [Markup.button.callback('⬇️ Export My Data', 'storage:exportmenu')],
-    [Markup.button.callback('🧹 Auto-Cleanup Settings', 'storage:cleanupmenu')],
+    [style.callback('🗑 Clear Data', 'storage:clearmenu')],
+    [style.callback('⬇️ Export My Data', 'storage:exportmenu')],
+    [style.callback('🧹 Auto-Cleanup Settings', 'storage:cleanupmenu')],
   ];
 
   await ctx.reply('📦 Storage & Data', bbtb.backToSettings);
@@ -27,11 +28,11 @@ async function showStorageData(ctx) {
 
 async function showClearMenu(ctx) {
   await ctx.reply('🗑 What would you like to clear?', Markup.inlineKeyboard([
-    [Markup.button.callback('📜 Activity Log', 'storage:clear:activity')],
-    [Markup.button.callback('📌 Pins', 'storage:clear:pins')],
-    [Markup.button.callback('⚙️ Defaults', 'storage:clear:defaults')],
-    [Markup.button.callback('🗑 Everything (Full Reset)', 'storage:clear:full')],
-    [Markup.button.callback('⬅️ Back', 'storage:back')],
+    [style.callback('📜 Activity Log', 'storage:clear:activity')],
+    [style.callback('📌 Pins', 'storage:clear:pins')],
+    [style.callback('⚙️ Defaults', 'storage:clear:defaults')],
+    [style.callback('🗑 Everything (Full Reset)', 'storage:clear:full')],
+    [style.callback('⬅️ Back', 'storage:back')],
   ]));
 }
 
@@ -51,8 +52,8 @@ async function confirmClear(ctx, scope) {
   await ctx.reply(
     `⚠️ Clear ${labels[scope]}? This cannot be undone.`,
     Markup.inlineKeyboard([
-      [Markup.button.callback('✅ Yes, Clear', `storage:doclear:${scope}`)],
-      [Markup.button.callback('❌ Cancel', `storage:clearcancel:${scope}`)],
+      [style.callback('✅ Yes, Clear', `storage:doclear:${scope}`, style.RED)],
+      [style.callback('❌ Cancel', `storage:clearcancel:${scope}`, style.GREEN)],
     ])
   );
 }
@@ -97,8 +98,8 @@ async function handleResetConfirmationText(ctx) {
 
 async function showExportMenu(ctx) {
   await ctx.reply('⬇️ Export format?', Markup.inlineKeyboard([
-    [Markup.button.callback('📄 JSON (raw data)', 'storage:export:json')],
-    [Markup.button.callback('📋 Readable Summary (.txt)', 'storage:export:txt')],
+    [style.callback('📄 JSON (raw data)', 'storage:export:json')],
+    [style.callback('📋 Readable Summary (.txt)', 'storage:export:txt')],
   ]));
 }
 
@@ -116,12 +117,12 @@ async function showCleanupMenu(ctx, { edit = false } = {}) {
     `🗑 Auto\\-delete pins/tags on repo deletion: ${user.auto_cleanup_on_delete ? 'On' : 'Off'}`;
   const keyboard = Markup.inlineKeyboard([
     [
-      Markup.button.callback('30d', 'storage:retention:30'),
-      Markup.button.callback('90d', 'storage:retention:90'),
-      Markup.button.callback('1yr', 'storage:retention:365'),
-      Markup.button.callback('Forever', 'storage:retention:36500'),
+      style.callback('30d', 'storage:retention:30'),
+      style.callback('90d', 'storage:retention:90'),
+      style.callback('1yr', 'storage:retention:365'),
+      style.callback('Forever', 'storage:retention:36500'),
     ],
-    [Markup.button.callback(user.auto_cleanup_on_delete ? '🗑 Turn Off Auto-Delete' : '🗑 Turn On Auto-Delete', 'storage:toggleautodelete')],
+    [style.callback(user.auto_cleanup_on_delete ? '🗑 Turn Off Auto-Delete' : '🗑 Turn On Auto-Delete', 'storage:toggleautodelete')],
   ]);
 
   // #34 — retention/auto-delete are a multi-toggle screen you flip
