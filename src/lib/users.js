@@ -68,6 +68,32 @@ async function toggleNotification(telegramId, key) {
   return user[column];
 }
 
+/**
+ * These three were previously raw `require('../db/postgres')` + `pool.query`
+ * calls made directly inside handlers/storageData.js and
+ * handlers/accessLogScreen.js — a direct violation of the README's stated
+ * architecture rule ("lib/ = data access, handlers/ = screen logic") that
+ * every other handler in the codebase actually follows. Moved here so
+ * handlers stay declarative and DB access stays in exactly one layer.
+ */
+async function setActivityRetentionDays(telegramId, days) {
+  await pool.query('UPDATE users SET activity_retention_days = $1 WHERE telegram_id = $2', [Number(days), telegramId]);
+}
+
+async function toggleAutoCleanupOnDelete(telegramId) {
+  const user = await getUser(telegramId);
+  const next = !(user && user.auto_cleanup_on_delete);
+  await pool.query('UPDATE users SET auto_cleanup_on_delete = $1 WHERE telegram_id = $2', [next, telegramId]);
+  return next;
+}
+
+async function toggleAlertOnNewConnection(telegramId) {
+  const user = await getUser(telegramId);
+  const next = !(user && user.alert_on_new_connection);
+  await pool.query('UPDATE users SET alert_on_new_connection = $1 WHERE telegram_id = $2', [next, telegramId]);
+  return next;
+}
+
 module.exports = {
   getUser,
   isConnected,
@@ -76,4 +102,7 @@ module.exports = {
   disconnect,
   getNotificationPrefs,
   toggleNotification,
+  setActivityRetentionDays,
+  toggleAutoCleanupOnDelete,
+  toggleAlertOnNewConnection,
 };

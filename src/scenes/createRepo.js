@@ -12,13 +12,93 @@ const cancelConfirmKeyboard = Markup.inlineKeyboard([
   [style.callback('⬅️ No, Go Back', 'createrepo:cancel:abort', style.GREEN)],
 ]);
 
+const LICENSE_LABELS = { mit: 'MIT', 'apache-2.0': 'Apache 2.0', 'gpl-3.0': 'GPL v3', 'bsd-3-clause': 'BSD' };
+
+/**
+ * Each of these renders the question for one step. Pulled out into named
+ * functions — not just inlined at the point each step advances forward —
+ * specifically so ⬅️ Back (see handleGlobalActions below) can call the
+ * SAME renderer to redraw a prior question, instead of the old behavior
+ * of just sending a bare "⬅️ Going back..." text with no actual prompt or
+ * keyboard. Without this, tapping Back moved the wizard's cursor
+ * correctly but left the person looking at a stale screen with nothing
+ * to tap or type.
+ */
+async function askName(ctx) {
+  await ctx.reply('📦 Let\u2019s create a new repo.\nSend me the repository name.', bbtb.cancelOnly);
+}
+
+async function askVisibility(ctx) {
+  const { name } = ctx.wizard.state.data;
+  await ctx.reply('📦 New Repo — Step 2 of 5', bbtb.cancelWithBack);
+  const defaultsLib = require('../lib/defaults');
+  const d = await defaultsLib.getDefaults(ctx.from.id);
+  const defaultVis = d ? d.default_visibility : 'private';
+  const keyboard = Markup.inlineKeyboard([
+    [style.callback(defaultVis === 'private' ? '🔒 Private ✓ default' : '🔒 Private', 'create:visibility:private')],
+    [style.callback(defaultVis === 'public' ? '🌐 Public ✓ default' : '🌐 Public', 'create:visibility:public')],
+  ]);
+  await ctx.reply(`Repo name: ${name} ✅\nChoose visibility:`, keyboard);
+}
+
+async function askDescription(ctx) {
+  await ctx.reply('Add a short description, or skip.', bbtb.cancelWithSkip);
+}
+
+async function askReadme(ctx) {
+  await ctx.reply('📦 New Repo — Step 4 of 5', bbtb.cancelWithBack);
+  await ctx.reply(
+    '📄 Include a default README.md?',
+    Markup.inlineKeyboard([
+      [style.callback('✅ Yes', 'create:readme:yes')],
+      [style.callback('⏭️ Skip', 'create:readme:no')],
+    ])
+  );
+}
+
+async function askLicense(ctx) {
+  await ctx.reply('📦 New Repo — Step 5 of 5', bbtb.cancelWithBack);
+  await ctx.reply(
+    '⚖️ Choose a license (or skip for none):',
+    Markup.inlineKeyboard([
+      [style.callback('MIT', 'create:license:mit')],
+      [style.callback('Apache 2.0', 'create:license:apache-2.0')],
+      [style.callback('GPL v3', 'create:license:gpl-3.0')],
+      [style.callback('BSD', 'create:license:bsd-3-clause')],
+      [style.callback('⏭️ Skip', 'create:license:none')],
+    ])
+  );
+}
+
+async function showConfirmScreen(ctx) {
+  const { name, isPrivate, description, includeReadme, licenseTemplate } = ctx.wizard.state.data;
+  let text = `📦 ${name}\n${isPrivate ? '🔒 Private' : '🌐 Public'}`;
+  if (description) text += `\n"${description}"`;
+  text += `\n📄 README: ${includeReadme ? 'Yes' : 'Skip'}`;
+  text += `\n⚖️ License: ${licenseTemplate ? LICENSE_LABELS[licenseTemplate] : 'None'}`;
+  text += '\n\nReady to create this repository?';
+
+  await ctx.reply('📦 New Repo — Confirm', bbtb.cancelWithBack);
+  await ctx.reply(text, inline.createRepoConfirm);
+}
+
+/**
+ * Maps the wizard step a ⬅️ Back tap lands on (cursor - 1) to the
+ * renderer that originally asked that step's question. Back is only ever
+ * reachable from steps 2, 4, 5, and 6 (the only ones whose prompt
+ * included bbtb.cancelWithBack — description's step doesn't offer Back,
+ * matching its own bbtb.cancelWithSkip keyboard), so those are the only
+ * target steps that need an entry here.
+ */
+const BACK_RENDERERS = { 1: askName, 3: askDescription, 4: askReadme, 5: askLicense };
+
 const scene = new Scenes.WizardScene(
   'createRepo',
 
   // Step 0 — ask name
   async (ctx) => {
     ctx.wizard.state.data = {};
-    await ctx.reply('📦 Let\u2019s create a new repo.\nSend me the repository name.', bbtb.cancelOnly);
+    await askName(ctx);
     return ctx.wizard.next();
   },
 
@@ -39,16 +119,7 @@ const scene = new Scenes.WizardScene(
       return;
     }
     ctx.wizard.state.data.name = name;
-    await ctx.reply('📦 New Repo — Step 2 of 5', bbtb.cancelWithBack);
-
-    const defaultsLib = require('../lib/defaults');
-    const d = await defaultsLib.getDefaults(ctx.from.id);
-    const defaultVis = d ? d.default_visibility : 'private';
-    const keyboard = Markup.inlineKeyboard([
-      [style.callback(defaultVis === 'private' ? '🔒 Private ✓ default' : '🔒 Private', 'create:visibility:private')],
-      [style.callback(defaultVis === 'public' ? '🌐 Public ✓ default' : '🌐 Public', 'create:visibility:public')],
-    ]);
-    await ctx.reply(`Repo name: ${name} ✅\nChoose visibility:`, keyboard);
+    await askVisibility(ctx);
     return ctx.wizard.next();
   },
 
@@ -59,7 +130,7 @@ const scene = new Scenes.WizardScene(
       const isPrivate = ctx.callbackQuery.data.endsWith('private');
       ctx.wizard.state.data.isPrivate = isPrivate;
       await ctx.answerCbQuery();
-      await ctx.reply('Add a short description, or skip.', bbtb.cancelWithSkip);
+      await askDescription(ctx);
       return ctx.wizard.next();
     }
     await ctx.reply('Tap 🔒 Private or 🌐 Public above.');
@@ -77,14 +148,7 @@ const scene = new Scenes.WizardScene(
       return;
     }
 
-    await ctx.reply('📦 New Repo — Step 4 of 5', bbtb.cancelWithBack);
-    await ctx.reply(
-      '📄 Include a default README.md?',
-      Markup.inlineKeyboard([
-        [style.callback('✅ Yes', 'create:readme:yes')],
-        [style.callback('⏭️ Skip', 'create:readme:no')],
-      ])
-    );
+    await askReadme(ctx);
     return ctx.wizard.next();
   },
 
@@ -94,17 +158,7 @@ const scene = new Scenes.WizardScene(
     if (ctx.callbackQuery && ctx.callbackQuery.data.startsWith('create:readme:')) {
       ctx.wizard.state.data.includeReadme = ctx.callbackQuery.data.endsWith('yes');
       await ctx.answerCbQuery();
-      await ctx.reply('📦 New Repo — Step 5 of 5', bbtb.cancelWithBack);
-      await ctx.reply(
-        '⚖️ Choose a license (or skip for none):',
-        Markup.inlineKeyboard([
-          [style.callback('MIT', 'create:license:mit')],
-          [style.callback('Apache 2.0', 'create:license:apache-2.0')],
-          [style.callback('GPL v3', 'create:license:gpl-3.0')],
-          [style.callback('BSD', 'create:license:bsd-3-clause')],
-          [style.callback('⏭️ Skip', 'create:license:none')],
-        ])
-      );
+      await askLicense(ctx);
       return ctx.wizard.next();
     }
     await ctx.reply('Tap ✅ Yes or ⏭️ Skip above.');
@@ -117,17 +171,7 @@ const scene = new Scenes.WizardScene(
       const licenseKey = ctx.callbackQuery.data.split('create:license:')[1];
       ctx.wizard.state.data.licenseTemplate = licenseKey === 'none' ? null : licenseKey;
       await ctx.answerCbQuery();
-
-      const { name, isPrivate, description, includeReadme, licenseTemplate } = ctx.wizard.state.data;
-      const LICENSE_LABELS = { mit: 'MIT', 'apache-2.0': 'Apache 2.0', 'gpl-3.0': 'GPL v3', 'bsd-3-clause': 'BSD' };
-      let text = `📦 ${name}\n${isPrivate ? '🔒 Private' : '🌐 Public'}`;
-      if (description) text += `\n"${description}"`;
-      text += `\n📄 README: ${includeReadme ? 'Yes' : 'Skip'}`;
-      text += `\n⚖️ License: ${licenseTemplate ? LICENSE_LABELS[licenseTemplate] : 'None'}`;
-      text += '\n\nReady to create this repository?';
-
-      await ctx.reply('📦 New Repo — Confirm', bbtb.cancelWithBack);
-      await ctx.reply(text, inline.createRepoConfirm);
+      await showConfirmScreen(ctx);
       return ctx.wizard.next();
     }
     await ctx.reply('Tap a license option above.');
@@ -217,10 +261,16 @@ async function handleGlobalActions(ctx) {
     return true;
   }
   if (ctx.message && ctx.message.text === '⬅️ Back') {
-    ctx.wizard.selectStep(Math.max(0, ctx.wizard.cursor - 1));
-    await ctx.reply('⬅️ Going back...');
-    // Re-run the previous step's prompt by simulating no-op; simplest is to
-    // instruct the user, since Telegraf wizard doesn't auto re-render.
+    const targetStep = Math.max(0, ctx.wizard.cursor - 1);
+    ctx.wizard.selectStep(targetStep);
+    // Root fix — this used to just move the cursor and send a bare
+    // "⬅️ Going back..." text with no actual question or keyboard
+    // attached, leaving the person looking at a stale screen with
+    // nothing to tap or type unless the earlier message with those
+    // buttons happened to still be visible above. Now it actually
+    // redraws whatever question that step originally asked.
+    const render = BACK_RENDERERS[targetStep];
+    if (render) await render(ctx);
     return true;
   }
   if (ctx.callbackQuery && ctx.callbackQuery.data === 'createrepo:cancel:confirm') {

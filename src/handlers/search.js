@@ -8,6 +8,7 @@ const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
 const { Markup } = require('telegraf');
 const style = require('../keyboards/buttonStyle');
+const config = require('../config');
 
 const GITHUB_URL_RE = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9-]+)\/([a-zA-Z0-9._-]+?)(?:\.git)?\/?$/;
 
@@ -145,12 +146,16 @@ async function downloadExternalZip(ctx) {
     const repoData = await github.getRepo(token, owner, repo);
     const buffer = await github.downloadZip(token, owner, repo, repoData.default_branch);
 
-    if (buffer.length > 20 * 1024 * 1024) {
-      const fallbackUrl = github.zipDownloadUrl(owner, repo, repoData.default_branch);
+    if (buffer.length > config.MAX_TELEGRAM_FILE_SIZE_BYTES) {
+      let fallbackLine = 'Try again later.';
+      try {
+        const fallbackUrl = await github.getDownloadUrl(token, owner, repo, repoData.default_branch);
+        fallbackLine = `Here's a direct download link instead (expires shortly):\n${fallbackUrl}`;
+      } catch (_) { /* best-effort — fall back to the generic message above */ }
       return ctx.reply(format.errorMessage(
         'Download failed',
         `repo is ${format.formatBytes(buffer.length)} — exceeds Telegram's 20MB limit for bot-sent files`,
-        `Here's a direct download link instead:\n${fallbackUrl}`
+        fallbackLine
       ));
     }
 
@@ -177,7 +182,9 @@ async function executeForkExternal(ctx) {
   if (!token) return;
 
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, 'fork', async () => {
+  // Keyed by target repo, not just 'fork' — forking one external repo
+  // must never block an unrelated fork of a different one (see lib/actionLock.js).
+  const { skipped } = await actionLock.withLock(ctx.from.id, `fork:${owner}/${repo}`, async () => {
     try {
       const forked = await github.forkRepo(token, owner, repo);
       repoCache.invalidateRepos(ctx.from.id);

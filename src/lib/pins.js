@@ -54,4 +54,32 @@ async function removeByRepoName(telegramId, repoName) {
   await unpin(telegramId, repoName);
 }
 
-module.exports = { list, isPinned, pin, unpin, move, clearAll, removeByRepoName };
+/**
+ * Root fix for "Rename Repo doesn't migrate pins" — Delete Repo already
+ * had cleanupOrphanedData() for its equivalent problem; Rename had
+ * nothing, so a pinned repo silently vanished from ⭐ Pinned the moment
+ * it was renamed (its row was still keyed under the OLD repo_name text,
+ * which no longer matches anything GitHub returns).
+ *
+ * UPDATE, not a plain INSERT/DELETE pair, so the pin's position is kept.
+ * The (telegram_id, repo_name) unique constraint means this can only
+ * conflict in the practically-impossible case where the NEW name was
+ * somehow already separately pinned — in that case just drop the old row
+ * and keep whichever pin already existed under the new name.
+ */
+async function renameRepo(telegramId, oldName, newName) {
+  try {
+    await pool.query(
+      'UPDATE pinned_repos SET repo_name = $1 WHERE telegram_id = $2 AND repo_name = $3',
+      [newName, telegramId, oldName]
+    );
+  } catch (err) {
+    if (err.code === '23505') {
+      await pool.query('DELETE FROM pinned_repos WHERE telegram_id = $1 AND repo_name = $2', [telegramId, oldName]);
+    } else {
+      throw err;
+    }
+  }
+}
+
+module.exports = { list, isPinned, pin, unpin, move, clearAll, removeByRepoName, renameRepo };

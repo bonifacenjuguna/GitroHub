@@ -62,7 +62,10 @@ async function confirmClear(ctx, scope) {
  * only destructive Storage & Data action without double-tap protection. */
 async function executeClear(ctx, scope) {
   const telegramId = ctx.from.id;
-  const { skipped } = await actionLock.withLock(telegramId, 'storageClear', async () => {
+  // Keyed by scope, not just 'storageClear' — clearing "pins" and
+  // clearing "activity" are unrelated operations and shouldn't block
+  // each other if double-tapped close together (see lib/actionLock.js).
+  const { skipped } = await actionLock.withLock(telegramId, `storageClear:${scope}`, async () => {
     if (scope === 'activity') await dataStore.clearActivityLog(telegramId);
     if (scope === 'pins') await dataStore.clearPins(telegramId);
     if (scope === 'defaults') await dataStore.clearDefaults(telegramId);
@@ -137,15 +140,12 @@ async function showCleanupMenu(ctx, { edit = false } = {}) {
 }
 
 async function setRetention(ctx, days) {
-  const { pool } = require('../db/postgres');
-  await pool.query('UPDATE users SET activity_retention_days = $1 WHERE telegram_id = $2', [Number(days), ctx.from.id]);
+  await users.setActivityRetentionDays(ctx.from.id, days);
   return showCleanupMenu(ctx, { edit: true });
 }
 
 async function toggleAutoDelete(ctx) {
-  const { pool } = require('../db/postgres');
-  const user = await users.getUser(ctx.from.id);
-  await pool.query('UPDATE users SET auto_cleanup_on_delete = $1 WHERE telegram_id = $2', [!user.auto_cleanup_on_delete, ctx.from.id]);
+  await users.toggleAutoCleanupOnDelete(ctx.from.id);
   return showCleanupMenu(ctx, { edit: true });
 }
 

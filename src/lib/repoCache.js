@@ -42,14 +42,17 @@ async function getLanguages(telegramId, owner, repoName, token) {
 }
 
 /** Repo size/file/folder counts, computed from the real file tree (see
- * github.getTreeStats) instead of GitHub's lagging cached `repo.size`. */
-async function getTreeStats(telegramId, owner, repoName, token) {
+ * github.getTreeStats) instead of GitHub's lagging cached `repo.size`.
+ * `branch` is optional — pass it whenever the caller already has the repo
+ * object (repo.default_branch) so github.getTreeStats can skip its own
+ * redundant getRepo() lookup. */
+async function getTreeStats(telegramId, owner, repoName, token, branch = null) {
   const key = `${telegramId}:${repoName}`;
   const cached = treeStatsCache.get(key);
   if (cached && Date.now() - cached.timestamp < TREE_STATS_TTL_MS) {
     return cached.stats;
   }
-  const stats = await github.getTreeStats(token, owner, repoName);
+  const stats = await github.getTreeStats(token, owner, repoName, branch);
   treeStatsCache.set(key, { stats, timestamp: Date.now() });
   return stats;
 }

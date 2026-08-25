@@ -6,6 +6,9 @@ const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
+const pins = require('../lib/pins');
+const tags = require('../lib/tags');
+const pathMemory = require('../lib/pathMemory');
 
 const scene = new Scenes.WizardScene(
   'renameRepo',
@@ -71,13 +74,26 @@ const scene = new Scenes.WizardScene(
 
     const { oldName, newName } = ctx.wizard.state;
     const actionLock = require('../lib/actionLock');
-    const { skipped } = await actionLock.withLock(ctx.from.id, 'renameRepo', async () => {
+    // Keyed by the repo being renamed, not just 'renameRepo' — renaming
+    // one repo must never block an unrelated rename of a different repo
+    // (see lib/actionLock.js).
+    const { skipped } = await actionLock.withLock(ctx.from.id, `renameRepo:${oldName}`, async () => {
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
       const repo = await github.renameRepo(token, user.login, oldName, newName);
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, oldName);
       repoCache.invalidateTreeStats(ctx.from.id, oldName);
+      // Root fix — Delete Repo already migrates/cleans up pins, tags, and
+      // path-memory (repoView.js's cleanupOrphanedData); Rename had no
+      // equivalent, so all three silently pointed at a repo_name that no
+      // longer existed anywhere GitHub would ever return it again. Move
+      // them to the new name instead of leaving them orphaned.
+      await Promise.all([
+        pins.renameRepo(ctx.from.id, oldName, newName),
+        tags.renameRepo(ctx.from.id, oldName, newName),
+        pathMemory.renameRepo(ctx.from.id, oldName, newName),
+      ]);
       await activity.log(ctx.from.id, '✏️', `Renamed → ${oldName} → ${newName}`);
       await ctx.reply(`✅ Renamed: ${oldName} → ${repo.name}\n🔗 ${repo.html_url}`, bbtb.mainMenu);
     } catch (err) {

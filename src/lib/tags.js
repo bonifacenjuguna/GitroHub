@@ -83,6 +83,26 @@ async function removeAllForRepo(telegramId, repoName) {
   await pool.query('DELETE FROM repo_tags WHERE telegram_id = $1 AND repo_name = $2', [telegramId, repoName]);
 }
 
+/**
+ * Root fix for "Rename Repo doesn't migrate tags" — same gap as pins
+ * (see lib/pins.js renameRepo). A plain UPDATE can't use ON CONFLICT
+ * (that's insert-only syntax), and repo_tags' unique constraint is
+ * (telegram_id, repo_name, tag_id) — the same tag could already be
+ * assigned to a repo under the new name in a rare edge case. So: copy
+ * every old-name tag assignment across using INSERT ... SELECT with
+ * ON CONFLICT DO NOTHING (skips ones that already exist under the new
+ * name), then drop the old-name rows entirely.
+ */
+async function renameRepo(telegramId, oldName, newName) {
+  await pool.query(
+    `INSERT INTO repo_tags (telegram_id, repo_name, tag_id)
+     SELECT telegram_id, $3, tag_id FROM repo_tags WHERE telegram_id = $1 AND repo_name = $2
+     ON CONFLICT (telegram_id, repo_name, tag_id) DO NOTHING`,
+    [telegramId, oldName, newName]
+  );
+  await pool.query('DELETE FROM repo_tags WHERE telegram_id = $1 AND repo_name = $2', [telegramId, oldName]);
+}
+
 module.exports = {
   listTags,
   createTag,
@@ -93,4 +113,5 @@ module.exports = {
   reposWithTag,
   tagsForRepos,
   removeAllForRepo,
+  renameRepo,
 };

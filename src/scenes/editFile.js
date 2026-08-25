@@ -109,7 +109,9 @@ const scene = new Scenes.WizardScene(
     if (!token) return ctx.scene.leave();
 
     const actionLock = require('../lib/actionLock');
-    const { skipped } = await actionLock.withLock(ctx.from.id, 'editFile', async () => {
+    // Keyed by repo+path, not just 'editFile' — editing one file must
+    // never block an unrelated edit of a different file (see lib/actionLock.js).
+    const { skipped } = await actionLock.withLock(ctx.from.id, `editFile:${repoName}:${filePath}`, async () => {
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
       const current = await github.getFileContent(token, user.login, repoName, filePath);

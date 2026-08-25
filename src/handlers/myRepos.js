@@ -123,7 +123,7 @@ async function showMyRepos(ctx, { edit = false } = {}) {
       // each page load costs one extra tree call per visible repo, not per
       // repo you own.
       Promise.all(pageRepos.map((r) =>
-        repoCache.getTreeStats(telegramId, r.owner.login, r.name, token).catch(() => null)
+        repoCache.getTreeStats(telegramId, r.owner.login, r.name, token, r.default_branch).catch(() => null)
       )),
     ]);
     const pinnedSet = new Set(pinList.map((p) => p.repo_name));

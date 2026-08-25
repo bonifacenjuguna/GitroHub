@@ -83,6 +83,22 @@ function previewNames(names) {
   return `${names.slice(0, 3).join(', ')}, +${names.length - 3} more`;
 }
 
+/**
+ * Telegram caps any single message at 4096 characters. A "Select All" on
+ * an account with a lot of repos can build a per-repo-line list (either
+ * the initial progress message or a mid-loop status edit) that blows past
+ * that cap — which previously threw uncaught on the very first
+ * ctx.reply(), before the loop had even started. Cap the line list itself
+ * so the message we ever try to send/edit is always well under the limit,
+ * regardless of how many repos are selected.
+ */
+const MAX_PROGRESS_LINES = 60;
+function progressLines(lines) {
+  if (lines.length <= MAX_PROGRESS_LINES) return lines.join('\n');
+  const shown = lines.slice(0, MAX_PROGRESS_LINES);
+  return `${shown.join('\n')}\n… and ${lines.length - MAX_PROGRESS_LINES} more`;
+}
+
 async function toggleRepo(ctx, repoName, page) {
   const selected = getSelection(ctx);
   const idx = selected.indexOf(repoName);
@@ -201,88 +217,95 @@ async function _execute(ctx, action) {
   if (!token) return;
 
   const selected = getSelection(ctx);
-  const user = await repoCache.getUser(ctx.from.id, token);
+  try {
+    const user = await repoCache.getUser(ctx.from.id, token);
 
-  const progressMsg = await ctx.reply(
-    `${actionVerb(action)} ${selected.length} repos...\n\n` + selected.map((n) => `⏳ ${n}`).join('\n')
-  );
+    const progressMsg = await ctx.reply(
+      `${actionVerb(action)} ${selected.length} repos...\n\n` + progressLines(selected.map((n) => `⏳ ${n}`))
+    );
 
-  const results = [];
-  for (let i = 0; i < selected.length; i++) {
-    const name = selected[i];
-    try {
-      await runAction(token, user.login, name, action, ctx.from.id);
-      results.push({ name, ok: true });
-    } catch (err) {
-      const errorHelpers = require('../lib/errorHelpers');
-      if (errorHelpers.isAuthError(err)) {
-        // Token is bad for the whole session, not just this repo — every
-        // remaining item would fail the same way, so stop instead of
-        // grinding through a doomed loop and reporting the same error N times.
-        for (let j = i; j < selected.length; j++) results.push({ name: selected[j], ok: false, error: 'session expired' });
-        // Update the progress message one last time BEFORE breaking, or it
-        // stays frozen showing "⏳ pending" on items that are actually
-        // already known-failed until the summary arrives right after.
-        const finalLines = selected.map((n, idx) => `${results[idx].ok ? '✅' : '⚠️'} ${n}`);
-        try {
-          await ctx.telegram.editMessageText(
-            ctx.chat.id,
-            progressMsg.message_id,
-            undefined,
-            `${actionVerb(action)} ${selected.length} repos...\n\n${finalLines.join('\n')}`
-          );
-        } catch (_) { /* non-fatal — the summary below covers it regardless */ }
-        await errorHelpers.replyGithubError(ctx, err, `Bulk ${action} stopped`);
-        break;
+    const results = [];
+    for (let i = 0; i < selected.length; i++) {
+      const name = selected[i];
+      try {
+        await runAction(token, user.login, name, action, ctx.from.id);
+        results.push({ name, ok: true });
+      } catch (err) {
+        const errorHelpers = require('../lib/errorHelpers');
+        if (errorHelpers.isAuthError(err)) {
+          // Token is bad for the whole session, not just this repo — every
+          // remaining item would fail the same way, so stop instead of
+          // grinding through a doomed loop and reporting the same error N times.
+          for (let j = i; j < selected.length; j++) results.push({ name: selected[j], ok: false, error: 'session expired' });
+          // Update the progress message one last time BEFORE breaking, or it
+          // stays frozen showing "⏳ pending" on items that are actually
+          // already known-failed until the summary arrives right after.
+          const finalLines = selected.map((n, idx) => `${results[idx].ok ? '✅' : '⚠️'} ${n}`);
+          try {
+            await ctx.telegram.editMessageText(
+              ctx.chat.id,
+              progressMsg.message_id,
+              undefined,
+              `${actionVerb(action)} ${selected.length} repos...\n\n${progressLines(finalLines)}`
+            );
+          } catch (_) { /* non-fatal — the summary below covers it regardless */ }
+          await errorHelpers.replyGithubError(ctx, err, `Bulk ${action} stopped`);
+          break;
+        }
+        results.push({ name, ok: false, error: err.message });
       }
-      results.push({ name, ok: false, error: err.message });
+
+      const lines = selected.map((n, idx) => {
+        if (idx < i) return `${results[idx].ok ? '✅' : '⚠️'} ${n}`;
+        if (idx === i) return `${results[idx] ? (results[idx].ok ? '✅' : '⚠️') : '⏳'} ${n}`;
+        return `⏳ ${n}`;
+      });
+      try {
+        await ctx.telegram.editMessageText(
+          ctx.chat.id,
+          progressMsg.message_id,
+          undefined,
+          `${actionVerb(action)} ${selected.length} repos...\n\n${progressLines(lines)}`
+        );
+      } catch (err) {
+        // Telegram's own flood control — if it tells us how long to wait,
+        // actually wait that long before the next edit instead of just
+        // swallowing the error and immediately hitting the same limit again.
+        const retryAfter = (err.response && err.response.parameters && err.response.parameters.retry_after)
+          || (err.parameters && err.parameters.retry_after);
+        if (retryAfter) {
+          await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
+        }
+        // Any other edit failure is non-fatal — the final summary below covers it regardless.
+      }
     }
 
-    const lines = selected.map((n, idx) => {
-      if (idx < i) return `${results[idx].ok ? '✅' : '⚠️'} ${n}`;
-      if (idx === i) return `${results[idx] ? (results[idx].ok ? '✅' : '⚠️') : '⏳'} ${n}`;
-      return `⏳ ${n}`;
-    });
-    try {
-      await ctx.telegram.editMessageText(
-        ctx.chat.id,
-        progressMsg.message_id,
-        undefined,
-        `${actionVerb(action)} ${selected.length} repos...\n\n${lines.join('\n')}`
-      );
-    } catch (err) {
-      // Telegram's own flood control — if it tells us how long to wait,
-      // actually wait that long before the next edit instead of just
-      // swallowing the error and immediately hitting the same limit again.
-      const retryAfter = (err.response && err.response.parameters && err.response.parameters.retry_after)
-        || (err.parameters && err.parameters.retry_after);
-      if (retryAfter) {
-        await new Promise((resolve) => setTimeout(resolve, retryAfter * 1000));
-      }
-      // Any other edit failure is non-fatal — the final summary below covers it regardless.
+    const succeeded = results.filter((r) => r.ok);
+    const failed = results.filter((r) => !r.ok);
+
+    await activity.log(
+      ctx.from.id,
+      action === 'delete' ? '🗑' : action === 'download' ? '⬇️' : '🔒',
+      `Bulk ${action} → ${succeeded.length}/${selected.length} succeeded`,
+      { isError: failed.length > 0 }
+    ).catch(() => {});
+
+    let summary = `✅ Bulk ${action} finished — ${succeeded.length} succeeded`;
+    if (failed.length > 0) summary += `, ${failed.length} failed`;
+    summary += `\n\n✅ ${previewNames(succeeded.map((r) => r.name)) || 'None'}`;
+    if (failed.length > 0) {
+      summary += `\n\n⚠️ ` + progressLines(failed.map((r) => `${r.name}: ${r.error}`));
     }
+
+    await maybeAddLongOpNotice(ctx, selected.length);
+    await ctx.reply(summary, bbtb.bulkComplete);
+  } finally {
+    // Always cleared, even if something above threw before reaching its
+    // own success path (e.g. the initial progress message itself failed
+    // to send) — previously a failure here left a stale selection behind
+    // that silently carried over into the next Bulk Select session.
+    ctx.session.bulkSelected = [];
   }
-
-  const succeeded = results.filter((r) => r.ok);
-  const failed = results.filter((r) => !r.ok);
-
-  await activity.log(
-    ctx.from.id,
-    action === 'delete' ? '🗑' : action === 'download' ? '⬇️' : '🔒',
-    `Bulk ${action} → ${succeeded.length}/${selected.length} succeeded`,
-    { isError: failed.length > 0 }
-  );
-
-  let summary = `✅ Bulk ${action} finished — ${succeeded.length} succeeded`;
-  if (failed.length > 0) summary += `, ${failed.length} failed`;
-  summary += `\n\n✅ ${succeeded.map((r) => r.name).join(', ') || 'None'}`;
-  if (failed.length > 0) {
-    summary += `\n\n⚠️ ` + failed.map((r) => `${r.name}: ${r.error}`).join('\n');
-  }
-
-  ctx.session.bulkSelected = [];
-  await maybeAddLongOpNotice(ctx, selected.length);
-  await ctx.reply(summary, bbtb.bulkComplete);
 }
 
 /** Long Operations notification: for a batch big enough to actually take a
@@ -331,48 +354,59 @@ async function _executeDownloads(ctx) {
   const token = await requireConnected(ctx);
   if (!token) return;
   const selected = getSelection(ctx);
-  const user = await repoCache.getUser(ctx.from.id, token);
+  try {
+    const user = await repoCache.getUser(ctx.from.id, token);
 
-  await ctx.reply(`⬇️ Preparing ${selected.length} zips — sent one at a time...`);
+    await ctx.reply(`⬇️ Preparing ${selected.length} zips — sent one at a time...`);
 
-  let sent = 0;
-  const failed = [];
-  let stoppedForAuth = false;
-  for (const name of selected) {
-    if (stoppedForAuth) {
-      failed.push({ name, error: 'session expired' });
-      continue;
-    }
-    try {
-      const repo = await github.getRepo(token, user.login, name);
-      const buffer = await github.downloadZip(token, user.login, name, repo.default_branch);
-      if (buffer.length > 20 * 1024 * 1024) {
-        failed.push({ name, error: `exceeds 20MB (${format.formatBytes(buffer.length)})` });
-        continue;
-      }
-      await ctx.replyWithDocument({ source: buffer, filename: `${name}.zip` });
-      sent++;
-    } catch (err) {
-      const errorHelpers = require('../lib/errorHelpers');
-      if (errorHelpers.isAuthError(err)) {
-        stoppedForAuth = true;
-        await errorHelpers.replyGithubError(ctx, err, 'Bulk download stopped');
+    let sent = 0;
+    const failed = [];
+    let stoppedForAuth = false;
+    for (const name of selected) {
+      if (stoppedForAuth) {
         failed.push({ name, error: 'session expired' });
         continue;
       }
-      failed.push({ name, error: err.message });
+      try {
+        const repo = await github.getRepo(token, user.login, name);
+        const buffer = await github.downloadZip(token, user.login, name, repo.default_branch);
+        if (buffer.length > config.MAX_TELEGRAM_FILE_SIZE_BYTES) {
+          // Matches the single-repo download flows (repoView.js,
+          // search.js) — previously this path just reported the failure
+          // with no way to actually get the repo, unlike its siblings.
+          let detail = `exceeds 20MB (${format.formatBytes(buffer.length)})`;
+          try {
+            const fallbackUrl = await github.getDownloadUrl(token, user.login, name, repo.default_branch);
+            detail += ` — direct link: ${fallbackUrl}`;
+          } catch (_) { /* best-effort — report the size-only message above */ }
+          failed.push({ name, error: detail });
+          continue;
+        }
+        await ctx.replyWithDocument({ source: buffer, filename: `${name}.zip` });
+        sent++;
+      } catch (err) {
+        const errorHelpers = require('../lib/errorHelpers');
+        if (errorHelpers.isAuthError(err)) {
+          stoppedForAuth = true;
+          await errorHelpers.replyGithubError(ctx, err, 'Bulk download stopped');
+          failed.push({ name, error: 'session expired' });
+          continue;
+        }
+        failed.push({ name, error: err.message });
+      }
     }
-  }
 
-  await activity.log(ctx.from.id, '⬇️', `Bulk download → ${sent}/${selected.length} succeeded`, { isError: failed.length > 0 });
+    await activity.log(ctx.from.id, '⬇️', `Bulk download → ${sent}/${selected.length} succeeded`, { isError: failed.length > 0 }).catch(() => {});
 
-  let summary = `✅ Bulk download finished — ${sent} sent`;
-  if (failed.length > 0) {
-    summary += `, ${failed.length} failed\n\n⚠️ ` + failed.map((f) => `${f.name}: ${f.error}`).join('\n');
+    let summary = `✅ Bulk download finished — ${sent} sent`;
+    if (failed.length > 0) {
+      summary += `, ${failed.length} failed\n\n⚠️ ` + progressLines(failed.map((f) => `${f.name}: ${f.error}`));
+    }
+    await maybeAddLongOpNotice(ctx, selected.length);
+    await ctx.reply(summary, bbtb.bulkComplete);
+  } finally {
+    ctx.session.bulkSelected = [];
   }
-  ctx.session.bulkSelected = [];
-  await maybeAddLongOpNotice(ctx, selected.length);
-  await ctx.reply(summary, bbtb.bulkComplete);
 }
 
 module.exports = {

@@ -1,5 +1,6 @@
 const { Markup } = require('telegraf');
 const style = require('./buttonStyle');
+const pathTokens = require('../lib/pathTokens');
 
 /** Repo list — each repo is its own tappable row, plus pagination + filter/sort labels */
 function repoList(repos, page, totalPages, filterLabel, sortLabel) {
@@ -80,41 +81,49 @@ function createRepoSuccess(repoName) {
 }
 
 /** File/folder tree navigator — folders and files both rendered as rows */
-/** Folder/file tree navigator — folders and files rendered as rows, with pagination for large folders */
-function fileTree(entries, currentPath, pagination = null) {
+/** Folder/file tree navigator — folders and files rendered as rows, with pagination for large folders.
+ * `ctx` is required — every path embedded in a button goes through
+ * pathTokens instead of appearing raw in callback_data (see lib/pathTokens.js
+ * for why: Telegram's 64-byte callback_data limit). */
+function fileTree(ctx, entries, currentPath, pagination = null) {
   const rows = entries.map((e) => {
     const label = e.type === 'tree' ? `📁 ${e.name}/` : `📄 ${e.name}`;
-    const action = e.type === 'tree' ? `browse:dir:${e.path}` : `browse:file:${e.path}`;
+    const token = pathTokens.tokenize(ctx, e.path);
+    const action = e.type === 'tree' ? `browse:dir:${token}` : `browse:file:${token}`;
     return [style.callback(label, action, style.BLUE)];
   });
 
+  const currentToken = pathTokens.tokenize(ctx, currentPath);
   if (pagination && pagination.totalPages > 1) {
     const nav = [];
-    if (pagination.page > 1) nav.push(style.callback('⬅️ Prev', `browse:dirpage:${pagination.page - 1}:${currentPath}`, style.BLUE));
-    if (pagination.page < pagination.totalPages) nav.push(style.callback('Next ➡️', `browse:dirpage:${pagination.page + 1}:${currentPath}`, style.BLUE));
+    if (pagination.page > 1) nav.push(style.callback('⬅️ Prev', `browse:dirpage:${pagination.page - 1}:${currentToken}`, style.BLUE));
+    if (pagination.page < pagination.totalPages) nav.push(style.callback('Next ➡️', `browse:dirpage:${pagination.page + 1}:${currentToken}`, style.BLUE));
     if (nav.length) rows.push(nav);
   }
 
   if (currentPath) {
     const parent = currentPath.split('/').slice(0, -1).join('/');
-    rows.push([style.callback('⬅️ Up One Level', `browse:dir:${parent}`, style.BLUE)]);
+    const parentToken = pathTokens.tokenize(ctx, parent);
+    rows.push([style.callback('⬅️ Up One Level', `browse:dir:${parentToken}`, style.BLUE)]);
   }
   return Markup.inlineKeyboard(rows);
 }
 
-function fileActions(path) {
+function fileActions(ctx, path) {
+  const token = pathTokens.tokenize(ctx, path);
   return Markup.inlineKeyboard([
-    [style.callback('👁 View Content', `file:view:${path}`, style.BLUE), style.callback('📥 Send as File', `file:raw:${path}`, style.BLUE)],
-    [style.callback('✏️ Edit', `file:edit:${path}`, style.BLUE), style.callback('🔁 Replace', `file:replace:${path}`, style.BLUE)],
-    [style.callback('🗑 Delete File', `file:delete:${path}`, style.BLUE)],
-    [style.callback('⬅️ Back to Folder', `browse:parent:${path}`, style.BLUE)],
+    [style.callback('👁 View Content', `file:view:${token}`, style.BLUE), style.callback('📥 Send as File', `file:raw:${token}`, style.BLUE)],
+    [style.callback('✏️ Edit', `file:edit:${token}`, style.BLUE), style.callback('🔁 Replace', `file:replace:${token}`, style.BLUE)],
+    [style.callback('🗑 Delete File', `file:delete:${token}`, style.BLUE)],
+    [style.callback('⬅️ Back to Folder', `browse:parent:${token}`, style.BLUE)],
   ]);
 }
 
-function deleteFileConfirm(path) {
+function deleteFileConfirm(ctx, path) {
+  const token = pathTokens.tokenize(ctx, path);
   return Markup.inlineKeyboard([
-    [style.callback('✅ Yes, Delete', `file:delete:confirm:${path}`, style.RED)],
-    [style.callback('❌ Cancel', `file:delete:cancel:${path}`, style.GREEN)],
+    [style.callback('✅ Yes, Delete', `file:delete:confirm:${token}`, style.RED)],
+    [style.callback('❌ Cancel', `file:delete:cancel:${token}`, style.GREEN)],
   ]);
 }
 

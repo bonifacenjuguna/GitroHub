@@ -21,4 +21,26 @@ async function removeForRepo(telegramId, repoName) {
   await pool.query('DELETE FROM repo_path_memory WHERE telegram_id = $1 AND repo_name = $2', [telegramId, repoName]);
 }
 
-module.exports = { getLastPath, setLastPath, removeForRepo };
+/**
+ * Root fix for "Rename Repo doesn't migrate path memory" — same gap as
+ * pins/tags (see lib/pins.js renameRepo). If the new name already has
+ * its own remembered path (the practically-impossible case of the new
+ * name having been used before), keep that one and drop the old row
+ * rather than erroring.
+ */
+async function renameRepo(telegramId, oldName, newName) {
+  try {
+    await pool.query(
+      'UPDATE repo_path_memory SET repo_name = $1 WHERE telegram_id = $2 AND repo_name = $3',
+      [newName, telegramId, oldName]
+    );
+  } catch (err) {
+    if (err.code === '23505') {
+      await pool.query('DELETE FROM repo_path_memory WHERE telegram_id = $1 AND repo_name = $2', [telegramId, oldName]);
+    } else {
+      throw err;
+    }
+  }
+}
+
+module.exports = { getLastPath, setLastPath, removeForRepo, renameRepo };

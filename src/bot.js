@@ -424,7 +424,11 @@ function createBot() {
     }
     if (data.startsWith('file:replace:')) {
       await ctx.answerCbQuery();
-      const lockedPath = data.split('file:replace:')[1];
+      const pathTokens = require('./lib/pathTokens');
+      const lockedPath = pathTokens.resolve(ctx, data.split('file:replace:')[1]);
+      if (lockedPath === undefined) {
+        return ctx.reply('⚠️ That button expired — please navigate there again.');
+      }
       return ctx.scene.enter('uploadFile', { repoName: ctx.session.currentRepo, lockedPath });
     }
 
@@ -476,44 +480,70 @@ function createBot() {
       return myRepos.showMyRepos(ctx);
     }
 
-    // File browsing
+    // File browsing — every path here arrives as a short token (see
+    // lib/pathTokens.js), never a raw path, so callback_data always stays
+    // well under Telegram's 64-byte limit regardless of how long or deep
+    // the actual file path is.
+    const pathTokens = require('./lib/pathTokens');
+    function resolveTokenOrWarn(tok) {
+      const p = pathTokens.resolve(ctx, tok);
+      if (p === undefined) {
+        ctx.reply('⚠️ That button expired — please navigate there again.');
+        return null;
+      }
+      return p;
+    }
+
     if (data.startsWith('browse:dirpage:')) {
       await ctx.answerCbQuery();
       const rest = data.split('browse:dirpage:')[1];
       const page = Number(rest.split(':')[0]);
-      const dirPath = rest.split(':').slice(1).join(':');
+      const dirToken = rest.split(':').slice(1).join(':');
+      const dirPath = resolveTokenOrWarn(dirToken);
+      if (dirPath === null) return;
       return browseFiles.showDirectory(ctx, ctx.session.currentRepo, dirPath, page);
     }
     if (data.startsWith('browse:dir:')) {
       await ctx.answerCbQuery();
-      return browseFiles.showDirectory(ctx, ctx.session.currentRepo, data.split('browse:dir:')[1]);
+      const dirPath = resolveTokenOrWarn(data.split('browse:dir:')[1]);
+      if (dirPath === null) return;
+      return browseFiles.showDirectory(ctx, ctx.session.currentRepo, dirPath);
     }
     if (data.startsWith('browse:file:')) {
       await ctx.answerCbQuery();
-      return browseFiles.showFileActions(ctx, ctx.session.currentRepo, data.split('browse:file:')[1]);
+      const filePath = resolveTokenOrWarn(data.split('browse:file:')[1]);
+      if (filePath === null) return;
+      return browseFiles.showFileActions(ctx, ctx.session.currentRepo, filePath);
     }
     if (data.startsWith('browse:parent:')) {
       await ctx.answerCbQuery();
-      const filePath = data.split('browse:parent:')[1];
+      const filePath = resolveTokenOrWarn(data.split('browse:parent:')[1]);
+      if (filePath === null) return;
       const parent = filePath.split('/').slice(0, -1).join('/');
       return browseFiles.showDirectory(ctx, ctx.session.currentRepo, parent);
     }
     if (data.startsWith('file:view:')) {
       await ctx.answerCbQuery();
-      return browseFiles.viewFileContent(ctx, ctx.session.currentRepo, data.split('file:view:')[1]);
+      const filePath = resolveTokenOrWarn(data.split('file:view:')[1]);
+      if (filePath === null) return;
+      return browseFiles.viewFileContent(ctx, ctx.session.currentRepo, filePath);
     }
     if (data.startsWith('file:raw:')) {
       await ctx.answerCbQuery();
-      return browseFiles.sendFileAsDocument(ctx, ctx.session.currentRepo, data.split('file:raw:')[1]);
+      const filePath = resolveTokenOrWarn(data.split('file:raw:')[1]);
+      if (filePath === null) return;
+      return browseFiles.sendFileAsDocument(ctx, ctx.session.currentRepo, filePath);
     }
     if (data.startsWith('file:edit:')) {
       await ctx.answerCbQuery();
-      const filePath = data.split('file:edit:')[1];
+      const filePath = resolveTokenOrWarn(data.split('file:edit:')[1]);
+      if (filePath === null) return;
       return ctx.scene.enter('editFile', { repoName: ctx.session.currentRepo, filePath });
     }
     if (data.startsWith('file:delete:confirm:')) {
       await ctx.answerCbQuery();
-      const filePath = data.split('file:delete:confirm:')[1];
+      const filePath = resolveTokenOrWarn(data.split('file:delete:confirm:')[1]);
+      if (filePath === null) return;
       await confirmFlow.resolveConfirmation(ctx, 'confirmed', `⏳ Deleting ${filePath}…`);
       return browseFiles.executeDeleteFile(ctx, ctx.session.currentRepo, filePath);
     }
@@ -523,7 +553,9 @@ function createBot() {
     }
     if (data.startsWith('file:delete:')) {
       await ctx.answerCbQuery();
-      return browseFiles.askDeleteFile(ctx, ctx.session.currentRepo, data.split('file:delete:')[1]);
+      const filePath = resolveTokenOrWarn(data.split('file:delete:')[1]);
+      if (filePath === null) return;
+      return browseFiles.askDeleteFile(ctx, ctx.session.currentRepo, filePath);
     }
 
     // External repo (search-detected link)
@@ -576,7 +608,7 @@ function createBot() {
     if (data.startsWith('activity:refresh:')) {
       await ctx.answerCbQuery();
       const errorsOnly = data.split('activity:refresh:')[1] === 'true';
-      return activityLog.showActivity(ctx, { page: 1, errorsOnly, skipBbtb: true });
+      return activityLog.showActivity(ctx, { page: 1, errorsOnly, edit: true, skipBbtb: true });
     }
     if (data === 'activity:accesslog') {
       await ctx.answerCbQuery();
@@ -629,7 +661,7 @@ function createBot() {
     // Access Log
     if (data === 'accesslog:togglealert') { await ctx.answerCbQuery(); return accessLogScreen.toggleAlert(ctx, true); }
     if (data === 'accesslog:backtoactivity') { await ctx.answerCbQuery(); return activityLog.showActivity(ctx, { skipBbtb: true }); }
-    if (data === 'settings:refresh') { await ctx.answerCbQuery(); return settings.showSettings(ctx, { skipBbtb: true }); }
+    if (data === 'settings:refresh') { await ctx.answerCbQuery(); return settings.showSettings(ctx, { skipBbtb: true, edit: true }); }
 
     // Bulk Repo Actions
     if (data.startsWith('bulk:toggle:')) {

@@ -9,6 +9,9 @@ const users = require('../lib/users');
 const pins = require('../lib/pins');
 const tags = require('../lib/tags');
 const pathMemory = require('../lib/pathMemory');
+const config = require('../config');
+const { Markup } = require('telegraf');
+const style = require('../keyboards/buttonStyle');
 
 /**
  * Storage & Data's "auto-delete on repo deletion" setting — when on (the
@@ -54,7 +57,7 @@ async function showRepoView(ctx, repoName) {
 
   let treeStats = null;
   try {
-    treeStats = await repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token);
+    treeStats = await repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token, repo.default_branch);
   } catch (_) { /* empty/new repo — fall back to repo.size below */ }
 
   // #56 — language breakdown is also GitHub's own async background scan
@@ -113,7 +116,7 @@ async function showRepoDetails(ctx, repoName) {
   const repo = await github.getRepo(token, user.login, repoName);
   let treeStats = null;
   try {
-    treeStats = await repoCache.getTreeStats(ctx.from.id, user.login, repoName, token);
+    treeStats = await repoCache.getTreeStats(ctx.from.id, user.login, repoName, token, repo.default_branch);
   } catch (_) { /* best-effort, non-fatal */ }
 
   const sizeBytes = treeStats ? treeStats.sizeBytes : (repo.size || 0) * 1024;
@@ -147,7 +150,9 @@ async function executeDeleteRepo(ctx, repoName) {
   if (!token) return;
 
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, 'deleteRepo', async () => {
+  // Keyed by repo, not just 'deleteRepo' — deleting repo A must never
+  // block an unrelated delete of repo B (see lib/actionLock.js).
+  const { skipped } = await actionLock.withLock(ctx.from.id, `deleteRepo:${repoName}`, async () => {
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
       await github.deleteRepo(token, user.login, repoName);
@@ -189,7 +194,7 @@ async function askToggleVisibility(ctx, repoName) {
 
 async function executeToggleVisibility(ctx, repoName) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, 'toggleVisibility', () => _executeToggleVisibility(ctx, repoName));
+  const { skipped } = await actionLock.withLock(ctx.from.id, `toggleVisibility:${repoName}`, () => _executeToggleVisibility(ctx, repoName));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
@@ -274,8 +279,6 @@ async function showLicenseMenu(ctx, repoName) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
-  const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
   const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
   const current = repo.license ? (repo.license.name || repo.license.spdx_id) : 'No license';
@@ -294,7 +297,7 @@ const style = require('../keyboards/buttonStyle');
 
 async function executeSetLicense(ctx, repoName, licenseKey) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, 'setLicense', () => _executeSetLicense(ctx, repoName, licenseKey));
+  const { skipped } = await actionLock.withLock(ctx.from.id, `setLicense:${repoName}`, () => _executeSetLicense(ctx, repoName, licenseKey));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
@@ -330,7 +333,6 @@ async function _executeSetLicense(ctx, repoName, licenseKey) {
     // later with no action from the person. Confirm the commit succeeded
     // without claiming the shown license is already accurate, and let
     // them check back on their own terms instead of auto-rendering it.
-    const { Markup } = require('telegraf');
     await ctx.reply(
       `✅ License commit pushed to ${repoName}.\n\n⏳ GitHub can take a moment to actually detect the new license from the file — if it still shows the old one when you check, give it a minute and look again.`,
       Markup.inlineKeyboard([[style.callback(`📦 View ${repoName}`, `repo:${repoName}`)]])
@@ -352,12 +354,16 @@ async function downloadRepo(ctx, repoName) {
     const repo = await github.getRepo(token, user.login, repoName);
     const buffer = await github.downloadZip(token, user.login, repoName, repo.default_branch);
 
-    if (buffer.length > 20 * 1024 * 1024) {
-      const fallbackUrl = github.zipDownloadUrl(user.login, repoName, repo.default_branch);
+    if (buffer.length > config.MAX_TELEGRAM_FILE_SIZE_BYTES) {
+      let fallbackLine = 'Try again later, or ask a collaborator to clone it directly.';
+      try {
+        const fallbackUrl = await github.getDownloadUrl(token, user.login, repoName, repo.default_branch);
+        fallbackLine = `Here's a direct download link instead (works for private repos too, expires shortly):\n${fallbackUrl}`;
+      } catch (_) { /* best-effort — fall back to the generic message above */ }
       return ctx.reply(format.errorMessage(
         'Download failed',
         `repo is ${format.formatBytes(buffer.length)} — exceeds Telegram's 20MB limit for bot-sent files`,
-        `Here's a direct download link instead:\n${fallbackUrl}`
+        fallbackLine
       ));
     }
 

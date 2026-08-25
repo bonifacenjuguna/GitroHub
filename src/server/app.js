@@ -19,25 +19,28 @@ const SUCCESS_STEPS = [
 ];
 
 function renderPage(data) {
-  const inject = `<script>window.__GITROHUB__ = ${JSON.stringify(data)};</script>`;
+  // Escaping "</" (not just "</script>") to also cover any other closing
+  // tag hidden inside the JSON — e.g. "</SCRIPT" case variants or a
+  // "</style" inside a string value. Nothing here is currently
+  // user-influenced (fields are static strings or GitHub-controlled
+  // text), but this closes the footgun outright instead of relying on
+  // that staying true forever as more fields get added later.
+  const json = JSON.stringify(data).replace(/<\//g, '<\\/');
+  const inject = `<script>window.__GITROHUB__ = ${json};</script>`;
   return PAGE_TEMPLATE.replace('</head>', `${inject}</head>`);
 }
 
-// Health check ping cache — avoids re-pinging both DBs on every single
-// poll if Railway (or any external monitor) checks frequently.
-const HEALTH_CACHE_TTL_MS = 5000;
-let healthCache = null;
-
+// Health check ping — pgDb.ping()/redisDb.ping() are ALREADY independently
+// 5s-cached (see db/postgres.js and db/redis.js), so this used to be a
+// third, redundant 5s cache stacked on top of two that already existed —
+// harmless, but not what the code looked like it was doing. Call them
+// directly; the caching this comment used to describe already happens
+// one layer down.
 async function getHealthStatus() {
-  if (healthCache && Date.now() - healthCache.timestamp < HEALTH_CACHE_TTL_MS) {
-    return healthCache.result;
-  }
   const pgDb = require('../db/postgres');
   const redisDb = require('../db/redis');
   const [pgStatus, redisStatus] = await Promise.all([pgDb.ping(), redisDb.ping()]);
-  const result = { pgStatus, redisStatus };
-  healthCache = { result, timestamp: Date.now() };
-  return result;
+  return { pgStatus, redisStatus };
 }
 
 function createApp(bot) {

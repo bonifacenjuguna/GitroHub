@@ -181,7 +181,7 @@ async function updateDescription(token, owner, repo, description) {
  * GitHub's own /licenses/{key} endpoint and write/replace a LICENSE file —
  * same mechanism a person clicking "Add license" on github.com uses. */
 async function getLicenseText(token, licenseKey) {
-  return withAbortTimeout((signal) => (async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
     const { data } = await octo.licenses.get({ license: licenseKey, request: { signal } });
     return data.body;
@@ -359,9 +359,43 @@ async function commitMultipleFiles(token, owner, repo, files, message, deletions
   })(), 'Commit files', 45000);
 }
 
-/** Codeload zip URL — kept for reference/fallback links in error messages only */
-function zipDownloadUrl(owner, repo, branch = 'main') {
-  return `https://github.com/${owner}/${repo}/archive/refs/heads/${branch}.zip`;
+/**
+ * Builds a short-lived, pre-signed direct download link for a repo zip —
+ * used as the fallback when the zip itself is too big for Telegram to
+ * send (20MB cap). This replaces the old zipDownloadUrl(), which built an
+ * *unauthenticated* github.com/.../archive/....zip URL: that 404s for any
+ * private repo (GitHub simply won't serve a private archive without
+ * auth), so it silently handed people a dead link for exactly the repos
+ * most likely to be large enough to hit this path in the first place.
+ *
+ * GitHub's `GET /repos/{owner}/{repo}/zipball/{ref}` responds with a 302
+ * redirect to a temporary, pre-signed codeload/S3 URL. That redirect
+ * Location itself requires no further authentication and works for
+ * private repos too — so instead of following it (which is what Octokit's
+ * downloadZipballArchive does, pulling the whole archive through our own
+ * process), we request it with redirect handling turned off and hand the
+ * person the Location header directly. It expires after a few minutes,
+ * which is fine for a "here's a link, go grab it now" fallback.
+ */
+async function getDownloadUrl(token, owner, repo, ref) {
+  return withAbortTimeout((signal) => (async () => {
+    const url = `https://api.github.com/repos/${owner}/${repo}/zipball/${encodeURIComponent(ref)}`;
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'manual',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'User-Agent': 'GitroHub',
+        Accept: 'application/vnd.github+json',
+      },
+      signal,
+    });
+    if (response.status >= 300 && response.status < 400) {
+      const location = response.headers.get('location');
+      if (location) return location;
+    }
+    throw new Error(`Could not obtain a direct download link (HTTP ${response.status})`);
+  })(), 'Get download URL');
 }
 
 /**
@@ -371,7 +405,7 @@ function zipDownloadUrl(owner, repo, branch = 'main') {
  * goes through Octokit with the user's token and works for private AND public repos.
  */
 async function downloadZip(token, owner, repo, ref) {
-  return withAbortTimeout((signal) => (async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
     const response = await octo.repos.downloadZipballArchive({ owner, repo, ref, request: { signal } });
     return Buffer.from(response.data);
@@ -405,7 +439,7 @@ module.exports = {
   putFile,
   deleteFile,
   commitMultipleFiles,
-  zipDownloadUrl,
+  getDownloadUrl,
   downloadZip,
   getLanguages,
   isRateLimitError,

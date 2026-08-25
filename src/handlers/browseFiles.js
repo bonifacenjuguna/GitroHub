@@ -1,3 +1,4 @@
+const { Markup } = require('telegraf');
 const github = require('../lib/github');
 const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
@@ -6,6 +7,8 @@ const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
 const config = require('../config');
+const style = require('../keyboards/buttonStyle');
+const pathTokens = require('../lib/pathTokens');
 
 const TEXT_EXTENSIONS = new Set([
   'js', 'ts', 'jsx', 'tsx', 'json', 'md', 'txt', 'html', 'css', 'py', 'java',
@@ -52,8 +55,6 @@ async function showDirectory(ctx, repoName, dirPath = '', page = 1) {
     const tree = await github.getTree(token, user.login, repoName);
 
     if (tree.length === 0) {
-      const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
       return ctx.reply(
         '📁 This repo is empty — nothing uploaded yet\\.',
         { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard([[style.callback('⬆️ Upload Files', `upload:start:${repoName}`, style.BLUE)]]) }
@@ -73,6 +74,7 @@ const style = require('../keyboards/buttonStyle');
     await ctx.reply(format.escapeMd(label), {
       parse_mode: 'MarkdownV2',
       ...inline.fileTree(
+        ctx,
         entries.map((e) => ({ ...e, type: e.type === 'tree' ? 'tree' : 'blob' })),
         dirPath,
         { page: safePage, totalPages }
@@ -91,7 +93,7 @@ async function showFileActions(ctx, repoName, filePath) {
   const fileName = filePath.split('/').pop();
   await ctx.reply(
     `📄 *${format.escapeMd(fileName)}*\n📍 \`${format.escapeMd(filePath)}\``,
-    { parse_mode: 'MarkdownV2', ...inline.fileActions(filePath) }
+    { parse_mode: 'MarkdownV2', ...inline.fileActions(ctx, filePath) }
   );
 }
 
@@ -104,7 +106,7 @@ async function viewFileContent(ctx, repoName, filePath) {
   if (!isTextFile(fileName)) {
     return ctx.reply(
       format.errorMessage(`Can\u2019t show content`, `${fileName} is likely a binary file`, 'Use "Send as File" instead.'),
-      inline.fileActions(filePath)
+      inline.fileActions(ctx, filePath)
     );
   }
 
@@ -142,13 +144,16 @@ async function sendFileAsDocument(ctx, repoName, filePath) {
 async function askDeleteFile(ctx, repoName, filePath) {
   await ctx.reply(
     `⚠️ Delete "${format.escapeMd(filePath)}" from ${format.escapeMd(repoName)}\\?\nThis cannot be undone\\.`,
-    { parse_mode: 'MarkdownV2', ...inline.deleteFileConfirm(filePath) }
+    { parse_mode: 'MarkdownV2', ...inline.deleteFileConfirm(ctx, filePath) }
   );
 }
 
 async function executeDeleteFile(ctx, repoName, filePath) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, 'deleteFile', () => _executeDeleteFile(ctx, repoName, filePath));
+  // Keyed by repo+path, not just 'deleteFile' — deleting one file must
+  // never block an unrelated delete of a different file (or a different
+  // repo) that happens to land in the same tick (see lib/actionLock.js).
+  const { skipped } = await actionLock.withLock(ctx.from.id, `deleteFile:${repoName}:${filePath}`, () => _executeDeleteFile(ctx, repoName, filePath));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
@@ -175,25 +180,28 @@ async function searchFiles(ctx, repoName, query) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
-  const user = await repoCache.getUser(ctx.from.id, token);
-  const tree = await github.getTree(token, user.login, repoName);
-  const matches = tree.filter((f) => f.path.toLowerCase().includes(query.toLowerCase())).slice(0, 15);
+  try {
+    const user = await repoCache.getUser(ctx.from.id, token);
+    const tree = await github.getTree(token, user.login, repoName);
+    const matches = tree.filter((f) => f.path.toLowerCase().includes(query.toLowerCase())).slice(0, 15);
 
-  if (matches.length === 0) {
-    return ctx.reply(format.errorMessage(
-      `No files matched "${query}"`,
-      `checked ${tree.length} files across all folders in ${repoName}`,
-      'Check spelling, or browse manually.'
-    ));
+    if (matches.length === 0) {
+      return ctx.reply(format.errorMessage(
+        `No files matched "${query}"`,
+        `checked ${tree.length} files across all folders in ${repoName}`,
+        'Check spelling, or browse manually.'
+      ));
+    }
+
+    let text = `🔍 *File results for "${format.escapeMd(query)}" in ${format.escapeMd(repoName)}* \\(${matches.length} matches\\)\n\n`;
+    text += matches.map((m, i) => `${i + 1}\\. 📄 ${format.escapeMd(m.path)}`).join('\n');
+
+    const rows = matches.map((m) => [style.callback(m.path, `browse:file:${pathTokens.tokenize(ctx, m.path)}`, style.BLUE)]);
+
+    await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
+  } catch (err) {
+    await ctx.reply(format.errorMessage(`Search failed`, err.message, 'Try again.'));
   }
-
-  let text = `🔍 *File results for "${format.escapeMd(query)}" in ${format.escapeMd(repoName)}* \\(${matches.length} matches\\)\n\n`;
-  text += matches.map((m, i) => `${i + 1}\\. 📄 ${format.escapeMd(m.path)}`).join('\n');
-
-  const { Markup } = require('telegraf');
-  const rows = matches.map((m) => [style.callback(m.path, `browse:file:${m.path}`, style.BLUE)]);
-
-  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 
 module.exports = {
