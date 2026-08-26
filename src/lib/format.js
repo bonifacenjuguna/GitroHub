@@ -91,31 +91,51 @@ function successMessage(what, detail) {
   return msg;
 }
 
+/** 🟢🟡🔴 Activity Status (#2) — purely a function of last-push recency,
+ * no extra API call needed since repo.pushed_at is already on every repo
+ * object. Thresholds: <30d actively touched, <180d ticking over, older
+ * than that is genuinely stale. */
+function activityStatus(repo) {
+  const days = (Date.now() - new Date(repo.pushed_at || repo.updated_at).getTime()) / 86400000;
+  if (days < 30) return '🟢';
+  if (days < 180) return '🟡';
+  return '🔴';
+}
+
 /**
  * Locked bot-wide repo-card layout (v0.8.0 redesign) — used everywhere a
  * repo is listed: My Repos, Repo View, Pinned, Search results, Bulk Select
  * previews, and Stats. One function so every screen renders identically and
  * a future style change only touches one place.
  *
- *   📌 GitroHub
+ *   🟢 📌 GitroHub 🍴 Forked from octocat/Hello-World
  *   ▸ JS · 🌐 Public · 2.4 MB · MIT
  *   ▸ ★ 0  🍴 0  ·  🕒 37m ago
  *   ▸ "A Telegram bot for tracking GitHub repos"
+ *   ⚠️ Missing: README, license
  *
  * `sizeBytes`, when provided (Repo View/Details, which already fetch the
  * tree), overrides GitHub's lagging cached `repo.size` field — see
  * lib/github.js getTreeStats(). List screens that don't already fetch a
  * per-repo tree fall back to repo.size to avoid an extra API call per row.
+ *
+ * `forkedFrom` (#1) and `hasReadme` (#15, feeds the health flag) are both
+ * optional and only ever known in contexts that already fetched the full
+ * repo object or its tree — list screens simply omit them rather than
+ * paying for an extra API call per row just to populate a card detail.
  */
-function repoCard(repo, { pinned = false, license, description, sizeBytes, tagLine = '' } = {}) {
+function repoCard(repo, { pinned = false, license, description, sizeBytes, tagLine = '', forkedFrom, hasReadme } = {}) {
   const pin = pinned ? '📌 ' : '';
-  const name = `${pin}*${escapeMd(repo.name)}*`;
+  const status = activityStatus(repo);
+  const forkTag = forkedFrom ? ` 🍴 Forked from ${escapeMd(forkedFrom)}` : (repo.fork ? ' 🍴 Fork' : '');
+  const name = `${status} ${pin}*${escapeMd(repo.name)}*${forkTag}`;
   const lang = escapeMd(repo.language || 'No language');
   const vis = visibilityLine(repo.private);
   const bytes = typeof sizeBytes === 'number' ? sizeBytes : (repo.size || 0) * 1024;
   const size = escapeMd(formatBytes(bytes));
   const licName = license !== undefined ? license : (repo.license && (repo.license.name || repo.license.spdx_id));
-  const lic = escapeMd(licName && licName !== 'NOASSERTION' ? licName : 'No license');
+  const hasLicense = licName && licName !== 'NOASSERTION';
+  const lic = escapeMd(hasLicense ? licName : 'No license');
   const desc = description !== undefined ? description : repo.description;
   const descLine = desc ? `"${escapeMd(desc)}"` : 'No description yet';
   const updated = escapeMd(relativeTime(repo.updated_at || repo.pushed_at));
@@ -126,6 +146,18 @@ function repoCard(repo, { pinned = false, license, description, sizeBytes, tagLi
     `▸ ★ ${repo.stargazers_count || 0}  🍴 ${repo.forks_count || 0}  ·  🕒 ${updated}\n` +
     `▸ ${descLine}`;
   if (tagLine) card += `\n${tagLine}`;
+
+  // Health flag (#15) — only computed when the caller actually knows README
+  // status (hasReadme passed explicitly); omitted entirely on list screens
+  // that don't have that data rather than guessing.
+  if (hasReadme !== undefined) {
+    const missing = [];
+    if (!hasReadme) missing.push('README');
+    if (!desc) missing.push('description');
+    if (!hasLicense) missing.push('license');
+    if (missing.length) card += `\n⚠️ Missing: ${missing.join(', ')}`;
+  }
+
   return card;
 }
 
@@ -161,6 +193,7 @@ module.exports = {
   escapeMd,
   escapeCodeBlock,
   repoCard,
+  activityStatus,
   CARD_DIVIDER,
   sectionHeader,
 };

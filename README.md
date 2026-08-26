@@ -7,7 +7,7 @@
 <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=20&pause=1000&color=3B82F6&center=true&vCenter=true&width=460&lines=GitHub+from+Telegram;Create+%C2%B7+Upload+%C2%B7+Download+%C2%B7+Manage;Owner-only+%C2%B7+No+one+else+gets+in;Built+with+Telegraf.js+%2B+Octokit" alt="Typing SVG" />
 
 <p>
-<img src="https://img.shields.io/badge/version-0.8.8-3B82F6?style=for-the-badge" />
+<img src="https://img.shields.io/badge/version-0.7.2-3B82F6?style=for-the-badge" />
 <img src="https://img.shields.io/badge/node-%3E%3D18-3B82F6?style=for-the-badge&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/JavaScript-No%20TypeScript-F1E05A?style=for-the-badge&logo=javascript&logoColor=black" />
 <img src="https://img.shields.io/badge/hosted%20on-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" />
@@ -150,10 +150,10 @@ Returns `200` with `{ status: "ok", postgres, redis, memoryMB, uptimeSeconds }` 
 
 Moved to its own file for readability: **[CHANGELOG.md](./CHANGELOG.md)**.
 
-Highlights of the latest release (**v0.8.7**):
-- Colors now follow the outcome (gain vs. loss), not the button's role — cancelling a Delete is safe (green), but cancelling a Create Repo you just set up throws away progress (red)
-- Bulk Actions' confirm dialog now colors itself based on which action was picked, instead of one static color pair for delete/private/public/download alike
-- Pagination is unconditionally blue now, closing an inconsistency where "Back" was blue but "Next page" wasn't
+Highlights of the latest release (**v0.9.0**):
+- 15 new features: fork tags, activity status, clone URL, README/commit previews, star toggle, undo, search history, size trend, license filter, and more
+- Every new button colored under the same outcome-based rules from v0.8.7 — colorless usage grew from 45% to 49% of the bot
+- Caught and fixed two real bugs before shipping: a missing `Markup`/`style` import in `bot.js` that would have crashed on first use, and pre-emptively excluded the new callbacks from the recurring `repo:` catch-all bug that's bitten this project twice before
 
 ---
 
@@ -228,7 +228,7 @@ The bot's `app.js` injects `window.__GITROHUB__` with the real outcome (`success
 - **Owner gate is the first middleware registered**, before session lookup, before anything — non-owner messages are dropped with zero processing, zero reply, zero log noise.
 - GitHub access tokens are encrypted at rest with **AES-256-GCM** (`TOKEN_ENCRYPTION_KEY`) before being stored in Postgres — never stored in plaintext.
 - OAuth `state` parameter is a short-lived **signed JWT** carrying your Telegram ID, so the `/callback` route can't be spoofed into linking a token to the wrong chat.
-- OAuth scope requested is `repo, delete_repo` — full control of repositories, plus the separate `delete_repo` scope GitHub requires specifically for the Delete Repo and Bulk Delete features. Nothing broader than that (no `admin:org`, no `user` scope, etc.).
+- OAuth scope requested is `repo` only — full control of repositories, nothing broader (no `admin:org`, no `user` scope, etc.).
 
 ---
 
@@ -244,9 +244,9 @@ These were locked in during design and apply everywhere in the codebase:
 
 ---
 
-## ⚠️ Known limitations
+## ⚠️ Known limitations (as of v0.8.2)
 
-Being upfront about what's simplified, consistent with the "specific errors, not vague ones" principle applied to the docs too — kept version-number-free deliberately, since pinning it to a release ("as of vX.Y.Z") is exactly what let this section go five versions stale before:
+Being upfront about what's simplified, consistent with the "specific errors, not vague ones" principle applied to the docs too:
 
 - **"Browse Folders" during single-file upload path selection** still falls back to type-path (with the repo's current structure shown for context, a one-tap Root shortcut, and remembered-path suggestions) — the folder-tap navigator for *choosing* an upload destination wasn't wired up. Browsing an *existing* tree (Browse Files) is fully implemented, including pagination.
 - **GitHub webhook-based notifications** (stars/issues/PRs) are schema-ready and the toggle exists in Settings, but the receiving webhook endpoint isn't implemented yet — still the only Notification category that doesn't do anything (the other 3 do).

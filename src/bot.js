@@ -1,10 +1,11 @@
-const { Telegraf, Scenes, session } = require('telegraf');
+const { Telegraf, Scenes, session, Markup } = require('telegraf');
 const config = require('./config');
 const ownerGate = require('./middleware/ownerGate');
 const redisStore = require('./middleware/redisSessionStore');
 const users = require('./lib/users');
 const bbtb = require('./keyboards/bbtb');
 const inline = require('./keyboards/inline');
+const style = require('./keyboards/buttonStyle');
 const confirmFlow = require('./lib/confirmFlow');
 
 const startHandler = require('./handlers/start');
@@ -280,8 +281,22 @@ function createBot() {
     if (data === 'search:type:myrepos') {
       await ctx.answerCbQuery();
       ctx.session.awaitingSearch = true;
+      // #12 — recent searches as quick-tap suggestions, best-effort
+      const searchHistory = require('../lib/searchHistory');
+      const recent = await searchHistory.recent(ctx.from.id, 5).catch(() => []);
       await ctx.reply('🔍 Type a name or keyword to fuzzy-search your repos.', bbtb.cancelOnly);
+      if (recent.length) {
+        await ctx.reply(
+          'Or tap a recent search:',
+          Markup.inlineKeyboard(recent.map((q) => [style.callback(`🕒 ${q}`, `search:recent:${q}`)]))
+        );
+      }
       return;
+    }
+    if (data.startsWith('search:recent:')) {
+      await ctx.answerCbQuery();
+      ctx.session.awaitingSearch = false;
+      return search.handleMyReposSearchInput(ctx, data.split('search:recent:')[1]);
     }
     if (data === 'search:type:public') {
       await ctx.answerCbQuery();
@@ -295,7 +310,8 @@ function createBot() {
       data.startsWith('repo:') &&
       !data.includes(':rename:') && !data.includes(':delete:') &&
       !data.includes(':visibility:') && !data.includes(':pin:') && !data.includes(':tags:') &&
-      !data.includes(':description:') && !data.includes(':license:')
+      !data.includes(':description:') && !data.includes(':license:') &&
+      !data.includes(':cloneurl:') && !data.includes(':star:')
     ) {
       await ctx.answerCbQuery();
       const repoName = data.split('repo:')[1];
@@ -323,9 +339,17 @@ function createBot() {
       const repoName = data.split('repo:rename:')[1];
       return ctx.scene.enter('renameRepo', { repoName });
     }
+    if (data === 'undo:lastaction') {
+      await ctx.answerCbQuery();
+      return repoView.undoLastAction(ctx);
+    }
     if (data.startsWith('repo:description:')) {
       await ctx.answerCbQuery();
       return repoView.askEditDescription(ctx, data.split('repo:description:')[1]);
+    }
+    if (data.startsWith('repo:cloneurl:')) {
+      await ctx.answerCbQuery();
+      return repoView.showCloneUrl(ctx, data.split('repo:cloneurl:')[1]);
     }
     if (data.startsWith('repo:license:confirm:')) {
       await ctx.answerCbQuery();
@@ -424,11 +448,7 @@ function createBot() {
     }
     if (data.startsWith('file:replace:')) {
       await ctx.answerCbQuery();
-      const pathTokens = require('./lib/pathTokens');
-      const lockedPath = pathTokens.resolve(ctx, data.split('file:replace:')[1]);
-      if (lockedPath === undefined) {
-        return ctx.reply('⚠️ That button expired — please navigate there again.');
-      }
+      const lockedPath = data.split('file:replace:')[1];
       return ctx.scene.enter('uploadFile', { repoName: ctx.session.currentRepo, lockedPath });
     }
 
@@ -480,70 +500,44 @@ function createBot() {
       return myRepos.showMyRepos(ctx);
     }
 
-    // File browsing — every path here arrives as a short token (see
-    // lib/pathTokens.js), never a raw path, so callback_data always stays
-    // well under Telegram's 64-byte limit regardless of how long or deep
-    // the actual file path is.
-    const pathTokens = require('./lib/pathTokens');
-    function resolveTokenOrWarn(tok) {
-      const p = pathTokens.resolve(ctx, tok);
-      if (p === undefined) {
-        ctx.reply('⚠️ That button expired — please navigate there again.');
-        return null;
-      }
-      return p;
-    }
-
+    // File browsing
     if (data.startsWith('browse:dirpage:')) {
       await ctx.answerCbQuery();
       const rest = data.split('browse:dirpage:')[1];
       const page = Number(rest.split(':')[0]);
-      const dirToken = rest.split(':').slice(1).join(':');
-      const dirPath = resolveTokenOrWarn(dirToken);
-      if (dirPath === null) return;
+      const dirPath = rest.split(':').slice(1).join(':');
       return browseFiles.showDirectory(ctx, ctx.session.currentRepo, dirPath, page);
     }
     if (data.startsWith('browse:dir:')) {
       await ctx.answerCbQuery();
-      const dirPath = resolveTokenOrWarn(data.split('browse:dir:')[1]);
-      if (dirPath === null) return;
-      return browseFiles.showDirectory(ctx, ctx.session.currentRepo, dirPath);
+      return browseFiles.showDirectory(ctx, ctx.session.currentRepo, data.split('browse:dir:')[1]);
     }
     if (data.startsWith('browse:file:')) {
       await ctx.answerCbQuery();
-      const filePath = resolveTokenOrWarn(data.split('browse:file:')[1]);
-      if (filePath === null) return;
-      return browseFiles.showFileActions(ctx, ctx.session.currentRepo, filePath);
+      return browseFiles.showFileActions(ctx, ctx.session.currentRepo, data.split('browse:file:')[1]);
     }
     if (data.startsWith('browse:parent:')) {
       await ctx.answerCbQuery();
-      const filePath = resolveTokenOrWarn(data.split('browse:parent:')[1]);
-      if (filePath === null) return;
+      const filePath = data.split('browse:parent:')[1];
       const parent = filePath.split('/').slice(0, -1).join('/');
       return browseFiles.showDirectory(ctx, ctx.session.currentRepo, parent);
     }
     if (data.startsWith('file:view:')) {
       await ctx.answerCbQuery();
-      const filePath = resolveTokenOrWarn(data.split('file:view:')[1]);
-      if (filePath === null) return;
-      return browseFiles.viewFileContent(ctx, ctx.session.currentRepo, filePath);
+      return browseFiles.viewFileContent(ctx, ctx.session.currentRepo, data.split('file:view:')[1]);
     }
     if (data.startsWith('file:raw:')) {
       await ctx.answerCbQuery();
-      const filePath = resolveTokenOrWarn(data.split('file:raw:')[1]);
-      if (filePath === null) return;
-      return browseFiles.sendFileAsDocument(ctx, ctx.session.currentRepo, filePath);
+      return browseFiles.sendFileAsDocument(ctx, ctx.session.currentRepo, data.split('file:raw:')[1]);
     }
     if (data.startsWith('file:edit:')) {
       await ctx.answerCbQuery();
-      const filePath = resolveTokenOrWarn(data.split('file:edit:')[1]);
-      if (filePath === null) return;
+      const filePath = data.split('file:edit:')[1];
       return ctx.scene.enter('editFile', { repoName: ctx.session.currentRepo, filePath });
     }
     if (data.startsWith('file:delete:confirm:')) {
       await ctx.answerCbQuery();
-      const filePath = resolveTokenOrWarn(data.split('file:delete:confirm:')[1]);
-      if (filePath === null) return;
+      const filePath = data.split('file:delete:confirm:')[1];
       await confirmFlow.resolveConfirmation(ctx, 'confirmed', `⏳ Deleting ${filePath}…`);
       return browseFiles.executeDeleteFile(ctx, ctx.session.currentRepo, filePath);
     }
@@ -553,9 +547,7 @@ function createBot() {
     }
     if (data.startsWith('file:delete:')) {
       await ctx.answerCbQuery();
-      const filePath = resolveTokenOrWarn(data.split('file:delete:')[1]);
-      if (filePath === null) return;
-      return browseFiles.askDeleteFile(ctx, ctx.session.currentRepo, filePath);
+      return browseFiles.askDeleteFile(ctx, ctx.session.currentRepo, data.split('file:delete:')[1]);
     }
 
     // External repo (search-detected link)
@@ -575,6 +567,14 @@ function createBot() {
     if (data === 'external:fork:cancel' || data === 'external:cancel') {
       await ctx.answerCbQuery();
       return confirmFlow.resolveConfirmation(ctx, 'cancelled', '❌ Cancelled — nothing was forked.');
+    }
+    if (data === 'external:star') {
+      await ctx.answerCbQuery();
+      return search.toggleStar(ctx);
+    }
+    if (data.startsWith('search:copylink:')) {
+      await ctx.answerCbQuery();
+      return search.copyRepoLink(ctx, data.split('search:copylink:')[1]);
     }
 
     // Settings / notifications / activity
@@ -608,7 +608,7 @@ function createBot() {
     if (data.startsWith('activity:refresh:')) {
       await ctx.answerCbQuery();
       const errorsOnly = data.split('activity:refresh:')[1] === 'true';
-      return activityLog.showActivity(ctx, { page: 1, errorsOnly, edit: true, skipBbtb: true });
+      return activityLog.showActivity(ctx, { page: 1, errorsOnly, skipBbtb: true });
     }
     if (data === 'activity:accesslog') {
       await ctx.answerCbQuery();
@@ -661,7 +661,7 @@ function createBot() {
     // Access Log
     if (data === 'accesslog:togglealert') { await ctx.answerCbQuery(); return accessLogScreen.toggleAlert(ctx, true); }
     if (data === 'accesslog:backtoactivity') { await ctx.answerCbQuery(); return activityLog.showActivity(ctx, { skipBbtb: true }); }
-    if (data === 'settings:refresh') { await ctx.answerCbQuery(); return settings.showSettings(ctx, { skipBbtb: true, edit: true }); }
+    if (data === 'settings:refresh') { await ctx.answerCbQuery(); return settings.showSettings(ctx, { skipBbtb: true }); }
 
     // Bulk Repo Actions
     if (data.startsWith('bulk:toggle:')) {

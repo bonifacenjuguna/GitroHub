@@ -222,7 +222,18 @@ const scene = new Scenes.WizardScene(
         await ctx.reply('➖ Nothing to commit — every file matches what\u2019s already in the repo.', bbtb.mainMenu);
         return ctx.scene.leave();
       }
-      await ctx.reply('Write a commit message, or use default.', bbtb.cancelWithSkip);
+      await ctx.reply('Write a commit message, use default, or tap a suggestion:', bbtb.cancelWithSkip);
+      // #7 — quick-tap common commit messages instead of always typing one.
+      // Colorless: these are value picks, not navigation.
+      await ctx.reply(
+        'Suggestions:',
+        Markup.inlineKeyboard([
+          [style.callback('🐛 Fix bug', 'upload:msgpick:Fix bug')],
+          [style.callback('📝 Update README', 'upload:msgpick:Update README')],
+          [style.callback('✨ Initial commit', 'upload:msgpick:Initial commit')],
+          [style.callback('🔧 Minor changes', 'upload:msgpick:Minor changes')],
+        ])
+      );
       return ctx.wizard.next();
     }
     await ctx.reply('Tap 📋 View File List, ✅ Commit Changes, or ❌ Cancel above.');
@@ -239,10 +250,13 @@ const scene = new Scenes.WizardScene(
       await ctx.reply('Upload cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
     }
-    if (ctx.message && ctx.message.text && ctx.message.text !== '⏭️ Skip') {
+    if (ctx.callbackQuery && ctx.callbackQuery.data.startsWith('upload:msgpick:')) {
+      await ctx.answerCbQuery();
+      message = ctx.callbackQuery.data.split('upload:msgpick:')[1];
+    } else if (ctx.message && ctx.message.text && ctx.message.text !== '⏭️ Skip') {
       message = ctx.message.text.trim();
     } else if (!(ctx.message && ctx.message.text === '⏭️ Skip')) {
-      await ctx.reply('Send a commit message, tap ⏭️ Skip for default, or ❌ Cancel.');
+      await ctx.reply('Send a commit message, tap a suggestion, tap ⏭️ Skip for default, or ❌ Cancel.');
       return;
     }
 
@@ -252,39 +266,9 @@ const scene = new Scenes.WizardScene(
     const changed = ctx.wizard.state.pendingFiles.filter((f) => f.status !== 'unchanged');
     const toDelete = ctx.wizard.state.toDelete || [];
     const actionLock = require('../lib/actionLock');
-    // Keyed by repo, not just 'uploadCommit' — an upload to repo A must
-    // never block an unrelated upload to repo B (see lib/actionLock.js).
-    const { skipped } = await actionLock.withLock(ctx.from.id, `uploadCommit:${ctx.wizard.state.repoName}`, async () => {
+    const { skipped } = await actionLock.withLock(ctx.from.id, 'uploadCommit', async () => {
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
-
-      // Root fix for the Upload/Replace TOCTOU gap (v0.8.7 audit #15):
-      // classifyFiles() snapshotted each file's existing GitHub sha back
-      // when the person picked their files — potentially minutes ago, if
-      // they took their time typing a commit message. Unlike Edit File
-      // (which re-checks its blob sha immediately before committing),
-      // Upload previously trusted that stale snapshot all the way to the
-      // actual commit, silently overwriting anything someone else pushed
-      // to the same path in between. Re-verify right before committing;
-      // if anything drifted, stop instead of clobbering it.
-      const modifiedFiles = changed.filter((f) => f.status === 'modified');
-      if (modifiedFiles.length > 0) {
-        let freshTree = [];
-        try {
-          freshTree = await github.getTree(token, user.login, ctx.wizard.state.repoName);
-        } catch (_) { /* empty/new repo — nothing to conflict with */ }
-        const freshByPath = new Map(freshTree.map((e) => [e.path, e.sha]));
-        const conflicts = modifiedFiles.filter((f) => freshByPath.get(f.path) !== f.existingSha);
-        if (conflicts.length > 0) {
-          await ctx.reply(format.errorMessage(
-            'Upload stopped',
-            `${conflicts.map((c) => c.path).join(', ')} changed on GitHub since you selected these files — committing now would silently overwrite that change`,
-            'Reopen Upload/Replace to see the latest version and try again.'
-          ));
-          return;
-        }
-      }
-
       await github.commitMultipleFiles(
         token,
         user.login,
@@ -374,11 +358,7 @@ async function classifyFiles(ctx, fileRefs) {
         } catch (_) { /* best-effort */ }
       }
     }
-    // Snapshot the sha we classified against — checked again right before
-    // commit (see the optimistic-concurrency check in the commit step
-    // below) so a change on GitHub between now and commit time can't be
-    // silently clobbered.
-    return { ...f, status, existingSha: existingSha || null, oldSize, newSize: format.formatBytes(f.size) };
+    return { ...f, status, oldSize, newSize: format.formatBytes(f.size) };
   }));
 
   if (ctx.wizard.state.mode === 'replaceFolder') {
@@ -395,16 +375,9 @@ async function classifyFiles(ctx, fileRefs) {
 
 async function processSingleFile(ctx, buffer, filename, isBackNav = false) {
   if (!isBackNav) {
-    // Root fix for binary-file corruption: keep the raw bytes as a Buffer
-    // all the way through (cache → local hash → GitHub commit) instead of
-    // decoding to a UTF-8 string here. Any byte sequence that isn't valid
-    // UTF-8 — which is basically any binary file: images, PDFs, zips,
-    // executables — was previously getting silently mangled by the
-    // decode (invalid sequences replaced with U+FFFD), and THAT corrupted
-    // version is what got pushed to GitHub. Buffers round-trip perfectly;
-    // strings don't.
-    const contentRef = fileBufferCache.put(buffer);
-    ctx.wizard.state.pendingFiles = [{ filename, contentRef, size: buffer.length, path: null }];
+    const content = buffer.toString('utf8');
+    const contentRef = fileBufferCache.put(content);
+    ctx.wizard.state.pendingFiles = [{ filename, contentRef, size: Buffer.byteLength(content, 'utf8'), path: null }];
     delete ctx.wizard.state.pendingFiles[0].status;
   }
 
@@ -501,16 +474,12 @@ async function processZip(ctx, buffer) {
 
   const fileRefs = entries.map((e) => {
     const relativePath = stripPrefix ? e.entryName.slice(stripPrefix.length) : e.entryName;
-    // Same root fix as processSingleFile above — keep the entry's raw
-    // bytes as a Buffer, don't decode to a UTF-8 string. adm-zip's
-    // getData() already returns a Buffer; converting it to a string and
-    // back was the corruption step for every binary file in a zip.
-    const content = e.getData();
+    const content = e.getData().toString('utf8');
     const contentRef = fileBufferCache.put(content);
     return {
       path: withPresetDir(ctx, relativePath),
       contentRef,
-      size: content.length,
+      size: Buffer.byteLength(content, 'utf8'),
     };
   });
 

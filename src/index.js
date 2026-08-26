@@ -32,11 +32,10 @@ const SHUTDOWN_STEP_TIMEOUT_MS = 5000;
 const SHUTDOWN_HARD_DEADLINE_MS = 8000;
 
 function withStepTimeout(promise, label) {
-  let timer;
-  const timeoutPromise = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out`)), SHUTDOWN_STEP_TIMEOUT_MS);
-  });
-  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out`)), SHUTDOWN_STEP_TIMEOUT_MS)),
+  ]);
 }
 
 async function shutdown(reason) {
@@ -170,23 +169,11 @@ async function main() {
 
   // Kept short — Telegram's own command list UI is a compact popup, long
   // descriptions get truncated or crowd out the command names.
-  //
-  // Wrapped in try/catch: this is purely cosmetic (the slash-command
-  // menu Telegram shows in its UI), not required for the bot to actually
-  // function — but it used to be an un-guarded await inside main(), which
-  // main().catch() wraps with process.exit(1). A single transient
-  // Telegram API hiccup here previously aborted the ENTIRE boot sequence
-  // before the bot ever started listening, over something with zero
-  // functional impact if it fails.
-  try {
-    await bot.telegram.setMyCommands([
-      { command: 'start', description: '🏠 Main menu' },
-      { command: 'settings', description: '⚙️ Settings & status' },
-      { command: 'cancel', description: '❌ Cancel & return to menu' },
-    ]);
-  } catch (err) {
-    logger.error('Could not set command list (non-fatal, continuing boot)', { message: err.message });
-  }
+  await bot.telegram.setMyCommands([
+    { command: 'start', description: '🏠 Main menu' },
+    { command: 'settings', description: '⚙️ Settings & status' },
+    { command: 'cancel', description: '❌ Cancel & return to menu' },
+  ]);
 
   logger.info('Starting web server (OAuth callback + health check)...');
   const app = createApp(bot);

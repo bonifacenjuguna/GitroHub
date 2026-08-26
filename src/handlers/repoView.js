@@ -9,9 +9,6 @@ const users = require('../lib/users');
 const pins = require('../lib/pins');
 const tags = require('../lib/tags');
 const pathMemory = require('../lib/pathMemory');
-const config = require('../config');
-const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
 
 /**
  * Storage & Data's "auto-delete on repo deletion" setting — when on (the
@@ -57,7 +54,7 @@ async function showRepoView(ctx, repoName) {
 
   let treeStats = null;
   try {
-    treeStats = await repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token, repo.default_branch);
+    treeStats = await repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token);
   } catch (_) { /* empty/new repo — fall back to repo.size below */ }
 
   // #56 — language breakdown is also GitHub's own async background scan
@@ -71,24 +68,56 @@ async function showRepoView(ctx, repoName) {
     ? '\n_\\(GitHub may still be detecting this — check back in a minute if it should have one\\.\\)_'
     : '';
 
-  const [pinned, repoTags] = await Promise.all([
+  const [pinned, repoTags, readmeResult, commits] = await Promise.all([
     pins.isPinned(ctx.from.id, repo.name),
     tags.tagsForRepo(ctx.from.id, repo.name),
+    // README preview (#14) and the health flag's hasReadme (#15) share this
+    // one fetch — success means it exists (and gives us preview text),
+    // 404 means it doesn't, anything else is treated as "unknown, don't
+    // penalize the health flag for a fetch error that isn't really about
+    // the repo".
+    github.getFileContent(token, repo.owner.login, repo.name, 'README.md')
+      .then((f) => ({ exists: true, content: f.content }))
+      .catch((err) => ({ exists: err.status === 404 ? false : undefined, content: null })),
+    github.getRecentCommits(token, repo.owner.login, repo.name, 3).catch(() => []),
   ]);
 
   const tagLine = repoTags.length > 0
     ? `🏷️ ${format.escapeMd(repoTags.map((t) => `${t.emoji} ${t.name}`).join(' · '))}`
     : '';
 
+  // Forked-from (#1) — GitHub's single-repo GET already includes `parent`
+  // for forks, no extra call needed; the repo LIST endpoint doesn't, which
+  // is why list screens only show a plain "🍴 Fork" badge, not the source.
+  const forkedFrom = repo.fork && repo.parent ? repo.parent.full_name : undefined;
+
   const card = format.repoCard(repo, {
     pinned,
     sizeBytes: treeStats ? treeStats.sizeBytes : undefined,
     tagLine,
+    forkedFrom,
+    hasReadme: readmeResult.exists,
   });
 
   const fileFolderLine = treeStats
     ? `▸ ${treeStats.fileCount} files · ${treeStats.folderCount} folders${treeStats.sizeIncomplete ? ' (size is a lower bound — some very large files weren\u2019t sized)' : ''}\n`
     : '';
+
+  // README preview (#14) — first 3 non-empty lines, truncated hard so a huge
+  // README can't blow out the message.
+  let readmeSection = '';
+  if (readmeResult.exists && readmeResult.content) {
+    const lines = readmeResult.content.split('\n').map((l) => l.trim()).filter(Boolean).slice(0, 3);
+    const preview = lines.join('\n').slice(0, 300);
+    readmeSection = `\n\n📖 *README PREVIEW*\n${format.escapeMd(preview)}${readmeResult.content.length > 300 ? '…' : ''}`;
+  }
+
+  // Last commits preview (#5)
+  let commitsSection = '';
+  if (commits.length) {
+    const lines = commits.map((c) => `▸ \`${c.sha}\` ${format.escapeMd(c.message)} — ${format.escapeMd(format.relativeTime(c.date))}`);
+    commitsSection = `\n\n📜 *RECENT COMMITS*\n${lines.join('\n')}`;
+  }
 
   const text =
     `${card}\n\n` +
@@ -96,16 +125,19 @@ async function showRepoView(ctx, repoName) {
     `📊 *DETAILS*\n` +
     fileFolderLine +
     `▸ Last commit: ${format.escapeMd(format.relativeTime(repo.pushed_at))}\n` +
-    `▸ Created: ${format.escapeMd(format.relativeTime(repo.created_at))}`;
+    `▸ Created: ${format.escapeMd(format.relativeTime(repo.created_at))}` +
+    commitsSection +
+    readmeSection;
 
   ctx.session = ctx.session || {};
   ctx.session.currentRepo = repo.name;
   ctx.session.repoOwner = repo.owner.login;
+  ctx.session.repoUrl = repo.html_url; // feeds Clone URL / Open in Browser buttons
 
   // Reply keyboard (BBTB) and inline keyboard can't share one message — send
   // the BBTB once via a tiny marker message, then the real content with only inline.
   await ctx.reply('📦 Repo View', bbtb.repoView);
-  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.repoActions(repo.name, pinned) });
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.repoActions(repo.name, pinned, repo.html_url) });
 }
 
 async function showRepoDetails(ctx, repoName) {
@@ -116,7 +148,7 @@ async function showRepoDetails(ctx, repoName) {
   const repo = await github.getRepo(token, user.login, repoName);
   let treeStats = null;
   try {
-    treeStats = await repoCache.getTreeStats(ctx.from.id, user.login, repoName, token, repo.default_branch);
+    treeStats = await repoCache.getTreeStats(ctx.from.id, user.login, repoName, token);
   } catch (_) { /* best-effort, non-fatal */ }
 
   const sizeBytes = treeStats ? treeStats.sizeBytes : (repo.size || 0) * 1024;
@@ -150,9 +182,7 @@ async function executeDeleteRepo(ctx, repoName) {
   if (!token) return;
 
   const actionLock = require('../lib/actionLock');
-  // Keyed by repo, not just 'deleteRepo' — deleting repo A must never
-  // block an unrelated delete of repo B (see lib/actionLock.js).
-  const { skipped } = await actionLock.withLock(ctx.from.id, `deleteRepo:${repoName}`, async () => {
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'deleteRepo', async () => {
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
       await github.deleteRepo(token, user.login, repoName);
@@ -194,7 +224,7 @@ async function askToggleVisibility(ctx, repoName) {
 
 async function executeToggleVisibility(ctx, repoName) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, `toggleVisibility:${repoName}`, () => _executeToggleVisibility(ctx, repoName));
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'toggleVisibility', () => _executeToggleVisibility(ctx, repoName));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
@@ -205,12 +235,18 @@ async function _executeToggleVisibility(ctx, repoName) {
   try {
     const user = await repoCache.getUser(ctx.from.id, token);
     const repo = await github.getRepo(token, user.login, repoName);
+    const wasPrivate = repo.private;
     const updated = await github.setVisibility(token, user.login, repoName, !repo.private);
     repoCache.invalidateRepos(ctx.from.id);
     await activity.log(ctx.from.id, '🔒', `Visibility changed → ${repoName} (${repo.private ? 'Private→Public' : 'Public→Private'})`);
+    // #11 — Undo
+    ctx.session.lastUndo = { type: 'visibility', repoName, previousValue: wasPrivate };
+    const { Markup } = require('telegraf');
+    const style = require('../keyboards/buttonStyle');
     await ctx.reply(format.successMessage(
       `Visibility updated: ${repoName} is now ${updated.private ? '🔒 Private' : '🌐 Public'}`
     ));
+    await ctx.reply('You can undo this if it was a mistake:', Markup.inlineKeyboard([[style.callback('↩️ Undo', 'undo:lastaction')]]));
   } catch (err) {
     await activity.log(ctx.from.id, '⚠️', `Visibility change failed → ${repoName}`, { detail: err.message, isError: true });
     const errorHelpers = require('../lib/errorHelpers');
@@ -235,6 +271,7 @@ async function askEditDescription(ctx, repoName) {
   ctx.session.editingDescription = repoName;
   const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
+  ctx.session.editingDescriptionPrevious = repo.description || ''; // feeds #11 Undo
   await ctx.reply(
     `✏️ Current description: ${repo.description ? `"${repo.description}"` : '(none)'}\n\nSend a new description, or ⏭️ Skip to clear it.`,
     bbtb.cancelWithSkip
@@ -251,12 +288,19 @@ async function handleDescriptionInput(ctx, text) {
   if (!token) return;
 
   const description = text === '⏭️ Skip' ? '' : text.trim();
+  const previousDescription = ctx.session.editingDescriptionPrevious || '';
+  delete ctx.session.editingDescriptionPrevious;
   try {
     const user = await repoCache.getUser(ctx.from.id, token);
     await github.updateDescription(token, user.login, repoName, description);
     repoCache.invalidateRepos(ctx.from.id);
     await activity.log(ctx.from.id, '✏️', `Description updated → ${repoName}`);
+    // #11 — Undo. Colorless: a value pick, same as any other adjustment.
+    ctx.session.lastUndo = { type: 'description', repoName, previousValue: previousDescription };
+    const { Markup } = require('telegraf');
+    const style = require('../keyboards/buttonStyle');
     await ctx.reply(format.successMessage('Description updated'), bbtb.repoView);
+    await ctx.reply('You can undo this if it was a mistake:', Markup.inlineKeyboard([[style.callback('↩️ Undo', 'undo:lastaction')]]));
   } catch (err) {
     await activity.log(ctx.from.id, '⚠️', `Description update failed → ${repoName}`, { detail: err.message, isError: true });
     await ctx.reply(format.errorMessage('Couldn\u2019t update description', err.message, 'Try again.'));
@@ -279,6 +323,8 @@ async function showLicenseMenu(ctx, repoName) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
+  const { Markup } = require('telegraf');
+const style = require('../keyboards/buttonStyle');
   const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
   const current = repo.license ? (repo.license.name || repo.license.spdx_id) : 'No license';
@@ -297,7 +343,7 @@ async function showLicenseMenu(ctx, repoName) {
 
 async function executeSetLicense(ctx, repoName, licenseKey) {
   const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, `setLicense:${repoName}`, () => _executeSetLicense(ctx, repoName, licenseKey));
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'setLicense', () => _executeSetLicense(ctx, repoName, licenseKey));
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
@@ -333,6 +379,7 @@ async function _executeSetLicense(ctx, repoName, licenseKey) {
     // later with no action from the person. Confirm the commit succeeded
     // without claiming the shown license is already accurate, and let
     // them check back on their own terms instead of auto-rendering it.
+    const { Markup } = require('telegraf');
     await ctx.reply(
       `✅ License commit pushed to ${repoName}.\n\n⏳ GitHub can take a moment to actually detect the new license from the file — if it still shows the old one when you check, give it a minute and look again.`,
       Markup.inlineKeyboard([[style.callback(`📦 View ${repoName}`, `repo:${repoName}`)]])
@@ -341,6 +388,49 @@ async function _executeSetLicense(ctx, repoName, licenseKey) {
     await activity.log(ctx.from.id, '⚠️', `License update failed → ${repoName}`, { detail: err.message, isError: true });
     await ctx.reply(format.errorMessage('Couldn\u2019t update license', err.message, 'Try again.'));
     return showRepoView(ctx, repoName);
+  }
+}
+
+/** #3 — Clone URL, sent as its own message so the ```code block``` is
+ * easily tap-to-copy in Telegram. */
+async function showCloneUrl(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+  const user = await repoCache.getUser(ctx.from.id, token);
+  const repo = await github.getRepo(token, user.login, repoName);
+  await ctx.reply(
+    `📋 Clone URL for *${format.escapeMd(repoName)}*:\n\`\`\`\ngit clone ${format.escapeCodeBlock(repo.clone_url)}\n\`\`\``,
+    { parse_mode: 'MarkdownV2' }
+  );
+}
+
+/** #11 — reverses whatever ctx.session.lastUndo describes. Only ever holds
+ * ONE action (the most recent undoable one), not a full undo stack — a
+ * second undo-able action simply replaces it, same as the name implies. */
+async function undoLastAction(ctx) {
+  const undo = ctx.session.lastUndo;
+  if (!undo) {
+    return ctx.reply('Nothing left to undo.');
+  }
+  delete ctx.session.lastUndo;
+  const token = await requireConnected(ctx);
+  if (!token) return;
+
+  try {
+    const user = await repoCache.getUser(ctx.from.id, token);
+    if (undo.type === 'visibility') {
+      await github.setVisibility(token, user.login, undo.repoName, undo.previousValue);
+      repoCache.invalidateRepos(ctx.from.id);
+      await activity.log(ctx.from.id, '↩️', `Undid visibility change → ${undo.repoName}`);
+    } else if (undo.type === 'description') {
+      await github.updateDescription(token, user.login, undo.repoName, undo.previousValue);
+      repoCache.invalidateRepos(ctx.from.id);
+      await activity.log(ctx.from.id, '↩️', `Undid description change → ${undo.repoName}`);
+    }
+    await ctx.reply(format.successMessage('Undone — reverted to the previous value.'));
+    return showRepoView(ctx, undo.repoName);
+  } catch (err) {
+    await ctx.reply(format.errorMessage('Couldn\u2019t undo', err.message, 'You can change it back manually from Repo View.'));
   }
 }
 
@@ -354,16 +444,12 @@ async function downloadRepo(ctx, repoName) {
     const repo = await github.getRepo(token, user.login, repoName);
     const buffer = await github.downloadZip(token, user.login, repoName, repo.default_branch);
 
-    if (buffer.length > config.MAX_TELEGRAM_FILE_SIZE_BYTES) {
-      let fallbackLine = 'Try again later, or ask a collaborator to clone it directly.';
-      try {
-        const fallbackUrl = await github.getDownloadUrl(token, user.login, repoName, repo.default_branch);
-        fallbackLine = `Here's a direct download link instead (works for private repos too, expires shortly):\n${fallbackUrl}`;
-      } catch (_) { /* best-effort — fall back to the generic message above */ }
+    if (buffer.length > 20 * 1024 * 1024) {
+      const fallbackUrl = github.zipDownloadUrl(user.login, repoName, repo.default_branch);
       return ctx.reply(format.errorMessage(
         'Download failed',
         `repo is ${format.formatBytes(buffer.length)} — exceeds Telegram's 20MB limit for bot-sent files`,
-        fallbackLine
+        `Here's a direct download link instead:\n${fallbackUrl}`
       ));
     }
 
@@ -401,6 +487,8 @@ async function togglePin(ctx, repoName) {
 module.exports = {
   showRepoView,
   showRepoDetails,
+  showCloneUrl,
+  undoLastAction,
   askDeleteRepo,
   executeDeleteRepo,
   askToggleVisibility,

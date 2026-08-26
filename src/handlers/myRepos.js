@@ -25,6 +25,16 @@ async function applyFilterSort(repos, state, telegramId) {
   if (state.filterType === 'public') filtered = repos.filter((r) => !r.private);
   if (state.filterType === 'private') filtered = repos.filter((r) => r.private);
   if (state.filterType === 'forks') filtered = repos.filter((r) => r.fork);
+  // #9 — has-license / no-license filter. license.key === 'other' or
+  // spdx_id === 'NOASSERTION' both mean GitHub couldn't confidently detect
+  // a real license, treated the same as "no license" everywhere else in
+  // the bot (see format.repoCard).
+  if (state.filterType === 'haslicense') {
+    filtered = repos.filter((r) => r.license && r.license.spdx_id && r.license.spdx_id !== 'NOASSERTION');
+  }
+  if (state.filterType === 'nolicense') {
+    filtered = repos.filter((r) => !r.license || !r.license.spdx_id || r.license.spdx_id === 'NOASSERTION');
+  }
   if (state.filterType === 'language') filtered = repos.filter((r) => (r.language || 'None') === state.filterValue);
   if (state.filterType === 'tag') {
     const repoNames = new Set(await tags.reposWithTag(telegramId, Number(state.filterValue)));
@@ -48,6 +58,8 @@ async function filterLabel(state, telegramId) {
   if (state.filterType === 'public') return '🌐 Public';
   if (state.filterType === 'private') return '🔒 Private';
   if (state.filterType === 'forks') return '🍴 Forks';
+  if (state.filterType === 'haslicense') return '⚖️ Has License';
+  if (state.filterType === 'nolicense') return '🚫 No License';
   if (state.filterType === 'language') return `💻 ${state.filterValue}`;
   if (state.filterType === 'tag') {
     const allTags = await tags.listTags(telegramId);
@@ -123,7 +135,7 @@ async function showMyRepos(ctx, { edit = false } = {}) {
       // each page load costs one extra tree call per visible repo, not per
       // repo you own.
       Promise.all(pageRepos.map((r) =>
-        repoCache.getTreeStats(telegramId, r.owner.login, r.name, token, r.default_branch).catch(() => null)
+        repoCache.getTreeStats(telegramId, r.owner.login, r.name, token).catch(() => null)
       )),
     ]);
     const pinnedSet = new Set(pinList.map((p) => p.repo_name));
@@ -179,12 +191,33 @@ async function showStats(ctx) {
   const mostActive = [...allRepos].sort((a, b) => new Date(b.pushed_at || b.updated_at) - new Date(a.pushed_at || a.updated_at))[0];
   const oldest = [...allRepos].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
 
+  // #8 — size trend. Uses GitHub's own repo.size field (already on every
+  // repo object here, no extra fetch) rather than the real tree-based size
+  // used elsewhere — summing real tree sizes across an entire account would
+  // mean one tree fetch per repo just to render Stats, which isn't worth it
+  // for a trend line that only needs to be roughly right, not exact.
+  const sizeSnapshot = require('../lib/sizeSnapshot');
+  const totalBytes = allRepos.reduce((sum, r) => sum + (r.size || 0) * 1024, 0);
+  const previous = await sizeSnapshot.getPrevious(ctx.from.id).catch(() => null);
+  await sizeSnapshot.save(ctx.from.id, totalBytes).catch(() => {});
+  let trendLine = '';
+  if (previous) {
+    const delta = totalBytes - Number(previous.total_bytes);
+    if (Math.abs(delta) >= 1024) { // don't show noise under 1KB
+      const arrow = delta > 0 ? '📈' : '📉';
+      const sign = delta > 0 ? '\\+' : '\\-'; // MarkdownV2: escape the reserved +/- character itself
+      trendLine = `▸ ${arrow} ${sign}${format.escapeMd(format.formatBytes(Math.abs(delta)))} since ${format.escapeMd(format.relativeTime(previous.snapshotted_at))}\n`;
+    }
+  }
+
   const text =
     `${format.sectionHeader('Stats', `${allRepos.length} total`)}\n\n` +
     `▸ 🌐 Public: ${publicCount}  ·  🔒 Private: ${privateCount}\n` +
     `▸ ⭐ Total stars: ${totalStars}\n` +
-    `▸ 💻 Top language: ${format.escapeMd(topLanguage)}\n\n` +
-    `📌 *Most active repo*\n` +
+    `▸ 💻 Top language: ${format.escapeMd(topLanguage)}\n` +
+    `▸ 💾 Total size: ${format.escapeMd(format.formatBytes(totalBytes))}\n` +
+    trendLine +
+    `\n📌 *Most active repo*\n` +
     `${format.escapeMd(mostActive.name)} · 🕒 ${format.escapeMd(format.relativeTime(mostActive.pushed_at || mostActive.updated_at))}\n\n` +
     `🕰️ *Oldest repo*\n` +
     `${format.escapeMd(oldest.name)} · 📅 ${format.escapeMd(format.relativeTime(oldest.created_at))}`;

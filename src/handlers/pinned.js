@@ -36,27 +36,16 @@ async function showPinned(ctx, { edit = false } = {}) {
   const treeStatsResults = await mapWithConcurrency(pinList, 3, (p) => {
     const repo = repoByName.get(p.repo_name);
     if (!repo) return null;
-    return repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token, repo.default_branch).catch(() => null);
+    return repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token).catch(() => null);
   });
   const sizeByRepo = new Map(pinList.map((p, i) => [p.repo_name, treeStatsResults[i]]));
 
   const rows = [];
   const lines = [];
-  const orphaned = [];
 
   for (let i = 0; i < pinList.length; i++) {
     const repo = repoByName.get(pinList[i].repo_name);
-    if (!repo) {
-      // Repo no longer exists on GitHub under this name — either deleted
-      // or renamed *outside* GitroHub (Delete Repo/Rename done through
-      // the bot itself already clean this up; this is the gap for
-      // everything else, e.g. deleting straight from github.com).
-      // Previously this pin (and any tags/path-memory under the same
-      // name) just sat here forever, invisible, since nothing ever
-      // detected the mismatch. Clean it up now that we've noticed.
-      orphaned.push(pinList[i].repo_name);
-      continue;
-    }
+    if (!repo) continue; // repo may have been deleted/renamed since pinning
 
     const stats = sizeByRepo.get(repo.name);
     const line = myRepos.renderRepoLine(repo, {
@@ -71,11 +60,6 @@ async function showPinned(ctx, { edit = false } = {}) {
     if (i < pinList.length - 1) arrowRow.push(style.callback('⬇️', `pin:down:${repo.name}`));
     arrowRow.push(style.callback(`Open ${repo.name}`, `repo:${repo.name}`, style.BLUE));
     rows.push(arrowRow);
-  }
-
-  if (orphaned.length > 0) {
-    const repoView = require('./repoView');
-    await Promise.all(orphaned.map((name) => repoView.cleanupOrphanedData(telegramId, name))).catch(() => {});
   }
 
   // #50 — Refresh relocated here (was its own BBTB row, colliding with My

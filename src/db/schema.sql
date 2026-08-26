@@ -95,3 +95,23 @@ CREATE TABLE IF NOT EXISTS access_log (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_access_log_user ON access_log (telegram_id, created_at DESC);
+
+-- ── v0.9.0 additions ─────────────────────────────────────────
+
+-- Search history — last few searches per user, shown as quick-tap suggestions
+CREATE TABLE IF NOT EXISTS search_history (
+  id            BIGSERIAL PRIMARY KEY,
+  telegram_id   BIGINT NOT NULL,
+  query         TEXT NOT NULL,
+  searched_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_search_history_user ON search_history (telegram_id, searched_at DESC);
+
+-- One row per (user, total-account size) snapshot — feeds the Stats screen's
+-- size trend ("grew by X this week"). Only ever keeps the single most recent
+-- prior snapshot; overwritten each time Stats actually shows a trend line.
+CREATE TABLE IF NOT EXISTS size_snapshots (
+  telegram_id     BIGINT PRIMARY KEY,
+  total_bytes     BIGINT NOT NULL,
+  snapshotted_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);

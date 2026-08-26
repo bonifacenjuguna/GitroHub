@@ -40,7 +40,9 @@ async function showAccessLog(ctx, { fromActivity = false } = {}) {
 }
 
 async function toggleAlert(ctx, fromActivity = false) {
-  await users.toggleAlertOnNewConnection(ctx.from.id);
+  const { pool } = require('../db/postgres');
+  const user = await users.getUser(ctx.from.id);
+  await pool.query('UPDATE users SET alert_on_new_connection = $1 WHERE telegram_id = $2', [!user.alert_on_new_connection, ctx.from.id]);
   return showAccessLog(ctx, { fromActivity });
 }
 

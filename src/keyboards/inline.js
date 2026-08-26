@@ -1,6 +1,5 @@
 const { Markup } = require('telegraf');
 const style = require('./buttonStyle');
-const pathTokens = require('../lib/pathTokens');
 
 /** Repo list — each repo is its own tappable row, plus pagination + filter/sort labels */
 function repoList(repos, page, totalPages, filterLabel, sortLabel) {
@@ -15,6 +14,7 @@ function repoList(repos, page, totalPages, filterLabel, sortLabel) {
 const filterMenu = Markup.inlineKeyboard([
   [style.callback('All', 'filter:all'), style.callback('🌐 Public', 'filter:public')],
   [style.callback('🔒 Private', 'filter:private'), style.callback('🍴 Forks', 'filter:forks')],
+  [style.callback('⚖️ Has License', 'filter:haslicense'), style.callback('🚫 No License', 'filter:nolicense')],
   [style.callback('🏷️ By Tag ▾', 'filter:tagmenu'), style.callback('💻 By Language ▾', 'filter:langmenu')],
   [style.callback('⬅️ Back', 'repos:back', style.BLUE)],
 ]);
@@ -29,18 +29,24 @@ const sortMenu = Markup.inlineKeyboard([
 ]);
 
 /** Repo View info card — Rename, Pin/Unpin, Tags stay inline; Delete Repo is the destructive one */
-function repoActions(repoName, pinned = false) {
-  return Markup.inlineKeyboard([
+function repoActions(repoName, pinned = false, repoUrl) {
+  const rows = [
     [
       style.callback('✏️ Rename', `repo:rename:${repoName}`, style.BLUE),
       style.callback('✏️ Description', `repo:description:${repoName}`, style.BLUE),
     ],
     [
-      style.callback(pinned ? '📌 Unpin' : '📌 Pin', `repo:pin:${repoName}`, style.BLUE),
+      style.callback(pinned ? '📌 Unpin' : '📌 Pin', `repo:pin:${repoName}`),
       style.callback('🏷️ Tags', `repo:tags:${repoName}`, style.BLUE),
     ],
-    [style.callback('🗑 Delete Repo', `repo:delete:${repoName}`, style.BLUE)],
-  ]);
+    // Clone URL is informational, not navigation — stays colorless (#3).
+    // Open in Browser genuinely leaves the bot for github.com, so it's
+    // navigation like everything else in that tier (#13).
+    [style.callback('📋 Clone URL', `repo:cloneurl:${repoName}`)],
+  ];
+  if (repoUrl) rows.push([style.url('🔗 Open in Browser', repoUrl, style.BLUE)]);
+  rows.push([style.callback('🗑 Delete Repo', `repo:delete:${repoName}`, style.BLUE)]);
+  return Markup.inlineKeyboard(rows);
 }
 
 function deleteRepoConfirm(repoName) {
@@ -81,49 +87,46 @@ function createRepoSuccess(repoName) {
 }
 
 /** File/folder tree navigator — folders and files both rendered as rows */
-/** Folder/file tree navigator — folders and files rendered as rows, with pagination for large folders.
- * `ctx` is required — every path embedded in a button goes through
- * pathTokens instead of appearing raw in callback_data (see lib/pathTokens.js
- * for why: Telegram's 64-byte callback_data limit). */
-function fileTree(ctx, entries, currentPath, pagination = null) {
+/** Folder/file tree navigator — folders and files rendered as rows, with pagination for large folders */
+function fileTree(entries, currentPath, pagination = null, repoUrl = null) {
   const rows = entries.map((e) => {
     const label = e.type === 'tree' ? `📁 ${e.name}/` : `📄 ${e.name}`;
-    const token = pathTokens.tokenize(ctx, e.path);
-    const action = e.type === 'tree' ? `browse:dir:${token}` : `browse:file:${token}`;
+    const action = e.type === 'tree' ? `browse:dir:${e.path}` : `browse:file:${e.path}`;
     return [style.callback(label, action, style.BLUE)];
   });
 
-  const currentToken = pathTokens.tokenize(ctx, currentPath);
   if (pagination && pagination.totalPages > 1) {
     const nav = [];
-    if (pagination.page > 1) nav.push(style.callback('⬅️ Prev', `browse:dirpage:${pagination.page - 1}:${currentToken}`, style.BLUE));
-    if (pagination.page < pagination.totalPages) nav.push(style.callback('Next ➡️', `browse:dirpage:${pagination.page + 1}:${currentToken}`, style.BLUE));
+    if (pagination.page > 1) nav.push(style.callback('⬅️ Prev', `browse:dirpage:${pagination.page - 1}:${currentPath}`, style.BLUE));
+    if (pagination.page < pagination.totalPages) nav.push(style.callback('Next ➡️', `browse:dirpage:${pagination.page + 1}:${currentPath}`, style.BLUE));
     if (nav.length) rows.push(nav);
   }
 
   if (currentPath) {
     const parent = currentPath.split('/').slice(0, -1).join('/');
-    const parentToken = pathTokens.tokenize(ctx, parent);
-    rows.push([style.callback('⬅️ Up One Level', `browse:dir:${parentToken}`, style.BLUE)]);
+    rows.push([style.callback('⬅️ Up One Level', `browse:dir:${parent}`, style.BLUE)]);
+  }
+  // #13 — Open in Browser fallback, same reasoning as Repo View's version
+  if (repoUrl) {
+    const ghPath = currentPath ? `${repoUrl}/tree/HEAD/${currentPath}` : repoUrl;
+    rows.push([style.url('🔗 Open in Browser', ghPath, style.BLUE)]);
   }
   return Markup.inlineKeyboard(rows);
 }
 
-function fileActions(ctx, path) {
-  const token = pathTokens.tokenize(ctx, path);
+function fileActions(path) {
   return Markup.inlineKeyboard([
-    [style.callback('👁 View Content', `file:view:${token}`, style.BLUE), style.callback('📥 Send as File', `file:raw:${token}`, style.BLUE)],
-    [style.callback('✏️ Edit', `file:edit:${token}`, style.BLUE), style.callback('🔁 Replace', `file:replace:${token}`, style.BLUE)],
-    [style.callback('🗑 Delete File', `file:delete:${token}`, style.BLUE)],
-    [style.callback('⬅️ Back to Folder', `browse:parent:${token}`, style.BLUE)],
+    [style.callback('👁 View Content', `file:view:${path}`, style.BLUE), style.callback('📥 Send as File', `file:raw:${path}`, style.BLUE)],
+    [style.callback('✏️ Edit', `file:edit:${path}`, style.BLUE), style.callback('🔁 Replace', `file:replace:${path}`, style.BLUE)],
+    [style.callback('🗑 Delete File', `file:delete:${path}`, style.BLUE)],
+    [style.callback('⬅️ Back to Folder', `browse:parent:${path}`, style.BLUE)],
   ]);
 }
 
-function deleteFileConfirm(ctx, path) {
-  const token = pathTokens.tokenize(ctx, path);
+function deleteFileConfirm(path) {
   return Markup.inlineKeyboard([
-    [style.callback('✅ Yes, Delete', `file:delete:confirm:${token}`, style.RED)],
-    [style.callback('❌ Cancel', `file:delete:cancel:${token}`, style.GREEN)],
+    [style.callback('✅ Yes, Delete', `file:delete:confirm:${path}`, style.RED)],
+    [style.callback('❌ Cancel', `file:delete:cancel:${path}`, style.GREEN)],
   ]);
 }
 

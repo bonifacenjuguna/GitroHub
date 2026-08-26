@@ -21,7 +21,7 @@ function formatUptime(ms) {
   return `${d}d ${h}h ${m}m`;
 }
 
-async function showSettings(ctx, { skipBbtb = false, edit = false } = {}) {
+async function showSettings(ctx, { skipBbtb = false } = {}) {
   const telegramId = ctx.from.id;
   const user = await users.getUser(telegramId);
   const connected = !!(user && user.github_token_enc);
@@ -82,13 +82,10 @@ async function showSettings(ctx, { skipBbtb = false, edit = false } = {}) {
   // or every refresh would needlessly resend it too (the exact clutter
   // this whole redesign pass was about avoiding elsewhere).
   if (!skipBbtb) await ctx.reply('⚙️ Settings', connected ? bbtb.settings : bbtb.disconnected);
-
-  const keyboard = Markup.inlineKeyboard([[style.callback('🔄 Refresh Status', 'settings:refresh')]]);
-  if (edit) {
-    await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
-  } else {
-    await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
-  }
+  await ctx.reply(text, {
+    parse_mode: 'MarkdownV2',
+    ...Markup.inlineKeyboard([[style.callback('🔄 Refresh Status', 'settings:refresh')]]),
+  });
 }
 
 async function maybePushSystemAlert(telegramId, pgStatus, redisStatus, ctx) {

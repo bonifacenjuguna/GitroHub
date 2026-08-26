@@ -16,36 +16,17 @@ const config = require('../config');
  */
 const SESSION_IO_TIMEOUT_MS = 5000;
 
-/** Races `promise` against a hard timeout, and — unlike the version this
- * replaced — actually clears the timer once either side settles. The old
- * version left every timeout's setTimeout running for its full duration
- * regardless of whether the real operation finished first, on literally
- * every single Telegram update (see the docstring above: this runs on
- * every tap). That's a timer leak on the hottest path in the whole bot. */
 function withTimeout(promise, label) {
-  let timer;
-  const timeoutPromise = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new Error(`${label} timed out after ${SESSION_IO_TIMEOUT_MS}ms`)), SESSION_IO_TIMEOUT_MS);
-  });
-  return Promise.race([promise, timeoutPromise]).finally(() => clearTimeout(timer));
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} timed out after ${SESSION_IO_TIMEOUT_MS}ms`)), SESSION_IO_TIMEOUT_MS)),
+  ]);
 }
 
 const redisStore = {
   async get(key) {
     const raw = await withTimeout(client.get(`tg-session:${key}`), 'Session read');
-    if (!raw) return undefined;
-    try {
-      return JSON.parse(raw);
-    } catch (err) {
-      // A single malformed value here previously threw on every future
-      // read for this chat too — session middleware runs on every
-      // interaction, so one bad write effectively bricked the bot for
-      // that user until someone manually cleared Redis. Treat it as "no
-      // session" instead: the person loses whatever wizard state they
-      // were mid-flow on, which is recoverable (they just restart that
-      // flow), instead of every subsequent tap failing forever.
-      return undefined;
-    }
+    return raw ? JSON.parse(raw) : undefined;
   },
   async set(key, value) {
     await withTimeout(

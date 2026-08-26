@@ -8,7 +8,6 @@ const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
 const { Markup } = require('telegraf');
 const style = require('../keyboards/buttonStyle');
-const config = require('../config');
 
 const GITHUB_URL_RE = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9-]+)\/([a-zA-Z0-9._-]+?)(?:\.git)?\/?$/;
 
@@ -49,6 +48,9 @@ async function handleRepoSearch(ctx, query) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
+  const searchHistory = require('../lib/searchHistory');
+  await searchHistory.record(ctx.from.id, query); // #12 — best-effort, non-blocking to the actual search
+
   const repos = await repoCache.getRepos(ctx.from.id, token);
   const fuse = new Fuse(repos, { keys: ['name'], threshold: 0.4, includeScore: true });
   const results = fuse.search(query);
@@ -72,7 +74,11 @@ async function handleRepoSearch(ctx, query) {
 
   if (close.length) {
     const cards = close.map((r) => {
-      rows.push([style.callback(`${counter}. ${r.name}`, `repo:${r.name}`, style.BLUE)]);
+      // #4 — Copy Link alongside Open, informational not navigation, colorless
+      rows.push([
+        style.callback(`${counter}. ${r.name}`, `repo:${r.name}`, style.BLUE),
+        style.callback('📋 Copy Link', `search:copylink:${r.name}`),
+      ]);
       const card = `${counter}\\. ` + format.repoCard(r);
       counter++;
       return card;
@@ -81,7 +87,10 @@ async function handleRepoSearch(ctx, query) {
   }
   if (similar.length) {
     const cards = similar.map((r) => {
-      rows.push([style.callback(`${counter}. ${r.name}`, `repo:${r.name}`, style.BLUE)]);
+      rows.push([
+        style.callback(`${counter}. ${r.name}`, `repo:${r.name}`, style.BLUE),
+        style.callback('📋 Copy Link', `search:copylink:${r.name}`),
+      ]);
       const card = `${counter}\\. ` + format.repoCard(r);
       counter++;
       return card;
@@ -111,6 +120,8 @@ async function handleExternalRepo(ctx, owner, repoName) {
     ctx.session = ctx.session || {};
     ctx.session.externalRepo = { owner, repo: repoName };
 
+    const starred = await github.isStarred(token, owner, repoName).catch(() => false);
+
     const text =
       `🔗 *External Repo Detected*\n\n` +
       `📦 ${format.escapeMd(repo.name)}\n` +
@@ -120,6 +131,9 @@ async function handleExternalRepo(ctx, owner, repoName) {
     const keyboard = Markup.inlineKeyboard([
       [style.callback('⬇️ Download as ZIP', 'external:download', style.BLUE)],
       [style.callback('🍴 Fork to My Account', 'external:fork', style.BLUE)],
+      // Star/Unstar (#6) — a toggle that redraws this same screen, not
+      // navigation, so it stays colorless like every other toggle.
+      [style.callback(starred ? '⭐ Unstar' : '⭐ Star', 'external:star')],
       [Markup.button.url('🔗 View on GitHub', repo.html_url)],
       [style.callback('⬅️ Cancel', 'external:cancel', style.BLUE)],
     ]);
@@ -136,6 +150,23 @@ async function handleExternalRepo(ctx, owner, repoName) {
   }
 }
 
+/** #6 — Star/Unstar toggle. Re-shows the same external-repo screen after,
+ * matching how other in-place toggles (Pin, Notifications) behave. */
+async function toggleStar(ctx) {
+  const { owner, repo } = ctx.session.externalRepo;
+  const token = await requireConnected(ctx);
+  if (!token) return;
+
+  try {
+    const starred = await github.isStarred(token, owner, repo);
+    if (starred) await github.unstarRepo(token, owner, repo);
+    else await github.starRepo(token, owner, repo);
+  } catch (err) {
+    await ctx.reply(format.errorMessage('Couldn\u2019t update star', err.message, 'Try again.'));
+  }
+  return handleExternalRepo(ctx, owner, repo);
+}
+
 async function downloadExternalZip(ctx) {
   const { owner, repo } = ctx.session.externalRepo;
   const token = await requireConnected(ctx);
@@ -146,16 +177,12 @@ async function downloadExternalZip(ctx) {
     const repoData = await github.getRepo(token, owner, repo);
     const buffer = await github.downloadZip(token, owner, repo, repoData.default_branch);
 
-    if (buffer.length > config.MAX_TELEGRAM_FILE_SIZE_BYTES) {
-      let fallbackLine = 'Try again later.';
-      try {
-        const fallbackUrl = await github.getDownloadUrl(token, owner, repo, repoData.default_branch);
-        fallbackLine = `Here's a direct download link instead (expires shortly):\n${fallbackUrl}`;
-      } catch (_) { /* best-effort — fall back to the generic message above */ }
+    if (buffer.length > 20 * 1024 * 1024) {
+      const fallbackUrl = github.zipDownloadUrl(owner, repo, repoData.default_branch);
       return ctx.reply(format.errorMessage(
         'Download failed',
         `repo is ${format.formatBytes(buffer.length)} — exceeds Telegram's 20MB limit for bot-sent files`,
-        fallbackLine
+        `Here's a direct download link instead:\n${fallbackUrl}`
       ));
     }
 
@@ -182,9 +209,7 @@ async function executeForkExternal(ctx) {
   if (!token) return;
 
   const actionLock = require('../lib/actionLock');
-  // Keyed by target repo, not just 'fork' — forking one external repo
-  // must never block an unrelated fork of a different one (see lib/actionLock.js).
-  const { skipped } = await actionLock.withLock(ctx.from.id, `fork:${owner}/${repo}`, async () => {
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'fork', async () => {
     try {
       const forked = await github.forkRepo(token, owner, repo);
       repoCache.invalidateRepos(ctx.from.id);
@@ -204,6 +229,15 @@ async function executeForkExternal(ctx) {
   if (skipped) await ctx.reply('⏳ Already forking — please wait a moment.');
 }
 
+/** #4 — Copy Link, sent as its own message so the URL is easy to tap-copy. */
+async function copyRepoLink(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+  const user = await repoCache.getUser(ctx.from.id, token);
+  const repo = await github.getRepo(token, user.login, repoName);
+  await ctx.reply(`🔗 ${repo.html_url}`);
+}
+
 module.exports = {
   handleSearchInput,
   handleMyReposSearchInput,
@@ -213,5 +247,7 @@ module.exports = {
   downloadExternalZip,
   forkExternal,
   executeForkExternal,
+  toggleStar,
+  copyRepoLink,
   parseGithubUrl,
 };

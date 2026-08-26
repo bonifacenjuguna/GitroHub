@@ -57,4 +57,10 @@ function text(label, colorStyle) {
   return colorStyle ? { ...button, style: colorStyle } : button;
 }
 
-module.exports = { RED, GREEN, BLUE, callback, text };
+/** URL button (opens outside Telegram) with a color style applied. */
+function url(text, link, colorStyle) {
+  const button = Markup.button.url(text, link);
+  return colorStyle ? { ...button, style: colorStyle } : button;
+}
+
+module.exports = { RED, GREEN, BLUE, callback, text, url };
