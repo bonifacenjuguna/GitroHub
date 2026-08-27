@@ -150,11 +150,11 @@ Returns `200` with `{ status: "ok", postgres, redis, memoryMB, uptimeSeconds }` 
 
 Moved to its own file for readability: **[CHANGELOG.md](./CHANGELOG.md)**.
 
-Highlights of the latest release (**v0.9.1**):
-- Live GitHub webhook notifications, per-repo mute — finally wires up the Notifications toggles that did nothing since early on
-- Undo now holds up to 5 actions instead of just the last one
-- Recently Viewed quick-access, rename history notes, "last synced" timestamps, Bulk Actions Retry Failed Only, and more
-- Checked two proposed features against the real code first — Bulk Select's "own filter" and Pinned's Clone URL buttons both turned out to be unnecessary once actually verified against what already exists
+Highlights of the latest release (**v0.9.2**):
+- Fixed a real crash (license update's confirmation message) at the root — both affected files now use safe top-level imports instead of scattered per-function local requires
+- Disconnect now actually tears down live GitHub webhooks instead of leaving them running on your repo settings after you've disconnected
+- Every callback button now has a safety net against Telegram's 64-byte limit — turns a silent failure into a loud, logged warning instead
+- Nearly introduced a regression while investigating the callback-length issue — caught it before writing any code, documented in the changelog for anyone curious how that reasoning went
 
 ---
 

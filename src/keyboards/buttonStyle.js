@@ -42,11 +42,44 @@ const RED = 'danger';
 const GREEN = 'success';
 const BLUE = 'primary';
 
+/**
+ * Telegram enforces a hard 64-byte limit on callback_data. Every callback
+ * that embeds a repo name is at real risk here — GitHub allows repo names
+ * up to 100 characters, and most of this bot's prefixes only leave 44-55
+ * bytes of budget before hitting that ceiling. A full fix (per-message
+ * short-reference IDs instead of embedding the name directly) is the right
+ * long-term answer, but is its own careful, dedicated piece of work — not
+ * something to bolt on here, especially after nearly introducing a worse
+ * regression by reaching for ctx.session.currentRepo as a shortcut (that
+ * works for BBTB buttons, which are inherently "whatever's current," but
+ * would silently break inline buttons on an OLDER message once a different
+ * repo becomes "current" — each message's buttons need to stay bound to
+ * what THAT message was actually showing).
+ *
+ * Until that real fix exists, this is the honest, safe stopgap: never let
+ * an oversized callback_data get sent silently. Telegram would otherwise
+ * either reject the whole message or throw at send time — turning that
+ * into a loud, logged warning (with the actual value, so it's debuggable)
+ * is strictly better than a mystery failure.
+ */
+const MAX_CALLBACK_DATA_BYTES = 64;
+function checkCallbackLength(data) {
+  const bytes = Buffer.byteLength(data, 'utf8');
+  if (bytes > MAX_CALLBACK_DATA_BYTES) {
+    const logger = require('../lib/logger');
+    logger.warn('callback_data exceeds Telegram\u2019s 64-byte limit — this button will fail', {
+      bytes,
+      data: data.length > 80 ? `${data.slice(0, 80)}…` : data,
+    });
+  }
+}
+
 /** Inline callback button. Pass RED/GREEN/BLUE explicitly, or omit the
  * 3rd argument entirely for a deliberately colorless (incidental) button —
  * there is no default color anymore; every button's tier is a conscious
  * choice made at its call site. */
 function callback(text, data, colorStyle) {
+  checkCallbackLength(data);
   const button = Markup.button.callback(text, data);
   return colorStyle ? { ...button, style: colorStyle } : button;
 }

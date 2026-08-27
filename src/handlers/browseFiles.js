@@ -6,6 +6,8 @@ const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
 const config = require('../config');
+const { Markup } = require('telegraf');
+const style = require('../keyboards/buttonStyle');
 
 const TEXT_EXTENSIONS = new Set([
   'js', 'ts', 'jsx', 'tsx', 'json', 'md', 'txt', 'html', 'css', 'py', 'java',
@@ -52,8 +54,6 @@ async function showDirectory(ctx, repoName, dirPath = '', page = 1) {
     const tree = await github.getTree(token, user.login, repoName);
 
     if (tree.length === 0) {
-      const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
       return ctx.reply(
         '📁 This repo is empty — nothing uploaded yet\\.',
         { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard([[style.callback('⬆️ Upload Files', `upload:start:${repoName}`, style.BLUE)]]) }
@@ -191,7 +191,6 @@ async function searchFiles(ctx, repoName, query) {
   let text = `🔍 *File results for "${format.escapeMd(query)}" in ${format.escapeMd(repoName)}* \\(${matches.length} matches\\)\n\n`;
   text += matches.map((m, i) => `${i + 1}\\. 📄 ${format.escapeMd(m.path)}`).join('\n');
 
-  const { Markup } = require('telegraf');
   const rows = matches.map((m) => [style.callback(m.path, `browse:file:${m.path}`, style.BLUE)]);
 
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });

@@ -2,6 +2,7 @@ const os = require('os');
 const { Markup } = require('telegraf');
 const style = require('../keyboards/buttonStyle');
 const github = require('../lib/github');
+const logger = require('../lib/logger');
 const users = require('../lib/users');
 const format = require('../lib/format');
 const inline = require('../keyboards/inline');
@@ -130,6 +131,34 @@ async function executeDisconnect(ctx) {
 }
 
 async function _executeDisconnect(ctx) {
+  // Tear down every live webhook on GitHub's side BEFORE wiping the token —
+  // users.disconnect() sets github_token_enc to NULL, and once that's gone
+  // there's no way to call GitHub's API to remove anything. Root-cause fix:
+  // the Disconnect confirmation screen explicitly promises this "will NOT
+  // affect anything on GitHub itself" — that was quietly false the moment
+  // Live Alerts (#1) existed, since a webhook is a real resource sitting on
+  // the person's actual repo settings. This is what makes that promise true.
+  const token = await users.getDecryptedToken(ctx.from.id);
+  const repoWebhooks = require('../lib/repoWebhooks');
+  const notificationMutes = require('../lib/notificationMutes');
+  if (token) {
+    const user = await repoCacheGetUserSafe(ctx.from.id, token);
+    const registrations = await repoWebhooks.getAllForUser(ctx.from.id).catch(() => []);
+    for (const reg of registrations) {
+      try {
+        if (user) await github.deleteWebhook(token, user.login, reg.repo_name, reg.webhook_id);
+      } catch (err) {
+        // Best-effort — the repo may already be deleted, or access may
+        // already be partially revoked. Either way, disconnect must still
+        // complete; a webhook GitHub itself no longer has a valid target
+        // for isn't a reason to block the person from disconnecting.
+        logger.warn('Could not remove webhook during disconnect', { repo: reg.repo_name, message: err.message });
+      }
+    }
+    await repoWebhooks.removeAllForUser(ctx.from.id).catch(() => {});
+    await notificationMutes.unmuteAllForUser(ctx.from.id).catch(() => {});
+  }
+
   await users.disconnect(ctx.from.id);
   const repoCache = require('../lib/repoCache');
   repoCache.invalidateUser(ctx.from.id);
@@ -141,6 +170,19 @@ async function _executeDisconnect(ctx) {
   await sendConnectPrompt(ctx, {
     intro: '✅ Disconnected\\. Your GitHub account is no longer linked\\.',
   });
+}
+
+/** Small local wrapper so a failure fetching the username never blocks the
+ * webhook cleanup loop above — worst case, cleanup is skipped for this run
+ * and the DB rows still get cleared, rather than the whole disconnect failing. */
+async function repoCacheGetUserSafe(telegramId, token) {
+  try {
+    const repoCache = require('../lib/repoCache');
+    return await repoCache.getUser(telegramId, token);
+  } catch (err) {
+    logger.warn('Could not fetch username during disconnect cleanup', { message: err.message });
+    return null;
+  }
 }
 
 async function showNotifications(ctx) {

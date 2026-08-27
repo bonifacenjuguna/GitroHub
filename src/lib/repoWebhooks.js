@@ -8,6 +8,17 @@ async function get(telegramId, repoName) {
   return rows[0] || null;
 }
 
+/** Every webhook registration for a user — used on Disconnect, so every
+ * live webhook can be torn down on GitHub's side before the token that
+ * would let us do that is wiped. */
+async function getAllForUser(telegramId) {
+  const { rows } = await pool.query(
+    'SELECT repo_name, webhook_id FROM repo_webhooks WHERE telegram_id = $1',
+    [telegramId]
+  );
+  return rows;
+}
+
 async function save(telegramId, repoName, webhookId, secret) {
   await pool.query(
     `INSERT INTO repo_webhooks (telegram_id, repo_name, webhook_id, secret, created_at)
@@ -19,6 +30,12 @@ async function save(telegramId, repoName, webhookId, secret) {
 
 async function remove(telegramId, repoName) {
   await pool.query('DELETE FROM repo_webhooks WHERE telegram_id = $1 AND repo_name = $2', [telegramId, repoName]);
+}
+
+/** Clears every webhook DB row for a user in one shot — used on Disconnect
+ * after each webhook has already been torn down on GitHub's side. */
+async function removeAllForUser(telegramId) {
+  await pool.query('DELETE FROM repo_webhooks WHERE telegram_id = $1', [telegramId]);
 }
 
 /** Looks up the (telegram_id, secret) registered for a repo, so the caller
@@ -35,4 +52,4 @@ async function getByRepo(repoName) {
   return rows[0] || null;
 }
 
-module.exports = { get, save, remove, getByRepo };
+module.exports = { get, getAllForUser, save, remove, removeAllForUser, getByRepo };

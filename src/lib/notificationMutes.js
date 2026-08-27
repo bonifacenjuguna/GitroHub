@@ -20,4 +20,10 @@ async function unmute(telegramId, repoName) {
   await pool.query('DELETE FROM notification_mutes WHERE telegram_id = $1 AND repo_name = $2', [telegramId, repoName]);
 }
 
-module.exports = { isMuted, mute, unmute };
+/** Clears every mute for a user in one shot — used on Disconnect alongside
+ * removeAllForUser in repoWebhooks, so no orphaned rows survive either table. */
+async function unmuteAllForUser(telegramId) {
+  await pool.query('DELETE FROM notification_mutes WHERE telegram_id = $1', [telegramId]);
+}
+
+module.exports = { isMuted, mute, unmute, unmuteAllForUser };

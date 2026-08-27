@@ -1,5 +1,7 @@
 const github = require('../lib/github');
 const config = require('../config');
+const { Markup } = require('telegraf');
+const style = require('../keyboards/buttonStyle');
 const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
@@ -31,6 +33,17 @@ function pushUndo(ctx, entry) {
  * moment it's actually deleted from GitHub, so orphaned data doesn't pile up.
  */
 async function cleanupOrphanedData(telegramId, repoName) {
+  // Webhook/mute rows are unconditional, regardless of the auto-cleanup
+  // preference below — unlike pins/tags (legitimate to keep in case the
+  // repo gets recreated), a webhook_id record serves no purpose once
+  // GitHub itself has already deleted the webhook along with the repo.
+  const repoWebhooks = require('../lib/repoWebhooks');
+  const notificationMutes = require('../lib/notificationMutes');
+  await Promise.all([
+    repoWebhooks.remove(telegramId, repoName),
+    notificationMutes.unmute(telegramId, repoName),
+  ]);
+
   const user = await users.getUser(telegramId);
   if (!user || !user.auto_cleanup_on_delete) return;
   await Promise.all([
@@ -281,8 +294,6 @@ async function _executeToggleVisibility(ctx, repoName) {
     await activity.log(ctx.from.id, '🔒', `Visibility changed → ${repoName} (${repo.private ? 'Private→Public' : 'Public→Private'})`);
     // #2 — Undo, now pushed into a short history list instead of a single slot
     const undoId = pushUndo(ctx, { type: 'visibility', repoName, previousValue: wasPrivate });
-    const { Markup } = require('telegraf');
-    const style = require('../keyboards/buttonStyle');
     await ctx.reply(format.successMessage(
       `Visibility updated: ${repoName} is now ${updated.private ? '🔒 Private' : '🌐 Public'}`
     ));
@@ -337,8 +348,6 @@ async function handleDescriptionInput(ctx, text) {
     await activity.log(ctx.from.id, '✏️', `Description updated → ${repoName}`);
     // #2 — Undo. Colorless: a value pick, same as any other adjustment.
     const undoId = pushUndo(ctx, { type: 'description', repoName, previousValue: previousDescription });
-    const { Markup } = require('telegraf');
-    const style = require('../keyboards/buttonStyle');
     await ctx.reply(format.successMessage('Description updated'), bbtb.repoView);
     await ctx.reply('You can undo this if it was a mistake:', Markup.inlineKeyboard([[style.callback('↩️ Undo', `undo:action:${undoId}`)]]));
   } catch (err) {
@@ -363,8 +372,6 @@ async function showLicenseMenu(ctx, repoName) {
   const token = await requireConnected(ctx);
   if (!token) return;
 
-  const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
   const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
   const current = repo.license ? (repo.license.name || repo.license.spdx_id) : 'No license';
@@ -419,7 +426,6 @@ async function _executeSetLicense(ctx, repoName, licenseKey) {
     // later with no action from the person. Confirm the commit succeeded
     // without claiming the shown license is already accurate, and let
     // them check back on their own terms instead of auto-rendering it.
-    const { Markup } = require('telegraf');
     await ctx.reply(
       `✅ License commit pushed to ${repoName}.\n\n⏳ GitHub can take a moment to actually detect the new license from the file — if it still shows the old one when you check, give it a minute and look again.`,
       Markup.inlineKeyboard([[style.callback(`📦 View ${repoName}`, `repo:${repoName}`)]])
