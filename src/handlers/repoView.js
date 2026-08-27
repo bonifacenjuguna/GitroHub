@@ -1,4 +1,5 @@
 const github = require('../lib/github');
+const config = require('../config');
 const repoCache = require('../lib/repoCache');
 const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
@@ -9,6 +10,20 @@ const users = require('../lib/users');
 const pins = require('../lib/pins');
 const tags = require('../lib/tags');
 const pathMemory = require('../lib/pathMemory');
+const recentlyViewed = require('../lib/recentlyViewed');
+const repoWebhooks = require('../lib/repoWebhooks');
+const notificationMutes = require('../lib/notificationMutes');
+
+/** #2 — undo history now holds up to 5 entries instead of just the single
+ * most recent one; each gets its own id so a specific entry can be
+ * reversed even if something else happened after it. */
+const MAX_UNDO_HISTORY = 5;
+function pushUndo(ctx, entry) {
+  ctx.session.undoHistory = ctx.session.undoHistory || [];
+  ctx.session.undoHistory.unshift({ id: Date.now(), ...entry });
+  ctx.session.undoHistory = ctx.session.undoHistory.slice(0, MAX_UNDO_HISTORY);
+  return ctx.session.undoHistory[0].id;
+}
 
 /**
  * Storage & Data's "auto-delete on repo deletion" setting — when on (the
@@ -103,6 +118,18 @@ async function showRepoView(ctx, repoName) {
     ? `▸ ${treeStats.fileCount} files · ${treeStats.folderCount} folders${treeStats.sizeIncomplete ? ' (size is a lower bound — some very large files weren\u2019t sized)' : ''}\n`
     : '';
 
+  // #11 — last-synced note, since tree-based sizes are cached (not live)
+  const syncedNote = treeStats && treeStats.fetchedAt
+    ? `▸ 🕓 Size as of ${format.escapeMd(format.relativeTime(treeStats.fetchedAt))}\n`
+    : '';
+
+  // #7 — rename history note, only within the last 2 weeks so it doesn't
+  // linger indefinitely once it's no longer useful context
+  const renameInfo = await activity.recentRename(ctx.from.id, repo.name, 14).catch(() => null);
+  const renameNote = renameInfo
+    ? `▸ ✏️ Renamed from *${format.escapeMd(renameInfo.previousName)}* ${format.escapeMd(format.relativeTime(renameInfo.renamedAt))}\n`
+    : '';
+
   // README preview (#14) — first 3 non-empty lines, truncated hard so a huge
   // README can't blow out the message.
   let readmeSection = '';
@@ -124,6 +151,8 @@ async function showRepoView(ctx, repoName) {
     `💻 *LANGUAGES*\n${format.escapeMd(langBreakdown)}${langLagNote}\n\n` +
     `📊 *DETAILS*\n` +
     fileFolderLine +
+    syncedNote +
+    renameNote +
     `▸ Last commit: ${format.escapeMd(format.relativeTime(repo.pushed_at))}\n` +
     `▸ Created: ${format.escapeMd(format.relativeTime(repo.created_at))}` +
     commitsSection +
@@ -134,10 +163,21 @@ async function showRepoView(ctx, repoName) {
   ctx.session.repoOwner = repo.owner.login;
   ctx.session.repoUrl = repo.html_url; // feeds Clone URL / Open in Browser buttons
 
+  // Surprise feature — recently viewed, best-effort, never blocks the view itself
+  recentlyViewed.record(ctx.from.id, repo.name).catch(() => {});
+
+  // #1 — webhook/notifications state for this repo
+  const webhookReg = await repoWebhooks.get(ctx.from.id, repo.name).catch(() => null);
+  let webhookState = 'none';
+  if (webhookReg) {
+    const muted = await notificationMutes.isMuted(ctx.from.id, repo.name).catch(() => false);
+    webhookState = muted ? 'muted' : 'active';
+  }
+
   // Reply keyboard (BBTB) and inline keyboard can't share one message — send
   // the BBTB once via a tiny marker message, then the real content with only inline.
   await ctx.reply('📦 Repo View', bbtb.repoView);
-  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.repoActions(repo.name, pinned, repo.html_url) });
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.repoActions(repo.name, pinned, repo.html_url, webhookState, readmeResult.exists) });
 }
 
 async function showRepoDetails(ctx, repoName) {
@@ -239,14 +279,14 @@ async function _executeToggleVisibility(ctx, repoName) {
     const updated = await github.setVisibility(token, user.login, repoName, !repo.private);
     repoCache.invalidateRepos(ctx.from.id);
     await activity.log(ctx.from.id, '🔒', `Visibility changed → ${repoName} (${repo.private ? 'Private→Public' : 'Public→Private'})`);
-    // #11 — Undo
-    ctx.session.lastUndo = { type: 'visibility', repoName, previousValue: wasPrivate };
+    // #2 — Undo, now pushed into a short history list instead of a single slot
+    const undoId = pushUndo(ctx, { type: 'visibility', repoName, previousValue: wasPrivate });
     const { Markup } = require('telegraf');
     const style = require('../keyboards/buttonStyle');
     await ctx.reply(format.successMessage(
       `Visibility updated: ${repoName} is now ${updated.private ? '🔒 Private' : '🌐 Public'}`
     ));
-    await ctx.reply('You can undo this if it was a mistake:', Markup.inlineKeyboard([[style.callback('↩️ Undo', 'undo:lastaction')]]));
+    await ctx.reply('You can undo this if it was a mistake:', Markup.inlineKeyboard([[style.callback('↩️ Undo', `undo:action:${undoId}`)]]));
   } catch (err) {
     await activity.log(ctx.from.id, '⚠️', `Visibility change failed → ${repoName}`, { detail: err.message, isError: true });
     const errorHelpers = require('../lib/errorHelpers');
@@ -295,12 +335,12 @@ async function handleDescriptionInput(ctx, text) {
     await github.updateDescription(token, user.login, repoName, description);
     repoCache.invalidateRepos(ctx.from.id);
     await activity.log(ctx.from.id, '✏️', `Description updated → ${repoName}`);
-    // #11 — Undo. Colorless: a value pick, same as any other adjustment.
-    ctx.session.lastUndo = { type: 'description', repoName, previousValue: previousDescription };
+    // #2 — Undo. Colorless: a value pick, same as any other adjustment.
+    const undoId = pushUndo(ctx, { type: 'description', repoName, previousValue: previousDescription });
     const { Markup } = require('telegraf');
     const style = require('../keyboards/buttonStyle');
     await ctx.reply(format.successMessage('Description updated'), bbtb.repoView);
-    await ctx.reply('You can undo this if it was a mistake:', Markup.inlineKeyboard([[style.callback('↩️ Undo', 'undo:lastaction')]]));
+    await ctx.reply('You can undo this if it was a mistake:', Markup.inlineKeyboard([[style.callback('↩️ Undo', `undo:action:${undoId}`)]]));
   } catch (err) {
     await activity.log(ctx.from.id, '⚠️', `Description update failed → ${repoName}`, { detail: err.message, isError: true });
     await ctx.reply(format.errorMessage('Couldn\u2019t update description', err.message, 'Try again.'));
@@ -404,15 +444,17 @@ async function showCloneUrl(ctx, repoName) {
   );
 }
 
-/** #11 — reverses whatever ctx.session.lastUndo describes. Only ever holds
- * ONE action (the most recent undoable one), not a full undo stack — a
- * second undo-able action simply replaces it, same as the name implies. */
-async function undoLastAction(ctx) {
-  const undo = ctx.session.lastUndo;
-  if (!undo) {
-    return ctx.reply('Nothing left to undo.');
+/** #2 — undo by specific id, since undo history now holds up to 5 entries
+ * rather than a single slot; reversing an older entry doesn't require
+ * reversing everything after it too. */
+async function undoAction(ctx, undoId) {
+  const history = ctx.session.undoHistory || [];
+  const idx = history.findIndex((h) => String(h.id) === String(undoId));
+  if (idx === -1) {
+    return ctx.reply('That undo has expired or was already used.');
   }
-  delete ctx.session.lastUndo;
+  const undo = history[idx];
+  ctx.session.undoHistory = history.filter((_, i) => i !== idx);
   const token = await requireConnected(ctx);
   if (!token) return;
 
@@ -431,6 +473,98 @@ async function undoLastAction(ctx) {
     return showRepoView(ctx, undo.repoName);
   } catch (err) {
     await ctx.reply(format.errorMessage('Couldn\u2019t undo', err.message, 'You can change it back manually from Repo View.'));
+  }
+}
+
+/** #1 — first tap on a repo registers a real GitHub webhook pointed at our
+ * /webhook/github endpoint; subsequent taps just toggle mute (the webhook
+ * itself stays registered, we just skip sending while muted, avoiding a
+ * delete+recreate round trip with GitHub for something reversible locally). */
+async function toggleWebhookEnable(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+  try {
+    const user = await repoCache.getUser(ctx.from.id, token);
+    const crypto = require('crypto');
+    const secret = crypto.randomBytes(24).toString('hex');
+    const hook = await github.createWebhook(token, user.login, repoName, `${config.BASE_URL}/webhook/github`, secret);
+    await repoWebhooks.save(ctx.from.id, repoName, hook.id, secret);
+    await activity.log(ctx.from.id, '🔔', `Live alerts enabled → ${repoName}`);
+    await ctx.reply(format.successMessage(`Live alerts enabled for ${repoName}.`));
+  } catch (err) {
+    await ctx.reply(format.errorMessage('Couldn\u2019t enable live alerts', err.message, 'Check the bot has admin access to this repo, then try again.'));
+  }
+  return showRepoView(ctx, repoName);
+}
+
+async function toggleWebhookMute(ctx, repoName) {
+  const muted = await notificationMutes.isMuted(ctx.from.id, repoName);
+  if (muted) {
+    await notificationMutes.unmute(ctx.from.id, repoName);
+    await ctx.reply(format.successMessage(`Unmuted — you\u2019ll get alerts for ${repoName} again.`));
+  } else {
+    await notificationMutes.mute(ctx.from.id, repoName);
+    await ctx.reply(format.successMessage(`Muted — ${repoName} won\u2019t send alerts until you unmute it.`));
+  }
+  return showRepoView(ctx, repoName);
+}
+
+/** #12 — dumps everything GitroHub itself knows about a repo (not a GitHub
+ * data export) as a downloadable JSON file: tags, pin status, and whatever
+ * local metadata exists, for backup/review purposes. */
+async function exportRepoJson(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+  const fs = require('fs');
+  const path = require('path');
+  try {
+    const user = await repoCache.getUser(ctx.from.id, token);
+    const repo = await github.getRepo(token, user.login, repoName);
+    const [pinned, repoTags] = await Promise.all([
+      pins.isPinned(ctx.from.id, repoName),
+      tags.tagsForRepo(ctx.from.id, repoName),
+    ]);
+    const exportData = {
+      name: repo.name,
+      full_name: repo.full_name,
+      description: repo.description,
+      private: repo.private,
+      html_url: repo.html_url,
+      clone_url: repo.clone_url,
+      license: repo.license ? repo.license.spdx_id : null,
+      created_at: repo.created_at,
+      pushed_at: repo.pushed_at,
+      gitrohub: {
+        pinned,
+        tags: repoTags.map((t) => ({ name: t.name, emoji: t.emoji })),
+        exported_at: new Date().toISOString(),
+      },
+    };
+    const filePath = path.join('/tmp', `${repoName}-export.json`);
+    fs.writeFileSync(filePath, JSON.stringify(exportData, null, 2));
+    await ctx.replyWithDocument({ source: filePath, filename: `${repoName}-export.json` });
+    fs.unlink(filePath, () => {}); // best-effort cleanup, not worth failing the export over
+  } catch (err) {
+    await ctx.reply(format.errorMessage('Couldn\u2019t export repo data', err.message, 'Try again.'));
+  }
+}
+
+/** #8 — sends the full README as a document, alongside the truncated
+ * preview already shown inline (reuses browseFiles' send-as-document idea). */
+async function sendFullReadme(ctx, repoName) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+  const fs = require('fs');
+  const path = require('path');
+  try {
+    const user = await repoCache.getUser(ctx.from.id, token);
+    const file = await github.getFileContent(token, user.login, repoName, 'README.md');
+    const filePath = path.join('/tmp', `${repoName}-README.md`);
+    fs.writeFileSync(filePath, file.content);
+    await ctx.replyWithDocument({ source: filePath, filename: 'README.md' });
+    fs.unlink(filePath, () => {});
+  } catch (err) {
+    await ctx.reply(format.errorMessage('Couldn\u2019t send README', err.message, 'Try again.'));
   }
 }
 
@@ -488,7 +622,11 @@ module.exports = {
   showRepoView,
   showRepoDetails,
   showCloneUrl,
-  undoLastAction,
+  undoAction,
+  toggleWebhookEnable,
+  toggleWebhookMute,
+  exportRepoJson,
+  sendFullReadme,
   askDeleteRepo,
   executeDeleteRepo,
   askToggleVisibility,

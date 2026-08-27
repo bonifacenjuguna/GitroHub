@@ -115,3 +115,36 @@ CREATE TABLE IF NOT EXISTS size_snapshots (
   total_bytes     BIGINT NOT NULL,
   snapshotted_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ── v0.9.1 additions ─────────────────────────────────────────
+
+-- Recently viewed repos — quick-tap shortcuts back to whatever you actually
+-- opened recently, same shape as search_history.
+CREATE TABLE IF NOT EXISTS recently_viewed (
+  id            BIGSERIAL PRIMARY KEY,
+  telegram_id   BIGINT NOT NULL,
+  repo_name     TEXT NOT NULL,
+  viewed_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_recently_viewed_user ON recently_viewed (telegram_id, viewed_at DESC);
+
+-- Per-repo notification mute — keeps GitHub Activity notifications on
+-- globally (Settings) while silencing one specific noisy repo.
+CREATE TABLE IF NOT EXISTS notification_mutes (
+  telegram_id   BIGINT NOT NULL,
+  repo_name     TEXT NOT NULL,
+  muted_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (telegram_id, repo_name)
+);
+
+-- Tracks which repos have a live GitHub webhook pointed at this bot, plus
+-- the id GitHub assigned it (needed to delete it again on disconnect/mute)
+-- and the per-webhook secret used to verify incoming payloads.
+CREATE TABLE IF NOT EXISTS repo_webhooks (
+  telegram_id   BIGINT NOT NULL,
+  repo_name     TEXT NOT NULL,
+  webhook_id    BIGINT NOT NULL,
+  secret        TEXT NOT NULL,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (telegram_id, repo_name)
+);

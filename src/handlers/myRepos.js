@@ -82,7 +82,7 @@ async function filterLabel(state, telegramId) {
  * this version has no hidden dependency on caller scope.
  */
 function renderRepoLine(r, { pinned = false, tagLine = '', sizeBytes } = {}) {
-  return format.repoCard(r, { pinned, tagLine, sizeBytes });
+  return format.repoCard(r, { pinned, tagLine, sizeBytes, partialHealthCheck: true });
 }
 
 /** Builds the 🏷️ tag-chip line for a repo, if it has any tags. */
@@ -162,6 +162,21 @@ async function showMyRepos(ctx, { edit = false } = {}) {
     // send the BBTB once via a tiny marker message, then content with only inline.
     await ctx.reply('📁 My Repos', bbtb.myRepos);
     await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
+    // Surprise feature — recently viewed quick-access, best-effort, only
+    // shown on the fresh (non-edit) load so it doesn't reappear on every
+    // filter/sort/page tweak
+    try {
+      const recentlyViewed = require('../lib/recentlyViewed');
+      const recent = await recentlyViewed.recent(telegramId, 5);
+      if (recent.length) {
+        const style = require('../keyboards/buttonStyle');
+        const { Markup } = require('telegraf');
+        await ctx.reply(
+          '🕐 Recently viewed:',
+          Markup.inlineKeyboard(recent.map((name) => [style.callback(`📦 ${name}`, `repo:${name}`, style.BLUE)]))
+        );
+      }
+    } catch (_) { /* best-effort, never blocks the main list */ }
   }
 }
 

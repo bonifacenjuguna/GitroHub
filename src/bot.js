@@ -286,10 +286,9 @@ function createBot() {
       const recent = await searchHistory.recent(ctx.from.id, 5).catch(() => []);
       await ctx.reply('🔍 Type a name or keyword to fuzzy-search your repos.', bbtb.cancelOnly);
       if (recent.length) {
-        await ctx.reply(
-          'Or tap a recent search:',
-          Markup.inlineKeyboard(recent.map((q) => [style.callback(`🕒 ${q}`, `search:recent:${q}`)]))
-        );
+        const rows = recent.map((q) => [style.callback(`🕒 ${q}`, `search:recent:${q}`)]);
+        rows.push([style.callback('🗑 Clear History', 'search:clearhistory')]);
+        await ctx.reply('Or tap a recent search:', Markup.inlineKeyboard(rows));
       }
       return;
     }
@@ -297,6 +296,12 @@ function createBot() {
       await ctx.answerCbQuery();
       ctx.session.awaitingSearch = false;
       return search.handleMyReposSearchInput(ctx, data.split('search:recent:')[1]);
+    }
+    if (data === 'search:clearhistory') {
+      await ctx.answerCbQuery();
+      const searchHistory = require('../lib/searchHistory');
+      await searchHistory.clear(ctx.from.id);
+      return ctx.editMessageText('🗑 Search history cleared.');
     }
     if (data === 'search:type:public') {
       await ctx.answerCbQuery();
@@ -311,7 +316,8 @@ function createBot() {
       !data.includes(':rename:') && !data.includes(':delete:') &&
       !data.includes(':visibility:') && !data.includes(':pin:') && !data.includes(':tags:') &&
       !data.includes(':description:') && !data.includes(':license:') &&
-      !data.includes(':cloneurl:') && !data.includes(':star:')
+      !data.includes(':cloneurl:') && !data.includes(':star:') &&
+      !data.includes(':export:') && !data.includes(':readme:') && !data.includes(':webhook:')
     ) {
       await ctx.answerCbQuery();
       const repoName = data.split('repo:')[1];
@@ -339,9 +345,9 @@ function createBot() {
       const repoName = data.split('repo:rename:')[1];
       return ctx.scene.enter('renameRepo', { repoName });
     }
-    if (data === 'undo:lastaction') {
+    if (data.startsWith('undo:action:')) {
       await ctx.answerCbQuery();
-      return repoView.undoLastAction(ctx);
+      return repoView.undoAction(ctx, data.split('undo:action:')[1]);
     }
     if (data.startsWith('repo:description:')) {
       await ctx.answerCbQuery();
@@ -350,6 +356,22 @@ function createBot() {
     if (data.startsWith('repo:cloneurl:')) {
       await ctx.answerCbQuery();
       return repoView.showCloneUrl(ctx, data.split('repo:cloneurl:')[1]);
+    }
+    if (data.startsWith('repo:export:')) {
+      await ctx.answerCbQuery();
+      return repoView.exportRepoJson(ctx, data.split('repo:export:')[1]);
+    }
+    if (data.startsWith('repo:readme:')) {
+      await ctx.answerCbQuery();
+      return repoView.sendFullReadme(ctx, data.split('repo:readme:')[1]);
+    }
+    if (data.startsWith('repo:webhook:enable:')) {
+      await ctx.answerCbQuery();
+      return repoView.toggleWebhookEnable(ctx, data.split('repo:webhook:enable:')[1]);
+    }
+    if (data.startsWith('repo:webhook:toggle:')) {
+      await ctx.answerCbQuery();
+      return repoView.toggleWebhookMute(ctx, data.split('repo:webhook:toggle:')[1]);
     }
     if (data.startsWith('repo:license:confirm:')) {
       await ctx.answerCbQuery();
@@ -637,6 +659,17 @@ function createBot() {
       }
       return;
     }
+    if (data.startsWith('createrepo:tagit:')) {
+      await ctx.answerCbQuery();
+      const rest = data.split('createrepo:tagit:')[1];
+      if (rest === 'skip') {
+        return ctx.reply('👍 Skipped.');
+      }
+      const [repoName, tagId] = rest.split(':');
+      const tagsLib = require('./lib/tags');
+      await tagsLib.assignTag(ctx.from.id, repoName, Number(tagId));
+      return ctx.reply('🏷️ Tagged.');
+    }
 
     // Storage & Data
     if (data === 'storage:clearmenu') { await ctx.answerCbQuery(); return storageData.showClearMenu(ctx); }
@@ -688,6 +721,10 @@ function createBot() {
       await confirmFlow.resolveConfirmation(ctx, 'confirmed', '⏳ Working…');
       if (action === 'download') return bulkActions.executeDownloads(ctx);
       return bulkActions.execute(ctx, action);
+    }
+    if (data.startsWith('bulk:retryfailed:')) {
+      await ctx.answerCbQuery();
+      return bulkActions.retryFailed(ctx, data.split('bulk:retryfailed:')[1]);
     }
 
     // Nothing matched — most likely a stale button from an old message

@@ -29,7 +29,7 @@ const sortMenu = Markup.inlineKeyboard([
 ]);
 
 /** Repo View info card — Rename, Pin/Unpin, Tags stay inline; Delete Repo is the destructive one */
-function repoActions(repoName, pinned = false, repoUrl) {
+function repoActions(repoName, pinned = false, repoUrl, webhookState = 'none', hasReadme = false) {
   const rows = [
     [
       style.callback('✏️ Rename', `repo:rename:${repoName}`, style.BLUE),
@@ -42,9 +42,17 @@ function repoActions(repoName, pinned = false, repoUrl) {
     // Clone URL is informational, not navigation — stays colorless (#3).
     // Open in Browser genuinely leaves the bot for github.com, so it's
     // navigation like everything else in that tier (#13).
-    [style.callback('📋 Clone URL', `repo:cloneurl:${repoName}`)],
+    [style.callback('📋 Clone URL', `repo:cloneurl:${repoName}`), style.callback('📄 Export JSON', `repo:export:${repoName}`)],
   ];
+  if (hasReadme) rows.push([style.callback('📖 Send Full README', `repo:readme:${repoName}`)]);
   if (repoUrl) rows.push([style.url('🔗 Open in Browser', repoUrl, style.BLUE)]);
+  // Live notifications toggle — a settings-style adjustment, colorless
+  // like every other toggle (Pin, Notifications), not a navigation action.
+  if (webhookState === 'none') {
+    rows.push([style.callback('🔔 Enable Live Alerts', `repo:webhook:enable:${repoName}`)]);
+  } else {
+    rows.push([style.callback(webhookState === 'muted' ? '🔔 Unmute Alerts' : '🔕 Mute Alerts', `repo:webhook:toggle:${repoName}`)]);
+  }
   rows.push([style.callback('🗑 Delete Repo', `repo:delete:${repoName}`, style.BLUE)]);
   return Markup.inlineKeyboard(rows);
 }

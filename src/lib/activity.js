@@ -31,4 +31,25 @@ async function recent(telegramId, { limit = 6, offset = 0, errorsOnly = false } 
   return { rows, total: countRows[0].total };
 }
 
-module.exports = { log, recent };
+/** #7 — looks for a rename event landing on this exact repo name within
+ * the last N days, to show "renamed from X" so a forgotten rename doesn't
+ * look like the repo went missing. Matches the exact log format written
+ * in scenes/renameRepo.js ('Renamed → oldName → newName'). */
+async function recentRename(telegramId, repoName, withinDays = 14) {
+  // Escape LIKE wildcards in the repo name itself — GitHub repo names can
+  // contain underscores, which is also SQL's LIKE "any single character"
+  // wildcard, so an unescaped repo name here could match the wrong repo.
+  const escaped = repoName.replace(/[%_\\]/g, '\\$&');
+  const { rows } = await pool.query(
+    `SELECT summary, created_at FROM activity_log
+     WHERE telegram_id = $1 AND icon = '✏️' AND summary LIKE 'Renamed → %'
+       AND summary LIKE $2 ESCAPE '\\' AND created_at > now() - ($3 || ' days')::interval
+     ORDER BY created_at DESC LIMIT 1`,
+    [telegramId, `%→ ${escaped}`, withinDays]
+  );
+  if (!rows[0]) return null;
+  const match = rows[0].summary.match(/Renamed → (.+) → .+$/);
+  return match ? { previousName: match[1], renamedAt: rows[0].created_at } : null;
+}
+
+module.exports = { log, recent, recentRename };

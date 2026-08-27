@@ -150,10 +150,11 @@ Returns `200` with `{ status: "ok", postgres, redis, memoryMB, uptimeSeconds }` 
 
 Moved to its own file for readability: **[CHANGELOG.md](./CHANGELOG.md)**.
 
-Highlights of the latest release (**v0.9.0**):
-- 15 new features: fork tags, activity status, clone URL, README/commit previews, star toggle, undo, search history, size trend, license filter, and more
-- Every new button colored under the same outcome-based rules from v0.8.7 — colorless usage grew from 45% to 49% of the bot
-- Caught and fixed two real bugs before shipping: a missing `Markup`/`style` import in `bot.js` that would have crashed on first use, and pre-emptively excluded the new callbacks from the recurring `repo:` catch-all bug that's bitten this project twice before
+Highlights of the latest release (**v0.9.1**):
+- Live GitHub webhook notifications, per-repo mute — finally wires up the Notifications toggles that did nothing since early on
+- Undo now holds up to 5 actions instead of just the last one
+- Recently Viewed quick-access, rename history notes, "last synced" timestamps, Bulk Actions Retry Failed Only, and more
+- Checked two proposed features against the real code first — Bulk Select's "own filter" and Pinned's Clone URL buttons both turned out to be unnecessary once actually verified against what already exists
 
 ---
 

@@ -174,6 +174,28 @@ const scene = new Scenes.WizardScene(
         inline.createRepoSuccess(repo.name)
       );
 
+      // #9 — default tag suggestion, based on the visibility/license just
+      // picked in this same flow. Only suggests a tag that already exists
+      // with a matching name — never auto-creates one without the person's
+      // consent, and never guesses if nothing matches.
+      try {
+        const tagsLib = require('../lib/tags');
+        const userTags = await tagsLib.listTags(ctx.from.id);
+        const candidateNames = isPrivate && !licenseTemplate
+          ? ['personal', 'private']
+          : (!isPrivate && licenseTemplate ? ['open-source', 'public'] : []);
+        const match = userTags.find((t) => candidateNames.includes(t.name.toLowerCase()));
+        if (match) {
+          await ctx.reply(
+            `🏷️ Tag this as ${match.emoji} *${format.escapeMd(match.name)}*?`,
+            { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard([
+              [style.callback(`✅ Yes, Tag It`, `createrepo:tagit:${repo.name}:${match.id}`)],
+              [style.callback('➖ Skip', 'createrepo:tagit:skip')],
+            ]) }
+          );
+        }
+      } catch (_) { /* best-effort, never blocks the main success flow */ }
+
       // "Learn from me" — if your last 3 repos all chose the same visibility
       // and it doesn't match your saved default, offer to update the default.
       const defaults = require('../lib/defaults');

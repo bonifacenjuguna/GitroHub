@@ -40,6 +40,18 @@ async function getHealthStatus() {
   return result;
 }
 
+function describeWebhookEvent(event, payload) {
+  if (event === 'push') {
+    const count = payload.commits ? payload.commits.length : 0;
+    if (count === 0) return null; // branch/tag creation pings with no commits — not interesting
+    return `${count} new commit${count === 1 ? '' : 's'} pushed`;
+  }
+  if (event === 'issues' && payload.action === 'opened') return `New issue: "${payload.issue.title}"`;
+  if (event === 'pull_request' && payload.action === 'opened') return `New PR: "${payload.pull_request.title}"`;
+  if (event === 'release' && payload.action === 'published') return `New release: ${payload.release.tag_name}`;
+  return null;
+}
+
 function createApp(bot) {
   const app = express();
   // Bug fix: express.static() expects a DIRECTORY to serve from, not a
@@ -148,6 +160,61 @@ function createApp(bot) {
         error: `Couldn\u2019t complete the token exchange with GitHub: ${err.message}. This is usually temporary.`,
         botDeepLink,
       }));
+    }
+  });
+
+  // GitHub webhook receiver — per-repo notifications (Settings toggles).
+  // Raw body needed (not JSON-parsed) since HMAC verification is computed
+  // over the exact bytes GitHub sent; this route is scoped to raw parsing
+  // only, no global express.json() exists elsewhere to conflict with.
+  app.post('/webhook/github', express.raw({ type: 'application/json' }), async (req, res) => {
+    const crypto = require('crypto');
+    const repoWebhooks = require('../lib/repoWebhooks');
+    const notificationMutes = require('../lib/notificationMutes');
+    const users = require('../lib/users');
+
+    let payload;
+    try {
+      payload = JSON.parse(req.body.toString('utf8'));
+    } catch (err) {
+      return res.status(400).send('Invalid JSON');
+    }
+
+    const repoFullName = payload.repository && payload.repository.name;
+    if (!repoFullName) return res.status(400).send('Missing repository');
+
+    const registration = await repoWebhooks.getByRepo(repoFullName).catch(() => null);
+    if (!registration) return res.status(404).send('Not registered');
+
+    // Verify the signature against OUR stored secret — never trust
+    // anything about identity claimed by the payload itself.
+    const signature = req.headers['x-hub-signature-256'] || '';
+    const expected = 'sha256=' + crypto.createHmac('sha256', registration.secret).update(req.body).digest('hex');
+    const sigBuf = Buffer.from(signature);
+    const expBuf = Buffer.from(expected);
+    const valid = sigBuf.length === expBuf.length && crypto.timingSafeEqual(sigBuf, expBuf);
+    if (!valid) {
+      logger.warn('Webhook signature mismatch', { repo: repoFullName });
+      return res.status(401).send('Invalid signature');
+    }
+
+    res.status(200).send('OK'); // ack immediately, don't make GitHub wait on Telegram delivery
+
+    try {
+      const muted = await notificationMutes.isMuted(registration.telegram_id, repoFullName);
+      if (muted) return;
+
+      const user = await users.getUser(registration.telegram_id);
+      if (!user || !user.notif_github_activity) return;
+
+      const event = req.headers['x-github-event'];
+      const summary = describeWebhookEvent(event, payload);
+      if (!summary) return; // event type we don't have a message for
+
+      await activity.log(registration.telegram_id, '🔔', `${summary} → ${repoFullName}`, {});
+      await bot.telegram.sendMessage(registration.telegram_id, `🔔 ${summary} → ${repoFullName}`);
+    } catch (err) {
+      logger.error('Webhook post-processing failed', { message: err.message });
     }
   });
 

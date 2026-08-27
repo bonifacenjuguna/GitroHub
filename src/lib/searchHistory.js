@@ -33,4 +33,9 @@ async function recent(telegramId, limit = MAX_HISTORY) {
     .map((r) => r.query);
 }
 
-module.exports = { record, recent };
+/** #3 — clears all stored search history for this user. */
+async function clear(telegramId) {
+  await pool.query('DELETE FROM search_history WHERE telegram_id = $1', [telegramId]);
+}
+
+module.exports = { record, recent, clear };

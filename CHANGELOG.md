@@ -2,11 +2,29 @@
 
 All notable changes to GitroHub, newest first. See [README.md](./README.md) for the current feature set and setup instructions.
 
-**Jump to:** [v0.9.0](#v090--15-features-fork-tags-star-toggle-undo-search-history-and-more) · [v0.8.7](#v087--colors-redesigned-around-outcome-not-button-role) · [v0.8.6](#v086--button-color-remapping-after-seeing-it-live) · [v0.8.5](#v085--button-color-styling-bot-api-94) · [v0.8.4](#v084--memory-and-watchdog-hardening) · [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
+**Jump to:** [v0.9.1](#v091--webhook-notifications-recently-viewed-undo-history-and-more) · [v0.9.0](#v090--15-features-fork-tags-star-toggle-undo-search-history-and-more) · [v0.8.7](#v087--colors-redesigned-around-outcome-not-button-role) · [v0.8.6](#v086--button-color-remapping-after-seeing-it-live) · [v0.8.5](#v085--button-color-styling-bot-api-94) · [v0.8.4](#v084--memory-and-watchdog-hardening) · [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
 
 ---
 
 ---
+
+### v0.9.1 — Webhook notifications, recently viewed, undo history, and more
+
+- **Live GitHub notifications** — a real webhook receiver (`/webhook/github`, HMAC-verified against a per-repo secret) finally wires up the Notifications toggles that have sat in Settings doing nothing since early on. Enable per-repo from Repo View; a repo can be muted independently without touching the global toggles.
+- **Undo now holds up to 5 actions**, not just the single most recent one — each gets its own id, so an older change can still be reversed even if something else happened after it.
+- **Search history — Clear History** option alongside the recent-search suggestions.
+- **Repo health flag on My Repos and Pinned** — deliberately a lighter 2-part check (description + license only) than Repo View's full 3-part version, since checking README existence per row on a list screen would mean an extra API call per visible repo on top of the tree-stats fetch already happening there.
+- **Recently Viewed** — quick-tap shortcuts on My Repos back to whatever you actually opened recently, same lightweight pattern as search history.
+- **"Last synced" timestamp** on Repo View's size figure, since tree-based sizes are cached, not live.
+- **Rename history note** — "Renamed from X" shown on the card for 2 weeks after a rename, so a forgotten rename doesn't look like the repo went missing.
+- **Send Full README as a file**, alongside the existing preview.
+- **Export a repo's GitroHub metadata as JSON** — tags, pin status, description, license — as an actual downloadable file, not a wall of text in a chat message.
+- **Bulk Actions: Retry Failed Only** — a partial failure now offers to retry just the repos that failed, reusing the same selection-state machinery Bulk Select already has, instead of re-selecting everything by hand.
+- **Clone command on Search's external-repo screen** — shown directly in the message text rather than as a button, since the clone URL is already on hand at render time and this avoids a callback round-trip entirely.
+- **Default tag suggestion on repo creation** — if an existing tag's name matches the visibility/license pattern just chosen (e.g. "personal" for private+no-license), offers a one-tap assign; never auto-creates a tag without asking.
+- **Checked, not built:** Bulk Select's "own filter/sort" — turned out to already be independent of My Repos' filter state, with its own equivalent quick-select actions (Select Stale, Select Private/Public, Select by Tag). Adding a second, separate filter on top would have been redundant complexity, not a real gap.
+- **Scoped down, not built:** Clone URL/Open in Browser buttons on Pinned's per-row list — Pinned's rows already route to full Repo View (which has both) via one tap on "Open"; duplicating the buttons per-row would only add clutter to an already-busy row (reorder arrows + Open).
+- **Caught mid-build, not shipped:** a `str_replace` edit briefly deleted a handler's opening line while wiring Undo — caught and fixed immediately via the same cross-reference check now run before every package. Also caught: a SQL `ESCAPE` clause that looked wrong on first (visual) read turned out to be correct — verified by executing the real code and counting bytes numerically instead of trusting eyeballed output, after nearly "fixing" something that wasn't broken.
 
 ### v0.9.0 — 15 features: fork tags, star toggle, undo, search history, and more
 

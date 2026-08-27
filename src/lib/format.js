@@ -124,7 +124,7 @@ function activityStatus(repo) {
  * repo object or its tree — list screens simply omit them rather than
  * paying for an extra API call per row just to populate a card detail.
  */
-function repoCard(repo, { pinned = false, license, description, sizeBytes, tagLine = '', forkedFrom, hasReadme } = {}) {
+function repoCard(repo, { pinned = false, license, description, sizeBytes, tagLine = '', forkedFrom, hasReadme, partialHealthCheck = false } = {}) {
   const pin = pinned ? '📌 ' : '';
   const status = activityStatus(repo);
   const forkTag = forkedFrom ? ` 🍴 Forked from ${escapeMd(forkedFrom)}` : (repo.fork ? ' 🍴 Fork' : '');
@@ -147,12 +147,21 @@ function repoCard(repo, { pinned = false, license, description, sizeBytes, tagLi
     `▸ ${descLine}`;
   if (tagLine) card += `\n${tagLine}`;
 
-  // Health flag (#15) — only computed when the caller actually knows README
-  // status (hasReadme passed explicitly); omitted entirely on list screens
-  // that don't have that data rather than guessing.
+  // Health flag (#15) — full 3-part check (README+description+license)
+  // only runs when hasReadme is explicitly passed (Repo View, which already
+  // fetches it). List screens get a lighter 2-part check instead — adding
+  // a README existence check per row there would mean an extra API call
+  // per visible repo on top of the tree-stats fetch already happening per
+  // page, just for a badge; description+license are already free since
+  // they're on the repo object with no extra fetch either way.
   if (hasReadme !== undefined) {
     const missing = [];
     if (!hasReadme) missing.push('README');
+    if (!desc) missing.push('description');
+    if (!hasLicense) missing.push('license');
+    if (missing.length) card += `\n⚠️ Missing: ${missing.join(', ')}`;
+  } else if (partialHealthCheck) {
+    const missing = [];
     if (!desc) missing.push('description');
     if (!hasLicense) missing.push('license');
     if (missing.length) card += `\n⚠️ Missing: ${missing.join(', ')}`;

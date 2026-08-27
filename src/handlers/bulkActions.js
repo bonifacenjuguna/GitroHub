@@ -196,6 +196,19 @@ async function execute(ctx, action) {
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
+/** #6 — re-runs execute() against just the names that failed last time,
+ * reusing the exact same selection-state machinery Bulk Select already has
+ * rather than making the person re-select repos by hand. */
+async function retryFailed(ctx, action) {
+  const queue = ctx.session.bulkRetryQueue;
+  if (!queue || queue.action !== action || !queue.names.length) {
+    return ctx.reply('Nothing left to retry.');
+  }
+  ctx.session.bulkSelected = queue.names;
+  delete ctx.session.bulkRetryQueue;
+  return execute(ctx, action);
+}
+
 async function _execute(ctx, action) {
   const token = await requireConnected(ctx);
   if (!token) return;
@@ -282,7 +295,20 @@ async function _execute(ctx, action) {
 
   ctx.session.bulkSelected = [];
   await maybeAddLongOpNotice(ctx, selected.length);
-  await ctx.reply(summary, bbtb.bulkComplete);
+
+  // #6 — Retry Failed Only, so a partial failure doesn't mean re-selecting
+  // everything by hand. Stores just the failed names for the retry tap.
+  if (failed.length > 0) {
+    ctx.session.bulkRetryQueue = { action, names: failed.map((r) => r.name) };
+    const { Markup } = require('telegraf');
+    await ctx.reply(summary, bbtb.bulkComplete);
+    await ctx.reply(
+      `Retry the ${failed.length} that failed?`,
+      Markup.inlineKeyboard([[style.callback('🔁 Retry Failed Only', `bulk:retryfailed:${action}`)]])
+    );
+  } else {
+    await ctx.reply(summary, bbtb.bulkComplete);
+  }
 }
 
 /** Long Operations notification: for a batch big enough to actually take a
@@ -387,6 +413,7 @@ module.exports = {
   showActionMenu,
   confirmAction,
   execute,
+  retryFailed,
   executeDownloads,
   maybeAddLongOpNotice,
 };

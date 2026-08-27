@@ -126,7 +126,8 @@ async function handleExternalRepo(ctx, owner, repoName) {
       `🔗 *External Repo Detected*\n\n` +
       `📦 ${format.escapeMd(repo.name)}\n` +
       `👤 by ${format.escapeMd(owner)}\n` +
-      `${format.visibilityLine(repo.private)} · ${format.languageLine(repo.language)} · ⭐ ${repo.stargazers_count} · 🍴 ${repo.forks_count}`;
+      `${format.visibilityLine(repo.private)} · ${format.languageLine(repo.language)} · ⭐ ${repo.stargazers_count} · 🍴 ${repo.forks_count}\n\n` +
+      `📋 Clone:\n\`\`\`\ngit clone ${format.escapeCodeBlock(repo.clone_url)}\n\`\`\``;
 
     const keyboard = Markup.inlineKeyboard([
       [style.callback('⬇️ Download as ZIP', 'external:download', style.BLUE)],
