@@ -19,14 +19,7 @@ async function showAccessLog(ctx, { fromActivity = false } = {}) {
     text += 'No connection events recorded yet\\.';
   } else {
     text += events
-      .map((e) => {
-        const icon = e.is_anomalous ? '⚠️' : (EVENT_ICON[e.event] || '⚪');
-        const line = `${icon} ${format.escapeMd(format.relativeTime(e.created_at))} — ${format.escapeMd(EVENT_LABEL[e.event] || e.event)}`;
-        // v0.9.3 — anomaly reason shown inline, right under the flagged
-        // event, so it reads as "here's specifically why" rather than a
-        // bare warning icon with no explanation.
-        return e.is_anomalous ? `${line}\n   ⤷ ${format.escapeMd(e.anomaly_reason)}` : line;
-      })
+      .map((e) => `${EVENT_ICON[e.event] || '⚪'} ${format.escapeMd(format.relativeTime(e.created_at))} — ${format.escapeMd(EVENT_LABEL[e.event] || e.event)}`)
       .join('\n');
   }
 

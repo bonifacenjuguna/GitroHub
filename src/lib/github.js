@@ -17,15 +17,6 @@ const clientCache = new Map();
 function client(token) {
   if (clientCache.has(token)) return clientCache.get(token);
   const octo = new Octokit({ auth: token });
-  // v0.9.3 — passive rate-limit capture via Octokit's own request hooks,
-  // rather than threading header-capture through every single function
-  // below (would've meant touching 25+ call sites for the same effect).
-  // Hooks fire for every request this client makes, success or failure.
-  octo.hook.after('request', (response) => captureRateLimitHeaders(response.headers));
-  octo.hook.error('request', (error) => {
-    if (error.response) captureRateLimitHeaders(error.response.headers);
-    throw error;
-  });
   clientCache.set(token, octo);
   if (clientCache.size > 3) {
     clientCache.delete(clientCache.keys().next().value);
@@ -40,37 +31,6 @@ function client(token) {
  */
 function isRateLimitError(err) {
   return !!(err && err.status === 403 && /rate limit/i.test(err.message || ''));
-}
-
-/**
- * v0.9.3 — passive rate-limit tracking. Every Octokit response (success or
- * error) carries `x-ratelimit-remaining`/`x-ratelimit-reset` headers even
- * when nothing went wrong; capturing them here means Settings/Stats can
- * show a live budget without spending a request on getRateLimit() just to
- * display it, and withRetry can widen its backoff BEFORE actually hitting
- * a 403 wall instead of only reacting after.
- */
-let lastRateLimitSeen = null; // { remaining, limit, resetAt, seenAt }
-
-function captureRateLimitHeaders(headers) {
-  if (!headers) return;
-  const remaining = headers['x-ratelimit-remaining'];
-  const limit = headers['x-ratelimit-limit'];
-  const reset = headers['x-ratelimit-reset'];
-  if (remaining == null) return;
-  lastRateLimitSeen = {
-    remaining: Number(remaining),
-    limit: Number(limit),
-    resetAt: reset ? Number(reset) * 1000 : null,
-    seenAt: Date.now(),
-  };
-}
-
-/** Best-effort passive read — may be null if no call has happened yet this
- * process, or stale if nothing's been called in a while. Callers wanting a
- * guaranteed-fresh number should still use getRateLimit(). */
-function getLastKnownRateLimit() {
-  return lastRateLimitSeen;
 }
 
 /**
@@ -122,51 +82,13 @@ async function withAbortTimeout(fn, label, timeoutMs = REQUEST_TIMEOUT_MS) {
   }
 }
 
-/**
- * v0.9.3 — adaptive backoff. When the last-seen rate-limit headers show
- * we're running low (<10 remaining), transient-error retries space out
- * proportionally to how close the reset actually is, instead of always
- * using the same flat 600ms — a flat retry delay when quota is nearly gone
- * just burns the same tiny remaining budget faster. This never SKIPS a
- * call outright (that would silently change correctness); it only widens
- * the wait before a retry of an already-transient failure.
- */
-function computeRetryDelayMs() {
-  const rl = lastRateLimitSeen;
-  if (!rl || rl.remaining > 10 || !rl.resetAt) return 600;
-  const msUntilReset = rl.resetAt - Date.now();
-  if (msUntilReset <= 0) return 600;
-  // Cap the widened delay so a single retry never itself becomes the thing
-  // that makes the caller time out (REQUEST_TIMEOUT_MS is 15s).
-  return Math.min(Math.max(msUntilReset / Math.max(rl.remaining, 1), 600), 8000);
-}
-
-/**
- * v0.9.3 — request coalescing for READ-ONLY calls only. If two handlers
- * (e.g. Browse Files and Search Files) ask for the same repo's tree within
- * milliseconds of each other, the second attaches to the first's in-flight
- * promise instead of firing a duplicate GitHub request. Deliberately never
- * applied to writes (putFile/deleteRepo/etc.) — deduping an intentional
- * double action on a mutation would silently drop it, which is a
- * correctness bug, not an optimization.
- */
-const inFlight = new Map(); // key -> Promise
-
-function coalesce(key, fn) {
-  if (inFlight.has(key)) return inFlight.get(key);
-  const p = Promise.resolve().then(fn);
-  inFlight.set(key, p);
-  p.finally(() => inFlight.delete(key));
-  return p;
-}
-
 async function withRetry(fn, label = 'GitHub API request') {
   try {
     return await withAbortTimeout(fn, label);
   } catch (err) {
     const transient = (err.status >= 500 && err.status < 600) || !err.status;
     if (!transient || isRateLimitError(err)) throw err; // rate limits shouldn't be retried immediately
-    await new Promise((resolve) => setTimeout(resolve, computeRetryDelayMs()));
+    await new Promise((resolve) => setTimeout(resolve, 600));
     return withAbortTimeout(fn, `${label} (retry)`);
   }
 }
@@ -200,11 +122,11 @@ async function listRepos(token, { sort = 'updated', direction = 'desc' } = {}) {
 }
 
 async function getRepo(token, owner, repo) {
-  return coalesce(`getRepo:${token}:${owner}/${repo}`, () => withRetry((signal) => (async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
     const { data } = await octo.repos.get({ owner, repo, request: { signal } });
     return data;
-  })(), 'Get repo'));
+  })(), 'Get repo');
 }
 
 async function createRepo(token, { name, isPrivate, description, licenseTemplate }) {
@@ -239,7 +161,7 @@ async function createWebhook(token, owner, repo, callbackUrl, secret) {
       owner,
       repo,
       config: { url: callbackUrl, content_type: 'json', secret },
-      events: ['push', 'issues', 'pull_request', 'release', 'workflow_run', 'deployment_status'],
+      events: ['push', 'issues', 'pull_request', 'release'],
       request: { signal },
     });
     return data;
@@ -344,20 +266,11 @@ async function isStarred(token, owner, repo) {
   })(), 'Check starred');
 }
 
-// v0.9.3 — ETag cache for the tree fetch (the most expensive, most-repeated
-// read: Browse Files, file search, and the upload wizard's diff/classify
-// step all hit it). A conditional request that comes back 304 doesn't count
-// against rate-limit quota at all, unlike a normal request. Keyed on the
-// resolved ref sha, not just owner/repo, so a stale entry can never be
-// served across an actual branch update — the ref lookup itself always
-// happens fresh; only the (large) recursive tree body is conditional.
-const treeEtagCache = new Map(); // `${owner}/${repo}:${sha}` -> { etag, tree }
-
 /** Fetches the full recursive git tree, unfiltered (files + folders). Shared
  * by getTree() (files-only, for Browse Files/upload change-detection) and
  * getTreeStats() (size/file/folder counts, for Repo View). */
 async function getRawTree(token, owner, repo, branch = null) {
-  return coalesce(`getRawTree:${token}:${owner}/${repo}:${branch || ''}`, () => withRetry((signal) => (async () => {
+  return withRetry((signal) => (async () => {
     const octo = client(token);
     const repoData = branch ? { default_branch: branch } : await getRepo(token, owner, repo);
     const { data: refData } = await octo.git.getRef({
@@ -366,43 +279,15 @@ async function getRawTree(token, owner, repo, branch = null) {
       ref: `heads/${repoData.default_branch}`,
       request: { signal },
     });
-    const sha = refData.object.sha;
-    const cacheKey = `${owner}/${repo}:${sha}`;
-    const cached = treeEtagCache.get(cacheKey);
-
-    try {
-      const headers = cached ? { 'If-None-Match': cached.etag } : undefined;
-      const response = await octo.git.getTree({
-        owner,
-        repo,
-        tree_sha: sha,
-        recursive: 'true',
-        headers,
-        request: { signal },
-      });
-      const etag = response.headers && response.headers.etag;
-      if (etag) treeEtagCache.set(cacheKey, { etag, tree: response.data.tree });
-      // Defensive bound — a single-owner bot only has so many repos open at
-      // once; this just stops unbounded growth if many different shas get cached.
-      if (treeEtagCache.size > 50) treeEtagCache.delete(treeEtagCache.keys().next().value);
-      return response.data.tree;
-    } catch (err) {
-      if (err.status === 304 && cached) return cached.tree; // unchanged — served from cache, zero quota cost
-      throw err;
-    }
-  })(), 'Get file tree'));
-}
-
-/** Invalidate the tree ETag cache for a repo — call after any write that
- * changes its tree (upload, commit, delete file) so a subsequent fetch
- * can't serve a stale 304 hit against a sha we've since moved past.
- * (In practice the ref sha itself changes on any commit, which already
- * changes the cache key — this exists mainly for the delete-repo case,
- * where the same repo NAME could later be recreated with a fresh history.) */
-function invalidateTreeEtag(owner, repo) {
-  for (const key of treeEtagCache.keys()) {
-    if (key.startsWith(`${owner}/${repo}:`)) treeEtagCache.delete(key);
-  }
+    const { data } = await octo.git.getTree({
+      owner,
+      repo,
+      tree_sha: refData.object.sha,
+      recursive: 'true',
+      request: { signal },
+    });
+    return data.tree;
+  })(), 'Get file tree');
 }
 
 /** Full recursive file tree — used for both Browse Files and file search */
@@ -600,6 +485,4 @@ module.exports = {
   downloadZip,
   getLanguages,
   isRateLimitError,
-  getLastKnownRateLimit,
-  invalidateTreeEtag,
 };

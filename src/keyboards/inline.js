@@ -170,19 +170,11 @@ function forkConfirm() {
 
 function notificationsMenu(prefs) {
   const check = (b) => (b ? '✅' : '⬜');
-  const rollupLabel = { off: '⬜ Off', daily: '☀️ Daily', weekly: '🗓️ Weekly' }[prefs.rollup || 'off'];
-  const quietLabel = (prefs.quietStart != null && prefs.quietEnd != null)
-    ? `🌙 ${String(prefs.quietStart).padStart(2, '0')}:00–${String(prefs.quietEnd).padStart(2, '0')}:00 UTC`
-    : '🌙 Off';
   return Markup.inlineKeyboard([
     [style.callback(`${check(prefs.githubActivity)} GitHub Activity`, 'notif:toggle:githubActivity')],
     [style.callback(`${check(prefs.systemAlerts)} System Alerts`, 'notif:toggle:systemAlerts')],
     [style.callback(`${check(prefs.longOps)} Long Operations`, 'notif:toggle:longOps')],
     [style.callback(`${check(prefs.tokenHealth)} Token Health`, 'notif:toggle:tokenHealth')],
-    // v0.9.3 — daily/weekly rollup summary + quiet hours, cycling on tap
-    // rather than a separate picker screen — keeps this one flat menu.
-    [style.callback(`Rollup: ${rollupLabel}`, 'notif:cyclerollup')],
-    [style.callback(`Quiet Hours: ${quietLabel}`, 'notif:setquiet')],
     [style.callback('⬅️ Back', 'settings:back', style.BLUE)],
   ]);
 }

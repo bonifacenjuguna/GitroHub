@@ -224,16 +224,6 @@ async function showStats(ctx) {
       trendLine = `▸ ${arrow} ${sign}${format.escapeMd(format.formatBytes(Math.abs(delta)))} since ${format.escapeMd(format.relativeTime(previous.snapshotted_at))}\n`;
     }
   }
-  // v0.9.3 — rolling 30-day sparkline, one data point per calendar day
-  // (size_snapshot_history), instead of just the single prior-vs-now delta.
-  let sparkLine = '';
-  try {
-    const history = await sizeSnapshot.getHistory(ctx.from.id, 30);
-    if (history.length >= 3) {
-      const spark = sizeSnapshot.sparkline(history.map((h) => Number(h.total_bytes)));
-      sparkLine = `▸ 📊 30d trend: ${spark}\n`;
-    }
-  } catch (_) { /* best-effort */ }
 
   const text =
     `${format.sectionHeader('Stats', `${allRepos.length} total`)}\n\n` +
@@ -242,7 +232,6 @@ async function showStats(ctx) {
     `▸ 💻 Top language: ${format.escapeMd(topLanguage)}\n` +
     `▸ 💾 Total size: ${format.escapeMd(format.formatBytes(totalBytes))}\n` +
     trendLine +
-    sparkLine +
     `\n📌 *Most active repo*\n` +
     `${format.escapeMd(mostActive.name)} · 🕒 ${format.escapeMd(format.relativeTime(mostActive.pushed_at || mostActive.updated_at))}\n\n` +
     `🕰️ *Oldest repo*\n` +

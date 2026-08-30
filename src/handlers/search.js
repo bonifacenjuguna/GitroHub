@@ -52,12 +52,8 @@ async function handleRepoSearch(ctx, query) {
   await searchHistory.record(ctx.from.id, query); // #12 — best-effort, non-blocking to the actual search
 
   const repos = await repoCache.getRepos(ctx.from.id, token);
-  // v0.9.3 — multi-field: name is still weighted highest (see searchRanking),
-  // but description now participates in the fuzzy pass too, so "the repo
-  // about parsing CSVs" can surface even with a totally different name.
-  const fuse = new Fuse(repos, { keys: [{ name: 'name', weight: 0.8 }, { name: 'description', weight: 0.2 }], threshold: 0.4, includeScore: true });
-  const searchRanking = require('../lib/searchRanking');
-  const results = searchRanking.rank(fuse.search(query), query);
+  const fuse = new Fuse(repos, { keys: ['name'], threshold: 0.4, includeScore: true });
+  const results = fuse.search(query);
 
   if (results.length === 0) {
     return ctx.reply(

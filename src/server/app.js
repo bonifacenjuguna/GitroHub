@@ -49,18 +49,6 @@ function describeWebhookEvent(event, payload) {
   if (event === 'issues' && payload.action === 'opened') return `New issue: "${payload.issue.title}"`;
   if (event === 'pull_request' && payload.action === 'opened') return `New PR: "${payload.pull_request.title}"`;
   if (event === 'release' && payload.action === 'published') return `New release: ${payload.release.tag_name}`;
-  // v0.9.3 — richer event coverage. workflow_run fires for every state
-  // transition (requested/in_progress/completed) — only the terminal
-  // 'completed' action is worth a notification, otherwise a single CI run
-  // would spam 2-3 messages for its own lifecycle.
-  if (event === 'workflow_run' && payload.action === 'completed') {
-    const conclusion = payload.workflow_run.conclusion; // success | failure | cancelled | ...
-    const icon = conclusion === 'success' ? '✅' : conclusion === 'failure' ? '❌' : '⚠️';
-    return `${icon} Workflow "${payload.workflow_run.name}" ${conclusion}`;
-  }
-  if (event === 'deployment_status') {
-    return `Deployment ${payload.deployment_status.state} → ${payload.deployment_status.environment}`;
-  }
   return null;
 }
 
@@ -224,13 +212,7 @@ function createApp(bot) {
       if (!summary) return; // event type we don't have a message for
 
       await activity.log(registration.telegram_id, '🔔', `${summary} → ${repoFullName}`, {});
-
-      // v0.9.3 — digest buffering instead of an immediate send. Quiet
-      // hours (if configured) simply widen the effective window: the
-      // event still buffers immediately, but delivery is deferred until
-      // quiet hours end (checked by the flush poller, see bot.js).
-      const webhookDigest = require('../lib/webhookDigest');
-      await webhookDigest.push(registration.telegram_id, repoFullName, summary);
+      await bot.telegram.sendMessage(registration.telegram_id, `🔔 ${summary} → ${repoFullName}`);
     } catch (err) {
       logger.error('Webhook post-processing failed', { message: err.message });
     }

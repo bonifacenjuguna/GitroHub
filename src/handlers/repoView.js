@@ -444,14 +444,8 @@ async function showCloneUrl(ctx, repoName) {
   if (!token) return;
   const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
-  // v0.9.3 — SSH and gh-cli variants alongside HTTPS, each its own code
-  // block so any one of the three is independently tap-to-copy.
-  const sshUrl = `git@github.com:${user.login}/${repoName}.git`;
   await ctx.reply(
-    `📋 *Clone ${format.escapeMd(repoName)}*\n\n` +
-    `HTTPS:\n\`\`\`\ngit clone ${format.escapeCodeBlock(repo.clone_url)}\n\`\`\`\n` +
-    `SSH:\n\`\`\`\ngit clone ${format.escapeCodeBlock(sshUrl)}\n\`\`\`\n` +
-    `GitHub CLI:\n\`\`\`\ngh repo clone ${format.escapeCodeBlock(user.login + '/' + repoName)}\n\`\`\``,
+    `📋 Clone URL for *${format.escapeMd(repoName)}*:\n\`\`\`\ngit clone ${format.escapeCodeBlock(repo.clone_url)}\n\`\`\``,
     { parse_mode: 'MarkdownV2' }
   );
 }

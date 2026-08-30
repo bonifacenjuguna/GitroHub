@@ -253,8 +253,6 @@ function createBot() {
   bot.on('text', async (ctx, next) => {
     if (ctx.scene && ctx.scene.current) return next(); // scene handles its own text
 
-    if (ctx.session.awaitingSaveViewName) return bulkActions.handleSaveViewNameInput(ctx, ctx.message.text);
-    if (ctx.session.awaitingQuietHours) return settings.handleQuietHoursInput(ctx, ctx.message.text);
     if (ctx.session.creatingTag) return tags.handleCreateTagInput(ctx);
     if (ctx.session.editingDefault) return myDefaults.handleTextInput(ctx);
     if (ctx.session.awaitingFullReset) return storageData.handleResetConfirmationText(ctx);
@@ -606,14 +604,6 @@ function createBot() {
       await ctx.answerCbQuery();
       return settings.toggleNotification(ctx, data.split('notif:toggle:')[1]);
     }
-    if (data === 'notif:cyclerollup') {
-      await ctx.answerCbQuery();
-      return settings.cycleRollup(ctx);
-    }
-    if (data === 'notif:setquiet') {
-      await ctx.answerCbQuery();
-      return settings.promptQuietHours(ctx);
-    }
     if (data === 'settings:disconnect:confirm') {
       await ctx.answerCbQuery();
       await confirmFlow.resolveConfirmation(ctx, 'confirmed', '⏳ Disconnecting…');
@@ -735,39 +725,6 @@ function createBot() {
     if (data.startsWith('bulk:retryfailed:')) {
       await ctx.answerCbQuery();
       return bulkActions.retryFailed(ctx, data.split('bulk:retryfailed:')[1]);
-    }
-    if (data.startsWith('bulk:undo:')) {
-      await ctx.answerCbQuery();
-      return bulkActions.undoBulkAction(ctx, data.split('bulk:undo:')[1]);
-    }
-    // v0.9.3 — composable filter builder clauses
-    if (data.startsWith('bulkfilter:add:')) {
-      await ctx.answerCbQuery();
-      const [, , type, ...rest] = data.split(':');
-      return bulkActions.addFilterClause(ctx, type, rest.join(':'));
-    }
-    if (data === 'bulkfilter:clear') {
-      await ctx.answerCbQuery();
-      bulkActions.clearFilterClauses(ctx);
-      return bulkActions.startBulkSelect(ctx, { page: 1, edit: true });
-    }
-    if (data === 'bulkfilter:saveview') {
-      await ctx.answerCbQuery();
-      return bulkActions.promptSaveAsView(ctx);
-    }
-    // v0.9.3 — Smart Folders (saved views)
-    if (data.startsWith('savedview:apply:')) {
-      await ctx.answerCbQuery();
-      const savedViews = require('./lib/savedViews');
-      const myRepos = require('./handlers/myRepos');
-      return myRepos.showMyRepos(ctx, { savedViewId: Number(data.split('savedview:apply:')[1]) });
-    }
-    if (data.startsWith('savedview:delete:')) {
-      await ctx.answerCbQuery();
-      const savedViews = require('./lib/savedViews');
-      await savedViews.remove(ctx.from.id, Number(data.split('savedview:delete:')[1]));
-      const myRepos = require('./handlers/myRepos');
-      return myRepos.showMyRepos(ctx);
     }
 
     // Nothing matched — most likely a stale button from an old message
