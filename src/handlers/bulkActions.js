@@ -216,6 +216,10 @@ async function _execute(ctx, action) {
   const selected = getSelection(ctx);
   const user = await repoCache.getUser(ctx.from.id, token);
 
+  // v0.9.3 — snapshot prior state before the batch runs, for undo. Only
+  // meaningful for visibility changes; returns null (no-op) otherwise.
+  const undoLogId = await captureUndoState(ctx, action, selected).catch(() => null);
+
   const progressMsg = await ctx.reply(
     `${actionVerb(action)} ${selected.length} repos...\n\n` + selected.map((n) => `⏳ ${n}`).join('\n')
   );
@@ -309,6 +313,14 @@ async function _execute(ctx, action) {
   } else {
     await ctx.reply(summary, bbtb.bulkComplete);
   }
+
+  // v0.9.3 — undo offer, only when a reversible snapshot was actually taken.
+  if (undoLogId) {
+    await ctx.reply(
+      `Undo available for 1 hour.`,
+      Markup.inlineKeyboard([[style.callback('↩️ Undo This Bulk Change', `bulk:undo:${undoLogId}`)]])
+    );
+  }
 }
 
 /** Long Operations notification: for a batch big enough to actually take a
@@ -345,6 +357,105 @@ async function runAction(token, owner, repoName, action, telegramId) {
     repoCache.invalidateRepos(telegramId);
     return;
   }
+}
+
+/**
+ * v0.9.3 — records prior visibility per-repo BEFORE the bulk change runs,
+ * so a full batch can be reversed with one tap. Only visibility is wired
+ * up here; delete/download were never reversible candidates (see
+ * lib/bulkUndo's REVERSIBLE_ACTIONS).
+ */
+async function captureUndoState(ctx, action, repoNames) {
+  if (action !== 'private' && action !== 'public') return null;
+  const bulkUndo = require('../lib/bulkUndo');
+  const token = await requireConnected(ctx);
+  if (!token) return null;
+  const allRepos = await repoCache.getRepos(ctx.from.id, token);
+  const byName = new Map(allRepos.map((r) => [r.name, r]));
+  const previousState = {};
+  for (const name of repoNames) {
+    const r = byName.get(name);
+    if (r) previousState[name] = r.private;
+  }
+  return bulkUndo.record(ctx.from.id, action, repoNames, previousState);
+}
+
+/** Reverses a logged bulk visibility change by writing each repo's prior
+ * `private` boolean straight back. */
+async function undoBulkAction(ctx, logId) {
+  const bulkUndo = require('../lib/bulkUndo');
+  const entry = await bulkUndo.getUndoable(ctx.from.id, Number(logId));
+  if (!entry || entry.status !== 'ok') {
+    const msg = entry && entry.status === 'already-undone' ? 'Already undone.' : 'This undo has expired.';
+    return ctx.reply(msg);
+  }
+  const token = await requireConnected(ctx);
+  if (!token) return;
+  const user = await repoCache.getUser(ctx.from.id, token);
+
+  const names = Object.keys(entry.previousState);
+  let restored = 0;
+  for (const name of names) {
+    try {
+      await github.setVisibility(token, user.login, name, entry.previousState[name]);
+      restored++;
+    } catch (_) { /* best-effort — summary below reflects the real count */ }
+  }
+  repoCache.invalidateRepos(ctx.from.id);
+  await bulkUndo.markUndone(entry.id);
+  await activity.log(ctx.from.id, '↩️', `Undid bulk ${entry.action_type} → restored ${restored}/${names.length}`);
+  await ctx.reply(`↩️ Restored ${restored}/${names.length} repos to their prior visibility.`);
+}
+
+// ─── Composable filter builder (shared engine — lib/filterClauses.js) ────
+
+function getFilterClauses(ctx) {
+  ctx.session.bulkFilterClauses = ctx.session.bulkFilterClauses || [];
+  return ctx.session.bulkFilterClauses;
+}
+
+/** Applies the session's filter clauses on top of the full repo list and
+ * sets bulkSelected to the matching names — same end result as the
+ * existing one-shot selectStale/selectByVisibility buttons, but composable:
+ * clauses AND together, so "private AND stale AND tag:X" is expressible. */
+async function applyFilterBuilder(ctx) {
+  const filterClauses = require('../lib/filterClauses');
+  const token = await requireConnected(ctx);
+  if (!token) return;
+  const clauses = getFilterClauses(ctx);
+  const allRepos = await repoCache.getRepos(ctx.from.id, token);
+  const filterCtx = await filterClauses.buildTagContext(ctx.from.id, clauses);
+  const matched = filterClauses.applyClauses(allRepos, clauses, filterCtx);
+  ctx.session.bulkSelected = matched.map((r) => r.name);
+  return startBulkSelect(ctx, { page: 1, edit: true });
+}
+
+function addFilterClause(ctx, type, value) {
+  const clauses = getFilterClauses(ctx);
+  clauses.push({ type, value });
+  return applyFilterBuilder(ctx);
+}
+
+function clearFilterClauses(ctx) {
+  ctx.session.bulkFilterClauses = [];
+}
+
+/** Offers to save the current filter-clause set as a named Smart Folder
+ * (lib/savedViews.js) — the direct link between Bulk Actions' ephemeral
+ * filters and My Repos' persistent quick-access views. */
+async function promptSaveAsView(ctx) {
+  const clauses = getFilterClauses(ctx);
+  if (clauses.length === 0) return ctx.reply('Build a filter first, then save it as a view.');
+  ctx.session.awaitingSaveViewName = true;
+  await ctx.reply('📁 Name this Smart Folder (or ❌ Cancel):');
+}
+
+async function handleSaveViewNameInput(ctx, name) {
+  ctx.session.awaitingSaveViewName = false;
+  const savedViews = require('../lib/savedViews');
+  const clauses = getFilterClauses(ctx);
+  await savedViews.create(ctx.from.id, name, clauses);
+  await ctx.reply(`✅ Saved "${name}" as a Smart Folder — find it above My Repos.`);
 }
 
 async function executeDownloads(ctx) {
@@ -416,4 +527,10 @@ module.exports = {
   retryFailed,
   executeDownloads,
   maybeAddLongOpNotice,
+  undoBulkAction,
+  addFilterClause,
+  clearFilterClauses,
+  applyFilterBuilder,
+  promptSaveAsView,
+  handleSaveViewNameInput,
 };

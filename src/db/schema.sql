@@ -148,3 +148,92 @@ CREATE TABLE IF NOT EXISTS repo_webhooks (
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   PRIMARY KEY (telegram_id, repo_name)
 );
+
+-- ── v0.9.3 additions ─────────────────────────────────────────
+
+-- Nested tags (self-reference; NULL parent = top-level) + color class for
+-- chip rendering. Existing rows get parent_id=NULL, color_class='default'.
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS parent_id BIGINT REFERENCES tags(id) ON DELETE CASCADE;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS color_class TEXT NOT NULL DEFAULT 'default';
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS auto_rule_json TEXT; -- {"field":"language","op":"eq","value":"Python"} — NULL = manual tag
+
+-- Per-tag default overrides (visibility, upload_path, commit_message).
+-- Resolution order: repo's tag override -> global user default.
+CREATE TABLE IF NOT EXISTS tag_defaults (
+  tag_id        BIGINT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  key           TEXT NOT NULL, -- 'default_visibility' | 'default_upload_path' | 'default_commit_message'
+  value         TEXT NOT NULL,
+  PRIMARY KEY (tag_id, key)
+);
+
+-- Pin sections — optional named grouping, NULL = ungrouped ("Pinned").
+ALTER TABLE pinned_repos ADD COLUMN IF NOT EXISTS pin_section TEXT;
+
+-- Saved views ("smart folders") — reuses the same filter-clause JSON shape
+-- as Bulk Actions' composable filter builder (see lib/filterClauses.js).
+CREATE TABLE IF NOT EXISTS saved_views (
+  id            BIGSERIAL PRIMARY KEY,
+  telegram_id   BIGINT NOT NULL,
+  name          TEXT NOT NULL,
+  filter_json   TEXT NOT NULL,
+  position      INT NOT NULL DEFAULT 0,
+  created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (telegram_id, name)
+);
+
+-- Every settings/defaults change, old -> new, for the defaults audit trail.
+CREATE TABLE IF NOT EXISTS defaults_changelog (
+  id            BIGSERIAL PRIMARY KEY,
+  telegram_id   BIGINT NOT NULL,
+  field         TEXT NOT NULL,
+  old_value     TEXT,
+  new_value     TEXT,
+  source        TEXT NOT NULL DEFAULT 'manual', -- 'manual' | 'learned-suggestion'
+  changed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_defaults_changelog_user ON defaults_changelog (telegram_id, changed_at DESC);
+
+-- Reversible bulk-action undo ledger. Scoped to actions that are safely
+-- reversible (visibility, tag assign, archive, pin) — never delete/rename.
+CREATE TABLE IF NOT EXISTS bulk_action_log (
+  id                BIGSERIAL PRIMARY KEY,
+  telegram_id       BIGINT NOT NULL,
+  action_type       TEXT NOT NULL,
+  repo_names        TEXT NOT NULL, -- JSON array
+  previous_state    TEXT NOT NULL, -- JSON, shape depends on action_type
+  created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at        TIMESTAMPTZ NOT NULL,
+  undone_at         TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_bulk_action_log_user ON bulk_action_log (telegram_id, created_at DESC);
+
+-- Upload path frequency, feeds "learned defaults" suggestions.
+CREATE TABLE IF NOT EXISTS upload_path_frequency (
+  telegram_id   BIGINT NOT NULL,
+  path          TEXT NOT NULL,
+  count         INT NOT NULL DEFAULT 1,
+  last_used_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (telegram_id, path)
+);
+
+-- Rolling size history (size_snapshots stays as the fast "latest" lookup).
+CREATE TABLE IF NOT EXISTS size_snapshot_history (
+  id                BIGSERIAL PRIMARY KEY,
+  telegram_id       BIGINT NOT NULL,
+  total_bytes       BIGINT NOT NULL,
+  snapshotted_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_size_snapshot_history_user ON size_snapshot_history (telegram_id, snapshotted_at DESC);
+
+-- Access Log anomaly flags.
+ALTER TABLE access_log ADD COLUMN IF NOT EXISTS is_anomalous BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE access_log ADD COLUMN IF NOT EXISTS anomaly_reason TEXT;
+
+-- New notification prefs: daily/weekly rollup opt-in + quiet hours window.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_rollup TEXT NOT NULL DEFAULT 'off'; -- 'off' | 'daily' | 'weekly'
+ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_start INT; -- 0-23, NULL = disabled
+ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_end INT;  -- 0-23
+
+-- Commit message template placeholders live on the existing
+-- default_commit_message column itself (e.g. "Update {filename} — {date}"),
+-- expanded at commit time — no schema change needed for that piece.

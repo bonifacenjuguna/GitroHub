@@ -78,6 +78,16 @@ const scene = new Scenes.WizardScene(
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, oldName);
       repoCache.invalidateTreeStats(ctx.from.id, oldName);
+      // v0.9.3 fix: tags/pins/path-memory/mutes/webhooks were previously
+      // left keyed to the old name and silently orphaned — see renameCascade.js.
+      try {
+        const renameCascade = require('../lib/renameCascade');
+        await renameCascade.cascadeRename(ctx.from.id, oldName, newName);
+      } catch (cascadeErr) {
+        // GitHub's side already succeeded — never fail the whole rename over
+        // this, but make sure it's loud in the logs and in Activity.
+        await activity.log(ctx.from.id, '⚠️', `Rename cascade incomplete → ${oldName} → ${newName}`, { detail: cascadeErr.message, isError: true });
+      }
       await activity.log(ctx.from.id, '✏️', `Renamed → ${oldName} → ${newName}`);
       await ctx.reply(`✅ Renamed: ${oldName} → ${repo.name}\n🔗 ${repo.html_url}`, bbtb.mainMenu);
     } catch (err) {

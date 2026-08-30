@@ -32,10 +32,21 @@ async function showSettings(ctx, { skipBbtb = false } = {}) {
   let rateLimitLine = 'Not connected — connect GitHub to see live usage';
   if (connected) {
     try {
-      const token = await users.getDecryptedToken(telegramId);
-      const rl = await github.getRateLimit(token);
-      const resetMins = Math.max(0, Math.round((rl.reset * 1000 - Date.now()) / 60000));
-      rateLimitLine = `${rl.remaining} / ${rl.limit} remaining \\(resets in ${resetMins}m\\)`;
+      // v0.9.3 — prefer the passively-captured value (from headers on
+      // whatever GitHub calls already happened this session) over spending
+      // a live request just to display a number. Falls back to an actual
+      // getRateLimit() call only if nothing's been captured yet (e.g.
+      // right after a fresh bot restart, before any other GitHub call).
+      let rl = github.getLastKnownRateLimit();
+      if (!rl) {
+        const token = await users.getDecryptedToken(telegramId);
+        const fresh = await github.getRateLimit(token);
+        rl = { remaining: fresh.remaining, limit: fresh.limit, resetAt: fresh.reset * 1000 };
+      }
+      const resetMins = Math.max(0, Math.round((rl.resetAt - Date.now()) / 60000));
+      const pct = rl.limit ? rl.remaining / rl.limit : 1;
+      const dot = pct > 0.5 ? '🟢' : pct > 0.2 ? '🟡' : '🔴';
+      rateLimitLine = `${dot} ${rl.remaining} / ${rl.limit} remaining \\(resets in ${resetMins}m\\)`;
     } catch (_) {
       rateLimitLine = 'Unable to fetch';
     }
@@ -202,4 +213,39 @@ async function toggleNotification(ctx, key) {
   await ctx.editMessageReplyMarkup(inline.notificationsMenu(prefs).reply_markup);
 }
 
-module.exports = { showSettings, askDisconnect, executeDisconnect, showNotifications, toggleNotification };
+/** v0.9.3 — rollup cycles in place (off -> daily -> weekly -> off). */
+async function cycleRollup(ctx) {
+  await users.cycleRollup(ctx.from.id);
+  const prefs = await users.getNotificationPrefs(ctx.from.id);
+  await ctx.editMessageReplyMarkup(inline.notificationsMenu(prefs).reply_markup);
+}
+
+/** Prompts for quiet hours as "start-end" (e.g. "22-7"), simplest input
+ * that covers the wrap-past-midnight case without a full time-picker UI. */
+async function promptQuietHours(ctx) {
+  ctx.session.awaitingQuietHours = true;
+  await ctx.reply('🌙 Send quiet hours as `start-end` in 24h UTC \\(e\\.g\\. `22-7`\\), or `off` to disable\\.', { parse_mode: 'MarkdownV2' });
+}
+
+async function handleQuietHoursInput(ctx, text) {
+  ctx.session.awaitingQuietHours = false;
+  const trimmed = text.trim().toLowerCase();
+  if (trimmed === 'off') {
+    await users.setQuietHours(ctx.from.id, null, null);
+    await ctx.reply('🌙 Quiet hours disabled.');
+    return showNotifications(ctx);
+  }
+  const match = trimmed.match(/^(\d{1,2})-(\d{1,2})$/);
+  if (!match) return ctx.reply('Didn\u2019t understand that — use `start-end`, e.g. `22-7`, or `off`.');
+  const start = Number(match[1]);
+  const end = Number(match[2]);
+  if (start < 0 || start > 23 || end < 0 || end > 23) return ctx.reply('Hours must be 0–23.');
+  await users.setQuietHours(ctx.from.id, start, end);
+  await ctx.reply(`🌙 Quiet hours set: ${String(start).padStart(2, '0')}:00–${String(end).padStart(2, '0')}:00 UTC.`);
+  return showNotifications(ctx);
+}
+
+module.exports = {
+  showSettings, askDisconnect, executeDisconnect, showNotifications, toggleNotification,
+  cycleRollup, promptQuietHours, handleQuietHoursInput,
+};

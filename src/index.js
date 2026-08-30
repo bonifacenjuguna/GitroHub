@@ -139,6 +139,99 @@ function startMemoryWatchdog() {
 }
 
 /**
+ * v0.9.3 — flushes any webhook digest windows that have come due (see
+ * lib/webhookDigest.js). A plain setInterval, deliberately separate from
+ * the memory watchdog's adaptive-cadence logic above — unrelated concern,
+ * unrelated failure modes; tangling them would make both harder to reason
+ * about. 30s cadence is frequent enough that a 2-minute digest window
+ * never overshoots by more than half a poll cycle.
+ *
+ * Quiet hours: if the user has a configured quiet_hours_start/end and the
+ * current hour (in UTC — this is a single-owner bot with one timezone of
+ * concern, the owner's; a per-user TZ field doesn't exist so UTC hour is
+ * the only thing available to compare against) falls inside that window,
+ * the digest is simply left unflushed — it stays in Redis and gets picked
+ * up again on the next poll after quiet hours end, rather than being
+ * flushed on time and then queued client-side (simpler, and nothing is
+ * lost either way).
+ */
+function startWebhookDigestPoller(bot) {
+  const DIGEST_POLL_INTERVAL_MS = 30 * 1000;
+  async function poll() {
+    try {
+      const webhookDigest = require('./lib/webhookDigest');
+      const users = require('./lib/users');
+      const due = await webhookDigest.flushDue();
+      for (const { telegramId, repo, events } of due) {
+        const user = await users.getUser(telegramId).catch(() => null);
+        if (user && user.quiet_hours_start != null && user.quiet_hours_end != null) {
+          const hour = new Date().getUTCHours();
+          const { quiet_hours_start: qs, quiet_hours_end: qe } = user;
+          const inQuietWindow = qs <= qe ? (hour >= qs && hour < qe) : (hour >= qs || hour < qe); // handles wrap past midnight
+          if (inQuietWindow) {
+            // Re-buffer for the next poll rather than dropping — push each
+            // event back in under a fresh window.
+            for (const e of events) await webhookDigest.push(telegramId, repo, e.summary);
+            continue;
+          }
+        }
+        const message = webhookDigest.composeDigestMessage(repo, events);
+        await bot.telegram.sendMessage(telegramId, message).catch((err) => {
+          logger.error('Digest delivery failed', { telegramId, repo, message: err.message });
+        });
+      }
+    } catch (err) {
+      logger.error('Webhook digest poll failed', { message: err.message });
+    }
+    setTimeout(poll, DIGEST_POLL_INTERVAL_MS).unref();
+  }
+  setTimeout(poll, DIGEST_POLL_INTERVAL_MS).unref();
+}
+
+/**
+ * v0.9.3 — daily/weekly rollup delivery. Checked hourly; a Redis marker
+ * (not in-memory) records the last date a rollup was sent per user+period,
+ * so a bot restart can't cause a duplicate send within the same day/week —
+ * same reasoning as the digest poller's "durable due-marker over
+ * setTimeout" choice above.
+ */
+function startRollupScheduler(bot) {
+  const HOURLY_MS = 60 * 60 * 1000;
+  const ROLLUP_HOUR_UTC = 8; // 08:00 UTC — arbitrary fixed send time, single-owner bot has one timezone of concern
+
+  async function poll() {
+    try {
+      const now = new Date();
+      if (now.getUTCHours() === ROLLUP_HOUR_UTC) {
+        const { pool } = require('./db/postgres');
+        const redisDb = require('./db/redis');
+        const rollup = require('./lib/rollup');
+        const isMonday = now.getUTCDay() === 1;
+
+        const { rows: users } = await pool.query("SELECT telegram_id, notif_rollup FROM users WHERE notif_rollup != 'off'");
+        for (const u of users) {
+          if (u.notif_rollup === 'weekly' && !isMonday) continue;
+          const days = u.notif_rollup === 'weekly' ? 7 : 1;
+          const marker = `rollup-sent:${u.telegram_id}:${now.toISOString().slice(0, 10)}:${u.notif_rollup}`;
+          const already = await redisDb.client.exists(marker);
+          if (already) continue;
+
+          const summary = await rollup.compose(u.telegram_id, days);
+          if (summary) {
+            await bot.telegram.sendMessage(u.telegram_id, summary, { parse_mode: 'MarkdownV2' }).catch(() => {});
+          }
+          await redisDb.client.set(marker, '1', { EX: 25 * 60 * 60 }); // outlives the check window comfortably, self-expires
+        }
+      }
+    } catch (err) {
+      logger.error('Rollup scheduler failed', { message: err.message });
+    }
+    setTimeout(poll, HOURLY_MS).unref();
+  }
+  setTimeout(poll, HOURLY_MS).unref();
+}
+
+/**
  * Process-level safety net. An uncaught exception leaves Node in an
  * undefined state — best practice is to log it clearly and exit via the
  * same clean shutdown path. Unhandled promise rejections are logged but
@@ -219,6 +312,8 @@ async function main() {
   }
 
   startMemoryWatchdog();
+  startWebhookDigestPoller(bot);
+  startRollupScheduler(bot);
 
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));
