@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="https://raw.githubusercontent.com/your-username/gitrohub/main/public/logo.png" width="140" alt="GitroHub logo" />
+<img src="https://raw.githubusercontent.com/bonifacenjuguna/gitrohub/main/public/logo.png" width="140" alt="GitroHub logo" />
 
 <h1>GitroHub</h1>
 
