@@ -48,7 +48,25 @@ async function getNotificationPrefs(telegramId) {
     systemAlerts: user.notif_system_alerts,
     longOps: user.notif_long_ops,
     tokenHealth: user.notif_token_health,
+    rollup: user.notif_rollup,
+    quietStart: user.quiet_hours_start,
+    quietEnd: user.quiet_hours_end,
   };
+}
+
+/** Cycles off -> daily -> weekly -> off, single-tap in the menu rather
+ * than a separate picker screen for a 3-way choice. */
+async function cycleRollup(telegramId) {
+  const user = await getUser(telegramId);
+  const next = { off: 'daily', daily: 'weekly', weekly: 'off' }[user.notif_rollup] || 'daily';
+  await pool.query('UPDATE users SET notif_rollup = $1 WHERE telegram_id = $2', [next, telegramId]);
+  return next;
+}
+
+/** Sets or clears quiet hours (both null = disabled). Hours are UTC — see
+ * the poller's comment in index.js for why. */
+async function setQuietHours(telegramId, start, end) {
+  await pool.query('UPDATE users SET quiet_hours_start = $1, quiet_hours_end = $2 WHERE telegram_id = $3', [start, end, telegramId]);
 }
 
 async function toggleNotification(telegramId, key) {
@@ -76,4 +94,6 @@ module.exports = {
   disconnect,
   getNotificationPrefs,
   toggleNotification,
+  cycleRollup,
+  setQuietHours,
 };
