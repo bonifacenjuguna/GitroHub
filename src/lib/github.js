@@ -17,9 +17,9 @@ const clientCache = new Map();
 function client(token) {
   if (clientCache.has(token)) return clientCache.get(token);
   const octo = new Octokit({ auth: token });
-  // v0.9.3 — passive rate-limit capture via Octokit's own request hooks,
+  // Passive rate-limit capture via Octokit's own request hooks,
   // rather than threading header-capture through every single function
-  // below (would've meant touching 25+ call sites for the same effect).
+  // below (would mean touching 25+ call sites for the same effect).
   // Hooks fire for every request this client makes, success or failure.
   octo.hook.after('request', (response) => captureRateLimitHeaders(response.headers));
   octo.hook.error('request', (error) => {
@@ -43,7 +43,7 @@ function isRateLimitError(err) {
 }
 
 /**
- * v0.9.3 — passive rate-limit tracking. Every Octokit response (success or
+ * Passive rate-limit tracking. Every Octokit response (success or
  * error) carries `x-ratelimit-remaining`/`x-ratelimit-reset` headers even
  * when nothing went wrong; capturing them here means Settings/Stats can
  * show a live budget without spending a request on getRateLimit() just to
@@ -86,16 +86,16 @@ function getLastKnownRateLimit() {
  * block every subsequent interaction — including /start — behind it.
  * Bounding every call here is what makes that serialization safe.
  *
- * IMPORTANT (v0.8.4 hardening): earlier versions raced the request against
- * a timeout with Promise.race(), which only stops US from waiting — it
- * never actually cancelled the underlying HTTP request. A slow GitHub
- * response kept running in the background indefinitely, still holding a
- * socket and buffers, completely invisible to our own error handling —
- * and withRetry made this worse by firing a SECOND independent request on
- * top of a still-running first one. Every function below now uses a real
- * AbortController and passes `request: { signal }` into its Octokit
- * call(s), so a timeout genuinely tears down the in-flight request instead
- * of just giving up on waiting for it.
+ * A real timeout here needs more than racing a Promise.race() against the
+ * request — that only stops US from waiting, it doesn't actually cancel
+ * the underlying HTTP request. A slow GitHub response would keep running
+ * in the background indefinitely, still holding a socket and buffers,
+ * invisible to error handling — and a naive retry on top of that would
+ * fire a SECOND independent request while the first is still running.
+ * Every function below uses a real AbortController and passes
+ * `request: { signal }` into its Octokit call(s), so a timeout genuinely
+ * tears down the in-flight request instead of just giving up on waiting
+ * for it.
  */
 const REQUEST_TIMEOUT_MS = 15000;
 
@@ -123,7 +123,7 @@ async function withAbortTimeout(fn, label, timeoutMs = REQUEST_TIMEOUT_MS) {
 }
 
 /**
- * v0.9.3 — adaptive backoff. When the last-seen rate-limit headers show
+ * Adaptive backoff. When the last-seen rate-limit headers show
  * we're running low (<10 remaining), transient-error retries space out
  * proportionally to how close the reset actually is, instead of always
  * using the same flat 600ms — a flat retry delay when quota is nearly gone
@@ -142,7 +142,7 @@ function computeRetryDelayMs() {
 }
 
 /**
- * v0.9.3 — request coalescing for READ-ONLY calls only. If two handlers
+ * Request coalescing for READ-ONLY calls only. If two handlers
  * (e.g. Browse Files and Search Files) ask for the same repo's tree within
  * milliseconds of each other, the second attaches to the first's in-flight
  * promise instead of firing a duplicate GitHub request. Deliberately never
@@ -344,7 +344,7 @@ async function isStarred(token, owner, repo) {
   })(), 'Check starred');
 }
 
-// v0.9.3 — ETag cache for the tree fetch (the most expensive, most-repeated
+// ETag cache for the tree fetch (the most expensive, most-repeated
 // read: Browse Files, file search, and the upload wizard's diff/classify
 // step all hit it). A conditional request that comes back 304 doesn't count
 // against rate-limit quota at all, unlike a normal request. Keyed on the

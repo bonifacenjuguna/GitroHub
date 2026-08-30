@@ -1,5 +1,5 @@
 /**
- * v0.9.3 — weighted ranking layered on top of Fuse's fuzzy name match.
+ * Weighted ranking layered on top of Fuse's fuzzy name match.
  * Fuse alone only orders by string-distance; two repos with an identical
  * name-match score should still resolve to "the one you actually meant"
  * more often, so a repo you touch often and just updated should usually

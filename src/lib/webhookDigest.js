@@ -12,7 +12,7 @@ function dueKey(telegramId, repo) {
 }
 
 /**
- * v0.9.3 — batches rapid-fire webhook events (e.g. 5 pushes in 2 minutes)
+ * Batches rapid-fire webhook events (e.g. 5 pushes in 2 minutes)
  * into one Telegram message instead of one message per event. Uses a
  * Redis LIST for the buffer (append-only, cheap) and a separate TTL "due"
  * marker key rather than a JS setTimeout — a setTimeout would be lost on

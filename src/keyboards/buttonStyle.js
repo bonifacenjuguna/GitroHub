@@ -8,9 +8,8 @@
  * version yet — sidesteps that uncertainty entirely rather than depending
  * on it.
  *
- * REVISED mapping (v0.8.6) — replaces v0.8.5's simpler 3-tier version after
- * seeing it rendered live: stacking Delete Repo's "Yes, Delete" and
- * "Cancel" both in red made it impossible to tell which one was actually
+ * Four-tier mapping: stacking Delete Repo's "Yes, Delete" and "Cancel"
+ * both in red would make it impossible to tell which one is actually
  * dangerous. Color only works as a signal if each one means exactly ONE
  * thing, always, everywhere — never context-dependent. Four tiers now:
  *
@@ -49,12 +48,11 @@ const BLUE = 'primary';
  * bytes of budget before hitting that ceiling. A full fix (per-message
  * short-reference IDs instead of embedding the name directly) is the right
  * long-term answer, but is its own careful, dedicated piece of work — not
- * something to bolt on here, especially after nearly introducing a worse
- * regression by reaching for ctx.session.currentRepo as a shortcut (that
- * works for BBTB buttons, which are inherently "whatever's current," but
- * would silently break inline buttons on an OLDER message once a different
- * repo becomes "current" — each message's buttons need to stay bound to
- * what THAT message was actually showing).
+ * something to bolt on here. Note that `ctx.session.currentRepo` is NOT a
+ * safe shortcut for this: it works for BBTB buttons, which are inherently
+ * "whatever's current," but would silently break inline buttons on an
+ * OLDER message once a different repo becomes "current" — each message's
+ * buttons need to stay bound to what THAT message was actually showing.
  *
  * Until that real fix exists, this is the honest, safe stopgap: never let
  * an oversized callback_data get sent silently. Telegram would otherwise

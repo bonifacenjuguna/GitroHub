@@ -32,7 +32,7 @@ async function showSettings(ctx, { skipBbtb = false } = {}) {
   let rateLimitLine = 'Not connected — connect GitHub to see live usage';
   if (connected) {
     try {
-      // v0.9.3 — prefer the passively-captured value (from headers on
+      // Prefer the passively-captured value (from headers on
       // whatever GitHub calls already happened this session) over spending
       // a live request just to display a number. Falls back to an actual
       // getRateLimit() call only if nothing's been captured yet (e.g.
@@ -144,11 +144,10 @@ async function executeDisconnect(ctx) {
 async function _executeDisconnect(ctx) {
   // Tear down every live webhook on GitHub's side BEFORE wiping the token —
   // users.disconnect() sets github_token_enc to NULL, and once that's gone
-  // there's no way to call GitHub's API to remove anything. Root-cause fix:
-  // the Disconnect confirmation screen explicitly promises this "will NOT
-  // affect anything on GitHub itself" — that was quietly false the moment
-  // Live Alerts (#1) existed, since a webhook is a real resource sitting on
-  // the person's actual repo settings. This is what makes that promise true.
+  // there's no way to call GitHub's API to remove anything. This is what
+  // makes the Disconnect confirmation screen's promise ("will NOT affect
+  // anything on GitHub itself") actually true — a webhook is a real
+  // resource sitting on the person's actual repo settings otherwise.
   const token = await users.getDecryptedToken(ctx.from.id);
   const repoWebhooks = require('../lib/repoWebhooks');
   const notificationMutes = require('../lib/notificationMutes');
@@ -213,7 +212,7 @@ async function toggleNotification(ctx, key) {
   await ctx.editMessageReplyMarkup(inline.notificationsMenu(prefs).reply_markup);
 }
 
-/** v0.9.3 — rollup cycles in place (off -> daily -> weekly -> off). */
+/** Rollup cycles in place (off -> daily -> weekly -> off). */
 async function cycleRollup(ctx) {
   await users.cycleRollup(ctx.from.id);
   const prefs = await users.getNotificationPrefs(ctx.from.id);

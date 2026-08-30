@@ -1,334 +1,66 @@
 # GitroHub Changelog
 
-All notable changes to GitroHub, newest first. See [README.md](./README.md) for the current feature set and setup instructions.
-
-**Jump to:** [v0.9.4](#v094--live-crash-fix-broken-searchhistory-require-path-in-botjs) · [v0.9.3](#v093--smart-folders-nested-tags-github-api-hardening-and-a-real-bug-fix) · [v0.9.2](#v092--root-cause-bug-sweep-missing-imports-webhook-cleanup-callback-safety) · [v0.9.1](#v091--webhook-notifications-recently-viewed-undo-history-and-more) · [v0.9.0](#v090--15-features-fork-tags-star-toggle-undo-search-history-and-more) · [v0.8.7](#v087--colors-redesigned-around-outcome-not-button-role) · [v0.8.6](#v086--button-color-remapping-after-seeing-it-live) · [v0.8.5](#v085--button-color-styling-bot-api-94) · [v0.8.4](#v084--memory-and-watchdog-hardening) · [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
+All notable changes to GitroHub. See [README.md](./README.md) for the current feature set and setup instructions.
 
 ---
 
----
-
-### v0.9.4 — Live crash fix: broken searchHistory require path in bot.js
-
-User-reported: tapping 📁 My Repos under 🔍 Search Repo threw `Cannot find module '../lib/searchHistory'`.
-
-- **Fixed:** two call sites in `bot.js` (the "recent searches" suggestion list, and "🗑 Clear History") used `require('../lib/searchHistory')`. `bot.js` lives at `src/bot.js`, a sibling of `src/lib/` — `../lib/searchHistory` incorrectly climbed one level above `src/` entirely (looking for a `/lib/` folder at the project root, which doesn't exist), instead of `./lib/searchHistory`. This bug pre-dates v0.9.3's changes — confirmed present in the v0.9.2 source before any of this session's edits — and only ever surfaced at runtime because these two lazy `require()` calls only execute when that specific button is tapped, not at bot startup.
-- **Verified, not just patched:** rather than fix only the two reported lines, ran a full audit of every relative `require()` in the codebase (all ~90 files) by resolving each one programmatically against the real filesystem, not by eyeballing paths. Confirmed no other instance of this bug class exists anywhere — both directions checked (top-level `src/*.js` files wrongly using `../`, and one-level-deep files like `handlers/`/`scenes/` wrongly using `./`).
-
-A "make everything more sophisticated" pass across Tags/Pins/Defaults, Bulk Actions, Search, the GitHub API layer, Webhooks, and Activity/Stats — plus one genuine latent bug found and fixed along the way, not part of the original ask.
-
-- **Fixed (real bug, not a feature):** renaming a repo left `repo_tags`, `pinned_repos`, `repo_path_memory`, `notification_mutes`, and `repo_webhooks` all keyed to the OLD name. GitHub itself redirects the old URL after a rename, but nothing on this side ever followed — a renamed repo silently lost its tags, pin position, upload-path memory, mute state, and live webhook registration, with no error shown anywhere. Fixed with a single transactional cascade (`lib/renameCascade.js`) run right after a successful rename: either every table follows the new name, or (on failure) none do and it's logged loudly — a partial cascade would be worse than doing nothing, since it'd be silently inconsistent. GitHub's side is never rolled back even if the local cascade fails; the failure is surfaced to Activity instead.
-- **Smart Folders** — save a composable filter (visibility + language + staleness + tag + name, all AND'd) as a named quick-access view. Built on one shared engine (`lib/filterClauses.js`) used by both this and Bulk Actions' filter builder below, so the two never drift into two different definitions of "stale" or "matches this tag."
-- **Bulk Actions: composable filter builder** — replaces the old one-shot Select Stale/Select by Visibility/Select by Tag buttons with clauses that stack (e.g. private AND stale-90d AND tagged "side-project"), plus a "Save as Smart Folder" shortcut right from the same screen.
-- **Bulk Actions: Undo** — a bulk visibility change (private/public) can now be reversed with one tap for up to an hour. Deliberately scoped to visibility only — delete is permanent on GitHub's side and rename is collision-prone, so neither is a safe undo candidate; the ledger (`lib/bulkUndo.js`) only ever records actions it can actually reverse.
-- **Nested tags** — a tag can now have a parent (e.g. "Work" → "Work/Client-A"), with filtering on the parent automatically including every descendant. Tags also gained a fixed 6-color palette for chip rendering and optional auto-rules (`language = X`, `name matches "pattern-*"`) that flag matching repos rather than silently re-tagging them.
-- **Per-tag defaults** — a tag can override default visibility/upload-path/commit-message for any repo carrying it; resolution is repo's-tag-override → global default, checked in one place (`lib/defaults.js resolveForRepo`).
-- **Defaults changelog** — every settings/default change (manual or an accepted learned-suggestion) is now logged old→new, so "why did my upload path change" has an actual answer instead of being a mystery.
-- **Commit message templates** — `{filename}`, `{repo}`, `{date}`, `{count}` placeholders in the default commit message, expanded at commit time. A typo'd placeholder is left visible rather than silently stripped.
-- **Learned upload-path suggestion** — the global counterpart to the existing per-repo path memory: if one upload path clearly dominates across all repos and differs from the current default, offers a one-tap "update your default?" the same way the existing visibility-pattern suggestion already works. Never applied silently.
-- **Pin sections** — pins can be grouped into named clusters ("🔥 Active", "📌 Reference") instead of one flat list; reordering stays scoped within a section so dragging a pin can't accidentally jump it across groups. Staleness is surfaced as a nudge only ("hasn't moved in 60 days — still pin-worthy?") — pins are an intentional signal, so nothing auto-unpins.
-- **GitHub API layer hardening:**
-  - **Rate-limit budget** shown live in Settings, color-coded, using headers already present on whatever GitHub calls happen anyway — no extra request spent just to display the number.
-  - **Adaptive retry backoff** — when the passively-captured rate-limit headers show the budget is running low, a transient-error retry waits proportionally longer instead of always using the same flat 600ms. Never skips a call outright; only widens the wait before retrying something that already failed.
-  - **Request coalescing for reads** — two handlers asking for the same repo's tree (or repo metadata) within milliseconds now share one in-flight request instead of firing a duplicate. Deliberately never applied to writes.
-  - **ETag-conditional tree fetches** — the recursive git tree (the single most expensive, most-repeated read: Browse Files, search, and the upload wizard's diff step all hit it) is now cached with its ETag; an unchanged tree comes back as a 304 that doesn't count against rate-limit quota at all.
-- **Search: weighted ranking** — results now factor in recency and star count alongside the fuzzy name score, and description text now participates in the match (not just the name), via `lib/searchRanking.js`.
-- **Webhook notification digesting** — rapid-fire events (e.g. 5 pushes in 2 minutes) now batch into one message instead of five. Uses a Redis-backed buffer with a durable due-marker (not a JS `setTimeout`), specifically so a bot restart mid-window can't silently drop whatever was buffered — a lightweight poller piggybacks on the existing process loop and flushes anything due.
-- **Richer webhook events** — `workflow_run` (CI pass/fail, only on the terminal `completed` state to avoid spamming every lifecycle transition) and `deployment_status` now generate notifications, on top of the existing push/issues/PR/release coverage.
-- **Rolling size history + sparkline** — Stats now shows a real 30-day trend (one data point per calendar day, capped at 90 days retention) as a text sparkline, alongside the existing single prior-vs-now delta.
-- **Access Log anomaly flags** — two rules-based checks (reconnect within 5 minutes of a disconnect; GitHub scope changed between sessions) flag a connection event with a visible reason inline, rather than a bare unexplained warning icon.
-- **Quiet hours + daily/weekly rollup summary** — an optional digest ("3 repos touched, 12 changes via bot, 2 pushes received") sent once a day or once a week, and an optional UTC window during which any webhook digest is held rather than delivered immediately.
-- **Clone URL now shows all three variants** — HTTPS, SSH, and `gh repo clone`, each its own tap-to-copy code block, instead of HTTPS only.
-- **Scoped down, not built this pass:** line-level diff preview and the conflict-checklist screen for `replaceFolder` uploads, resumable zip uploads across a restart, a Redis inverted search index (the weighted-ranking pass above covers the same underlying goal — better result ordering — without the added complexity of a separate index to keep in sync), README MarkdownV2 rendering, repo templates, multi-file batch edit, search-and-replace across files, dependency-freshness/name-squat checks on repo creation, a unified Quick Access panel merging Recently Viewed/Search History/Pinned, visible countdown on expiring confirmations, idempotency keys on bulk operations, and fork/star-specific list views. Each of these is a real, separable piece of work rather than a quick add-on to something already being touched — held back deliberately rather than shipped half-done.
-
-### v0.9.2 — Root-cause bug sweep: missing imports, webhook cleanup, callback safety
-
-A user-reported crash ("Couldn't update license: style is not defined") triggered a full audit before any fix — every finding below was listed and confirmed first, nothing was patched blind.
-
-- **Fixed (the reported crash):** `repoView.js`'s `_executeSetLicense` used `style.callback(...)` without ever requiring `style` in its own scope — the license update itself was already succeeding silently, only the follow-up confirmation message crashed. Root cause wasn't this one function though: both `repoView.js` and `browseFiles.js` relied entirely on scattered per-function local requires instead of one safe top-level import, so every new function added was a chance to forget one. Found a second live instance the same sweep — `browseFiles.js`'s `searchFiles` (Browse Files' "🔍 Search Files") had the identical gap. Fixed both files at the root: promoted `style`/`Markup` to real top-level imports and removed every redundant local require, eliminating the whole bug class rather than patching the two known symptoms.
-- **Fixed:** Disconnect didn't clean up live GitHub webhooks. `deleteWebhook()` existed but was never called anywhere — meaning any repo with Live Alerts enabled kept an active webhook sitting on the person's actual GitHub repo settings after disconnecting, and the Disconnect confirmation screen's explicit promise ("will NOT affect anything on GitHub itself") was quietly false the moment that feature existed. Webhooks are now torn down on GitHub's side (best-effort — a single failed removal no longer blocks the rest) before the token that makes that possible gets wiped, followed by clearing the local DB rows.
-- **Fixed:** repo deletion left orphaned `repo_webhooks`/`notification_mutes` rows — same shape as the `invalidateTreeStats` gap from the memory/watchdog hardening pass. GitHub auto-removes a repo's webhook when the repo itself is deleted, so no API call is needed, just local cleanup — added unconditionally (unlike pins/tags, which are legitimately worth keeping if a repo might be recreated, a stale webhook_id record never serves a purpose again once GitHub's side is already gone).
-- **Investigated, scoped down deliberately:** every repo-name-carrying `callback_data` string in the bot can exceed Telegram's hard 64-byte limit for sufficiently long repo names (GitHub allows up to 100 characters; most prefixes here only leave 44-55 bytes of budget). Confirmed this is a pre-existing, project-wide characteristic — not something introduced this session — present on callbacks going back to v0.8.0. A full fix (short per-message reference IDs instead of embedding the name directly) is real, correct, and its own dedicated piece of work. Initially reached for `ctx.session.currentRepo` as a shortcut, then caught before writing any code that this would silently break: that pattern is only safe for BBTB buttons (which are inherently "whatever's current"); an inline button on an older message needs to stay bound to what THAT message was actually showing, not whatever repo is current now. Shipped the honest, safe stopgap instead — every callback now passes through one shared length check that turns a silent Telegram failure into a loud, logged warning with the actual value, verified working against both an oversized and a normal case.
-
-### v0.9.1 — Webhook notifications, recently viewed, undo history, and more
-
-- **Live GitHub notifications** — a real webhook receiver (`/webhook/github`, HMAC-verified against a per-repo secret) finally wires up the Notifications toggles that have sat in Settings doing nothing since early on. Enable per-repo from Repo View; a repo can be muted independently without touching the global toggles.
-- **Undo now holds up to 5 actions**, not just the single most recent one — each gets its own id, so an older change can still be reversed even if something else happened after it.
-- **Search history — Clear History** option alongside the recent-search suggestions.
-- **Repo health flag on My Repos and Pinned** — deliberately a lighter 2-part check (description + license only) than Repo View's full 3-part version, since checking README existence per row on a list screen would mean an extra API call per visible repo on top of the tree-stats fetch already happening there.
-- **Recently Viewed** — quick-tap shortcuts on My Repos back to whatever you actually opened recently, same lightweight pattern as search history.
-- **"Last synced" timestamp** on Repo View's size figure, since tree-based sizes are cached, not live.
-- **Rename history note** — "Renamed from X" shown on the card for 2 weeks after a rename, so a forgotten rename doesn't look like the repo went missing.
-- **Send Full README as a file**, alongside the existing preview.
-- **Export a repo's GitroHub metadata as JSON** — tags, pin status, description, license — as an actual downloadable file, not a wall of text in a chat message.
-- **Bulk Actions: Retry Failed Only** — a partial failure now offers to retry just the repos that failed, reusing the same selection-state machinery Bulk Select already has, instead of re-selecting everything by hand.
-- **Clone command on Search's external-repo screen** — shown directly in the message text rather than as a button, since the clone URL is already on hand at render time and this avoids a callback round-trip entirely.
-- **Default tag suggestion on repo creation** — if an existing tag's name matches the visibility/license pattern just chosen (e.g. "personal" for private+no-license), offers a one-tap assign; never auto-creates a tag without asking.
-- **Checked, not built:** Bulk Select's "own filter/sort" — turned out to already be independent of My Repos' filter state, with its own equivalent quick-select actions (Select Stale, Select Private/Public, Select by Tag). Adding a second, separate filter on top would have been redundant complexity, not a real gap.
-- **Scoped down, not built:** Clone URL/Open in Browser buttons on Pinned's per-row list — Pinned's rows already route to full Repo View (which has both) via one tap on "Open"; duplicating the buttons per-row would only add clutter to an already-busy row (reorder arrows + Open).
-- **Caught mid-build, not shipped:** a `str_replace` edit briefly deleted a handler's opening line while wiring Undo — caught and fixed immediately via the same cross-reference check now run before every package. Also caught: a SQL `ESCAPE` clause that looked wrong on first (visual) read turned out to be correct — verified by executing the real code and counting bytes numerically instead of trusting eyeballed output, after nearly "fixing" something that wasn't broken.
-
-### v0.9.0 — 15 features: fork tags, star toggle, undo, search history, and more
-
-The full feature batch that was deliberately held until the button-coloring system settled. Every new button was assigned a color under the same outcome-based rules from v0.8.7 — most landed colorless on purpose, which also nudged the bot's overall color balance further in that direction.
-
-- **🍴 Forked-from tag** — Repo View now shows the real source repo for forks (`repo.parent` is already included in GitHub's single-repo response, no extra call); list screens show a plain "🍴 Fork" badge instead, since the list endpoint doesn't include `parent` and fetching it per-row would mean one extra API call per repo just for a badge.
-- **🟢🟡🔴 Activity status** — every repo card now shows a recency indicator based on last push, computed from data already on hand.
-- **📋 Clone URL** and **🔗 Open in Browser** — Repo View (and Browse Files, at the current folder) now offer both a tap-to-copy `git clone` command and a direct link to GitHub.
-- **📋 Copy repo link** on Search results — scoped to Search only; Bulk Select's checkbox-row layout has no room for a second action per item without conflicting with the selection toggle.
-- **📜 Last 3 commits** and **📖 README preview** on Repo View — both share a single existing `getFileContent`/new `getRecentCommits` call rather than adding two separate fetches.
-- **⭐ Star/Unstar toggle** on Search's external-repo screen.
-- **Commit message suggestions** during Upload — four quick-tap common messages before the free-text prompt.
-- **📈 Size trend on Stats** — compares against a stored snapshot from the last time Stats was viewed; uses GitHub's own (lagging) `size` field summed across the account rather than real tree sizes, since summing real per-repo tree sizes would mean one extra tree fetch per repo just to render a trend line.
-- **Has license / No license filter** in My Repos — same filter-menu pattern as everything else there, no new UI concept.
-- **Tag colors in Bulk Select's tag picker** — already existed; verified, no changes needed.
-- **↩️ Undo** for Visibility and Description changes — holds exactly one most-recent undoable action (not a stack); a second undoable action simply replaces it.
-- **Search history** — last 5 searches, shown as quick-tap suggestions when opening Search.
-- **⚠️ Repo health flag** — flags missing README/description/license, but only ever shown where the data's actually on hand (Repo View, which already checks for a README) rather than guessed on list screens.
-- **Fixed in passing:** Pin/Unpin was colored blue since v0.8.5 — it's a toggle that redraws the same screen, not navigation, so it's colorless now, consistent with every other toggle in the bot.
-- **Fixed in passing (caught before shipping, not after):** the recurring `repo:` catch-all exclusion bug that's bitten this project twice before (License, Description) was pre-empted this time — `:cloneurl:` and `:star:` were excluded from the start rather than discovered after packaging. Also caught: `bot.js` was missing top-level `Markup` and `style` imports entirely — would have been a runtime crash the first time anyone with search history opened Search.
-- Final color distribution: 14 red / 16 green / 68 blue / 93 colorless out of 191 total buttons — colorless grew from 45% to 49% of the bot, mostly by correctly recognizing informational actions and toggles as colorless rather than forcing them into a decision-tier color.
-
-### v0.8.7 — Colors redesigned around outcome, not button role
-
-v0.8.6 colored buttons by their ROLE (Confirm vs. Cancel) and by whether they moved you somewhere. Both broke under scrutiny: "Cancel" isn't inherently safe — cancelling a Delete is safe, but cancelling a Create Repo you just spent time setting up throws away real progress. Colors now follow the OUTCOME for that specific flow, not the button's label.
-
-- **Redesigned:** for any destructive action (Delete Repo/File, Disconnect, Storage Clear, Bulk Delete), confirm = 🔴 (you lose something), cancel = 🟢 (you keep it) — unchanged from v0.8.6, this pairing was already right.
-- **Flipped:** for any constructive action (Create Repo, Rename, Edit File, License, Fork, Upload/Commit, Replace Folder), confirm = 🟢 (you gain something) and cancel = 🔴 (you walk away from progress you already started) — the opposite of v0.8.6, where these were blue/green.
-- **New, branching by context:** Bulk Actions' shared confirm dialog now colors itself differently depending on which action was picked — Bulk Delete gets the destructive red/green pairing; Bulk Public/Private/Download (no real gain or loss either way) gets blue on both sides, matching how the single-repo Visibility toggle already works.
-- **Clarified:** navigation is unconditionally blue now, including pagination (Prev/Next) — closing an inconsistency where "Back" was blue but "Next page" wasn't, even though both are the same kind of action (moving through content, not deciding anything).
-- **Clarified:** a plain "Cancel" that isn't paired with any gain/loss (e.g. backing out of viewing an external repo) stays blue — it's pure navigation, not part of the red/green system at all.
-- **Note:** BBTB's own Cancel buttons (used for lightweight things like a Search prompt) stay green rather than picking up red — that tier is reserved for abandoning a real, multi-step flow (a wizard), not backing out of a single text prompt.
-- Final distribution: 14 red / 16 green / 67 blue / 79 colorless, out of 176 total — verified by count, not assumed.
-
-### v0.8.6 — Button color remapping after seeing it live
-
-v0.8.5's 3-tier mapping looked correct on paper but broke the moment it actually rendered: Delete Repo's "Yes, Delete" and "Cancel" both showed red, making it impossible to tell which one was actually dangerous at a glance. Replaced with a 4-tier system built around one rule — a color only works as a signal if it means exactly one thing, always, never context-dependent.
-
-- 🔴 **Red** — narrowed to ONLY the single button that actually executes something irreversible: Yes-Delete-Repo, Yes-Delete-File, Yes-Disconnect, Yes-Clear (Storage), Bulk's destructive execute. Exactly 5 buttons in the whole bot. Keeping this the rarest tier is what makes it alarming when it appears.
-- 🟢 **Green** — every real Cancel button, everywhere, no exceptions (was red in v0.8.5). Now means exactly one thing: "the safe way out."
-- 🔵 **Blue** — general navigation AND the confirm side of already-safe actions (Rename, License, Fork, Create Repo, Upload/Commit, Replace Folder's continue) — both are the same underlying signal ("proceed, this is fine"), so unified under one color.
-- **New: colorless tier.** Pagination, Skip, individual picks inside a longer flow (which license during Create Repo's wizard vs. changing an existing repo's license — these are different tiers despite both being "license"), toggles, minor declines. v0.8.5 defaulted every uncategorized button to blue; this version has no default at all — every one of the 176 buttons in the bot got individually re-examined and assigned a tier on purpose, verified by counting the final distribution (5 red / 18 green / 63 blue / 90 colorless) to confirm red actually stayed rare instead of just assuming it.
-
-### v0.8.5 — Button color styling (Bot API 9.4)
-
-Telegram's Bot API 9.4 (Feb 2026) added a `style` field to buttons — three preset colors: danger (red), success (green), primary (blue). Applied across every keyboard in the bot, inline and BBTB.
-
-- **New:** every button now carries a deliberate color instead of relying on emoji alone to signal intent.
-  - 🔴 **Red** — every Cancel button, plus the action-executing "Yes" side of destructive confirms (Delete Repo, Delete File, Disconnect, Storage Clear, Bulk Actions)
-  - 🟢 **Green** — the action-executing "Confirm/Yes" side of safe operations (Rename, License change, Fork, Create Repo, Upload/Commit, Replace Folder's sync warning)
-  - 🔵 **Blue** — everything else: navigation, entry points into a flow (even ones that lead somewhere destructive), Filter/Sort, picks, pagination
-- **Built defensively:** rather than depend on whether the installed Telegraf version's own types have caught up to this Bot API version, `style` is attached directly onto whatever button object Telegraf's `Markup.button.*` already produces — Telegram just reads the JSON it's sent, so this works regardless of Telegraf's own support timeline.
-- **Note on entry points:** a button that only opens a confirmation screen (e.g. Settings' "Disconnect," which just leads to a Yes/No prompt) is colored by its own flavor, not strictly by "did this button just navigate vs. actually execute" — a judgment call, easy to adjust if any specific one reads wrong in practice.
-
-### v0.8.4 — Memory and watchdog hardening
-
-A dedicated deep pass specifically on memory behavior, the shutdown/watchdog path, and anything else likely to break under real usage — analyzed fully before any fix, consistent with the checkpoint discipline.
-
-- **Fixed (undermined the watchdog's whole purpose):** the shutdown sequence had no overall deadline. `httpServer.close()` waits for every connection — including idle keep-alive ones — to close on its own rather than forcing them; Redis's `client.quit()` has known hangs under certain reconnect states. Either one hanging meant `process.exit()` never ran, so instead of a clean preemptive restart, the process would just sit there — still consuming memory — until Railway's kernel eventually force-killed it anyway. Every shutdown step now has its own timeout, and the whole sequence is capped by a hard 8-second deadline that force-exits regardless of what's hanging.
-- **Fixed (real resource leak):** every GitHub API timeout was a `Promise.race()` — it only stopped *us* from waiting, it never actually cancelled the underlying request. A slow GitHub response kept running in the background indefinitely, still holding a socket and buffers, and the retry logic made it worse by firing a completely independent second request on top of a still-running first one. Every call in `github.js` now uses a real `AbortController`, threaded through via `request: { signal }`, so a timeout genuinely tears down the in-flight request.
-- **Fixed:** Pinned Repos has no pagination, and its tree-stats fetch used an uncapped `Promise.all()` — pin 15-20 repos and opening the screen fired that many concurrent GitHub requests at once. Added a small reusable bounded-concurrency helper (`lib/concurrency.js`) and capped it to 3 at a time, matching the effective concurrency My Repos' pagination already had for free.
-- **Fixed:** Rename and single-repo Delete both skipped `invalidateTreeStats()` on success, unlike every other write path — a small but permanent in-memory cache leak on every rename/delete. Swept the whole codebase for the same gap; these were the only two.
-- **Improved:** the memory watchdog's check interval is now adaptive — it stays fast (5s) whenever RSS is within 20% of the restart ceiling, not just during a fixed 2-minute post-boot window, closing a real blind spot where a spike well after startup could blow past the ceiling within the old flat 30s gap.
-- **Improved:** added a debounced early-warning log at 80% of the memory ceiling. Whether the ceiling's exact margin under `--max-old-space-size` is truly correct isn't something static analysis alone can answer — this doesn't change the threshold, it makes the trend visible in the logs before a restart happens, so a wrong margin would show up as real data instead of staying an open question.
-- **Noted, not fixed:** `redisSessionStore.js` has the same "timeout doesn't cancel" shape as the GitHub fix above. Left alone deliberately — Redis's real hang risk here is lower (same private network, tiny payloads, already has a connect timeout), and this file runs on every single interaction, so an unverifiable syntax mistake here would have far more blast radius than in a single GitHub feature. Worth revisiting if this is ever actually tested live.
-
-### v0.8.3 — Rename crash fix, callback page redesign, docs cleanup
-
-- **Fixed (crash):** renaming a repo threw `Cannot access 'repoCache' before initialization`. Root cause: a leftover redundant `require('../lib/repoCache')` inside the rename handler shadowed the already-imported top-level one — since `const` is hoisted within its enclosing scope, a reference to `repoCache` earlier in that same block hit the shadow before it was initialized. Removed the redundant require; scanned the whole codebase for the same shadowing pattern elsewhere — this was the only instance.
-- **Fixed:** the OAuth callback page's logo wasn't loading — `express.static()` was pointed at the logo *file* directly, but it can only serve *directories*. Fixed to serve the whole `public/` folder, the standard pattern.
-- **Redesigned:** `callback.html` — added a connection-beam animation (a pulse traveling between the GitroHub logo and a generic link badge, visualizing the two accounts connecting), a hero result icon with a stroke-drawing entrance animation, a subtle film-grain texture, and a physical shake on the failure state so it doesn't just feel like the success animation in a different color.
-- **Restructured:** the Changelog moved out of README.md into its own `CHANGELOG.md`, with working jump-links to each version and a short "highlights" pointer left in the README instead of the full history.
-- **Fixed (docs):** README's "Known limitations" section still said "v0.4.0" and claimed there was no double-tap idempotency protection — both false as of this version (actionLock has covered this since v0.6.0, hardened further in v0.8.1/v0.8.2). Also removed a reference to `lib/session.js` in the architecture tree — that file was deleted back in v0.7.1 and the docs never caught up.
-
-### v0.8.2 — Deep bug sweep on the v0.8.1 checkpoint
-A dedicated hunt for anything the checkpoint pass introduced or missed, before trusting v0.8.1 as the stable base — checked every core infra file (Postgres, Redis, session store, action locking) plus every handler touched during the checkpoint itself.
-
-- **Fixed:** `actionLock` was a single global lock per user shared across all 9 destructive actions — Delete Repo in flight would wrongly block an unrelated Fork on a different repo. Rescoped to lock per action type, not per user.
-- **Fixed:** none of the 4 wizard scenes (Create Repo, Rename, Edit File, Upload) had double-tap protection on their final commit step, unlike every other mutating action in the bot. Now consistently locked.
-- **Fixed:** the 30-minute session TTL was misleadingly named `WIZARD_SESSION_TTL_SECONDS` but actually governed *all* session state bot-wide, not just active wizards — meaning `ctx.session.currentRepo` (which Repo View's Visibility/License/Browse Files buttons depend on) silently expired after 30 minutes of any inactivity. Split into two correctly-scoped values: a short one for genuinely wizard-scoped file buffers, and a new 24-hour one for general session state.
-- **Fixed:** Postgres/Redis health pings had no caching despite the README already claiming 5s caching since v0.6.0 — combined with v0.8.1 making Settings' Refresh Status trivially spammable (inline, chained, one tap = another refresh button), this was real uncached DB+Redis load with zero debounce. Actually caches now.
-- **Fixed:** `requireConnected()` — called at the top of nearly every gated handler in the bot — did two separate database queries where one suffices.
-- **Fixed:** Bulk Actions' "you haven't selected anything" fallback reset to page 1 instead of preserving your page position — the same bug already fixed for the Back button, in a sibling code path that was missed the first time.
-- **Fixed:** Bulk Actions' live progress message froze mid-batch (stuck showing "⏳ pending") when a bad token triggered an early stop — the final progress-line update was being skipped right before the break.
-- **Fixed:** License updates showed a "success" message implying the repo card's license line was already current — GitHub's license detection is an async background scan, not synchronous with the commit, so it could still show the old license for a moment after. Now confirms the commit without claiming the shown data is settled, and the same honest caveat was added to Repo View's language section for the same underlying reason (Create Repo, Replace Folder, and first Upload all trigger the same async-detection lag).
-
-### v0.8.1 — Stability checkpoint: root-cause pass, not patches
-A deliberate hardening release before further features — every fix here traces one bug class to its root and applies it everywhere that class occurred, not just where it was first noticed.
-
-**Root-cause fixes (one mechanism, applied everywhere it was needed):**
-- **Fixed (the big one):** every Confirm/Cancel dialog — Delete Repo, Delete File, Bulk Actions, Toggle Visibility, Disconnect, Fork, Storage Clear — sent a brand-new "Cancelled." message instead of touching the original. Since Telegram buttons stay live until a message is edited, tapping Cancel and then the *original* Confirm button still fired the action, with zero warning. Fixed once, structurally: a shared `resolveConfirmation()` helper now edits the original message in place (strips the buttons, shows the outcome) the instant either button is tapped, across all 7 flows. A future confirm/cancel screen inherits the fix automatically instead of needing its own patch.
-- **Fixed:** `actionLock` double-tap protection extended to Fork and Storage Clear — the two destructive/duplicate-risk actions that didn't have it yet.
-- **Fixed:** Pin/Unpin and the entire Tags system (add/remove/create) had zero connection-state check anywhere — a stale button could write to the database while fully disconnected with no indication anything was wrong. Now gated behind the same connection check GitHub-touching actions already use, checked *before* the write, not after.
-- **Fixed:** Bulk Select's "back from tag picker" always reset to page 1 instead of the page you were on.
-
-**Data accuracy:**
-- **Fixed:** My Repos and Pinned lists still showed GitHub's lagging cached repo size — extended the real tree-based size calculation (already used in Repo View) to both, scoped per-page so it stays cheap.
-- **Removed:** Repo View's "Last Updated" line — for a single-owner bot, GitHub only ever bumps that field on the same events that bump "Last Commit," so the two were always identical and one was pure noise.
-
-**New features:**
-- **New:** ⚖️ License control — Repo View gains a License button next to Visibility. GitHub has no "set license" API field (it's detected by scanning a LICENSE file), so this fetches the real license text from GitHub's own endpoint and writes it via the same mechanism GitHub's own "Add license" button uses.
-- **New:** ✏️ Description editing, directly from Repo View — no more needing the website for a quick description change.
-- **New:** 🔑 Access Log relocated into 📜 Activity (same content and toggle, just reachable from one screen instead of two).
-- **New:** 🔄 Refresh Status (Settings) and 🔄 Refresh (Activity, Pinned) moved from BBTB rows to inline buttons that produce a fresh chained message each tap.
-
-**Interface — reduced clutter across the board:**
-- **Fixed:** several multi-toggle screens (Bulk Select's checkboxes and filter buttons, Storage's Auto-Cleanup menu, Pinned's reorder arrows) resent the entire screen as a new message on every single tap. Now edit the same message in place, matching how Notifications already worked.
-- **Redesigned:** every BBTB keyboard in the bot — My Repos, Repo View, Browse Files, Settings, Bulk Select's three keyboards, and several 2-row/2-button screens collapsed to 1 row — cut to fewer rows via 3-column layouts, with any label at real risk of truncation shortened to a synonym instead.
-- **Found during the BBTB pass:** 🔄 Refresh was a single label shared by My Repos, Activity, and Pinned's keyboards — since Telegram matches button taps by exact text bot-wide, tapping Refresh from Activity or Pinned was silently triggering My Repos' refresh instead of their own. Fixed as a side effect of relocating those to inline buttons with distinct callback data.
-- **Redesigned:** the /start welcome-back message now shows repo/star/pin counts, a public/private split, and last-activity time, formatted to match the ◆/▸ card style used everywhere else.
-- **Polished:** the OAuth callback page — a one-time confetti burst on success, a typewriter reveal on the "Linked as @username" line, and a small overshoot-bounce on the result box instead of a flat fade-in.
-
-### v0.8.0 — Card redesign, Search split, and new screens
-A large, deliberately-scoped feature pass, done after 3 stability rounds (v0.5.0–v0.7.2) specifically so it could build on a base that wasn't actively crash-looping.
-
-- **Fixed:** Auto-Cleanup's settings message crashed on send — an unescaped hyphen in `*Auto-Cleanup*` broke MarkdownV2 parsing.
-- **Fixed:** Repo View's size stat read GitHub's lazily-recomputed `repo.size` field — now computed from the actual file tree, always current.
-- **Fixed:** Token Health notifications only ever wrote a silent Access Log entry, never an actual push, despite the toggle implying otherwise.
-- **Fixed:** Long Operations' threshold (5+ repos) was unreachable at realistic account sizes — lowered to 3+, and extended to cover Batch Upload, not just Bulk Actions.
-- **Fixed:** My Repos' language-breakdown lookup silently referenced an out-of-scope variable on every call (masked by a surrounding try/catch), so it always fell back to the raw single-language field instead of the real breakdown.
-- **Fixed:** the Replace Folder confirmation screen looped forever regardless of which button was tapped — the wizard step never advanced its cursor after showing the prompt, so every subsequent tap re-ran the same step from scratch.
-- **Redesigned:** one shared repo-card format (◆ header, ▸ bullets, solid dividers) now used everywhere a repo is listed — My Repos, Repo View, Pinned, Search results, and Bulk Select.
-- **New:** 📁 My Repos vs 🌐 Public Repo — Search split into two explicit entry points instead of one box guessing intent from a pasted link vs. a typed name.
-- **New:** 📊 Stats screen — repo count, visibility split, total stars, top language, most active repo, oldest repo.
-- **New:** README and License steps added to the Create Repo wizard, matching GitHub's own creation flow.
-- **Redesigned:** Settings BBTB — Notifications folded into My Defaults as its own section.
-
-<details>
-<summary><strong>v0.1.0 – v0.7.2 — Getting the bot stable (click to expand)</strong></summary>
-
-### v0.7.2 — Found the actual bug (not a timeout issue)
-v0.7.0 and v0.7.1 added timeouts everywhere on the theory that some piece of I/O was stalling. Real logs showed no timeout ever firing, which ruled that whole theory out — the real cause was structural, not a stall:
-
-- **Fixed (root cause):** entering a scene via `ctx.scene.enter(...)` makes Telegraf re-process the *same incoming message* through the newly-entered scene's own handlers. Our global escape-hatch system registered every BBTB label — including the exact labels used to *enter* a scene in the first place ("➕ New Repo", "⬆️ Upload") — as a "leave and re-enter" trigger on that same scene. So tapping New Repo would enter the scene, get re-processed, immediately match its own escape hatch, leave, and re-enter — bouncing several times (each doing real session I/O) before finally settling. That bounce was the entire "15+ seconds, then it works" pattern. Explains precisely why Pin (no scene involved) was instant, and why Rename/Edit File (entered via inline buttons, not BBTB text) were never affected — the collision only happens when the entry trigger and the escape-hatch trigger are the same text message.
-- **Fixed:** each scene now excludes its own entry-trigger label(s) from its escape-hatch registrations, so re-entry falls through cleanly to the scene's actual first step instead of colliding with itself.
-- **New:** every `/start` reply now shows the running bot version (`🔧 v0.7.2`) — confirm a deploy actually landed without checking Railway.
-- **Note:** the v0.7.0/v0.7.1 timeout work (Postgres, GitHub calls, Redis session I/O) wasn't wasted — it's real protection against genuine stalls, just wasn't what caused *this specific* symptom. Both fixes now stand together.
-
-### v0.7.1 — Closed the last unprotected I/O path
-v0.7.0 added hard timeouts to Postgres and every GitHub call, on the theory that a single unprotected piece of I/O could block the entire update queue behind it. Real usage found the one piece that got missed:
-
-- **Fixed:** Redis session reads/writes had no timeout — the one piece of I/O that runs on literally *every* single interaction, tap or message. Since updates now process one at a time (v0.7.0), a stall here blocked everything behind it in line, including `/start`, which is exactly what "click Upload, everything freezes, only unfreezes once I tap Start" looked like — `/start` wasn't special-casing its way through, it was just as stuck as everything else, and its eventual completion is what released the queue.
-- **Fixed:** same gap in `redis.ping()` (used by Settings and `/health`) — now also timeout-bound.
-- **New:** an immediate "typing…" indicator fires the instant any update starts being processed, before the real reply arrives — so a tap never sits there with zero visible feedback, even during the normal split-second of real work.
-- **Removed:** `lib/session.js` — dead code from the very first design, before Telegraf's Scenes system replaced it. Never required anywhere; found while auditing every remaining piece of Redis I/O for missing timeouts.
-
-### v0.7.0 — Fixed the freeze (root cause, not a workaround)
-Real-world Railway logs showed the bot appearing to freeze on Upload, and even `/start` — which should always work — going unresponsive too. Root-caused to the same underlying issue as the v0.5.0 memory crashes, closing the loop properly this time:
-
-- **Fixed (the actual freeze):** Postgres had no connection or query timeout set at all. If the pool couldn't hand out a free connection — which happens after repeated crash-restarts leave orphaned connections behind — any request touching the database, including `/start`'s own "are you connected" check, just waited forever instead of failing with an error. Now fails fast (5s to acquire a connection, 10s per query) with a clear message instead of hanging silently.
-- **Fixed (the crash-loop trigger):** the webhook now discards any backlog of missed updates on every restart (`drop_pending_updates: true`) instead of letting Telegram deliver it all in a burst the instant the bot comes back online. That burst — several updates each triggering their own DB/GitHub work near-simultaneously — was very likely what caused memory to spike hard within the first minute of every restart, which caused another crash, which built up another backlog. Self-reinforcing loop, now broken at the source.
-- **New:** the actual backlog size gets logged (via `getWebhookInfo`) right before it's discarded, so this is now visible evidence in the logs, not a theory.
-- **New:** incoming Telegram updates are now processed one at a time instead of concurrently — for a single-owner bot this has zero downside, and it caps how many simultaneous DB/GitHub requests can ever pile up at once to exactly one, protecting against this same failure mode even if a backlog ever built up again for some other reason.
-- **New:** every GitHub API call (reads and writes) now has a hard timeout (15s single calls, 45s for multi-file commits) — this is what makes the sequential processing above actually safe, since without it a single hung GitHub request would now block every subsequent interaction behind it in the queue.
-- **Fixed:** `Error stopping bot {"message":"Bot is not running!"}` was firing on every single shutdown — `bot.stop()` only means something in polling mode, but was being called unconditionally in webhook mode too. Now skipped correctly, so real issues aren't buried in that noise.
-- **Improved:** the memory watchdog checks every 5s for the first 2 minutes after boot (relaxing to 30s after), since that's the window a backlog-burst spike would show up fastest in.
-- **Improved:** `/start`'s optional repo-count lookup now races against its own 4s timeout, so it can never block the welcome message even if GitHub itself is slow.
-- **Improved:** shortened all 3 bot command descriptions — Telegram's command list is a compact popup, long descriptions were getting crowded.
-
-### v0.6.0 — Optimization, hardening, and a real security fix
-A large pass covering performance, resilience, and a genuine security gap — all discussed and locked in before building.
-
-**Security (do this one):**
-- **Fixed:** the Telegram webhook accepted any POST request without verifying it actually came from Telegram. Since `ownerGate` trusts whatever `from.id` is in the request body, a forged request claiming to be the owner would have gone straight through — full bot control, no Telegram account needed. Now verified via Telegram's `secret_token` mechanism on every incoming webhook request. **Set `TELEGRAM_WEBHOOK_SECRET`** in Railway (falls back to a derived value if unset, but a dedicated secret is strongly recommended for a public URL).
-
-**Performance:**
-- **New:** short-lived caching (60s) for repo lists and per-repo language breakdowns, plus a longer-lived cache (10min) for your GitHub username — My Repos, Pinned, Bulk Select, and Search were all independently re-fetching the same data within seconds of each other. Every write path (create/delete/rename/upload/visibility/bulk actions/disconnect) explicitly invalidates the relevant cache, so nothing goes stale.
-- **Fixed:** GitHub API client reuse extended with retry-with-backoff for read operations (repo list, tree, file content, languages) — one retry on a transient 5xx/network error before giving up. Deliberately not applied to writes, which could risk double-executing a mutation.
-- **New:** health check pings (Postgres/Redis) now cache for 5s to avoid redundant DB round-trips if Railway polls frequently.
-
-**Stability:**
-- **New:** process-level crash handlers — an uncaught exception now triggers the same clean shutdown (closing DB connections properly) instead of the process just disappearing; unhandled promise rejections are logged clearly instead of vanishing silently.
-- **New:** double-tap protection on every destructive action (delete repo, delete file, bulk actions, disconnect) — a duplicate tap while the first is still processing gets a clean "already processing" reply instead of running twice.
-- **New:** zip bomb guard — checks total *uncompressed* size from zip metadata before extracting a single byte, not just the compressed size we already capped.
-- **Fixed:** single-file uploads (not zips) had no size cap at all — now capped at 5MB.
-- **New:** timeout on the Telegram file-download fetch — a hung request no longer hangs indefinitely.
-- **New:** global Express error handler — an unexpected error in a route now fails clean instead of behaving unpredictably.
-- **New:** GitHub rate-limit errors now get their own specific message showing the actual reset time, instead of a generic error.
-- **New:** Telegram's flood-control responses (429 + `retry_after`) are now honored during Bulk Actions' progress updates instead of just being swallowed.
-- **New:** Redis reconnection events are now logged, instead of silently retrying with library defaults.
-- **New:** structured logging (`lib/logger.js`) replacing scattered `console.log` across the app's core infrastructure — timestamped, leveled, consistent.
-- **Improved:** Node's heap cap is now set via `NODE_OPTIONS` (an env var) instead of hardcoded in `package.json` — tunable per-plan without a redeploy.
-
-### v0.5.0 — Fixed the OOM crash loop
-Railway confirmed the bot was hitting the free tier's 512MB ceiling and getting hard-killed — happening even at rest, and faster under active use. Root-caused and fixed in layers:
-
-- **Fixed:** Node's heap wasn't capped, so V8 never felt pressure to garbage-collect before the container's real limit — added `--max-old-space-size=384`.
-- **Fixed:** Postgres pool was uncapped (up to 10 idle connections); capped to 3 via `PG_POOL_MAX`.
-- **Fixed:** a new Octokit client was constructed on *every single* GitHub API call instead of being reused — now cached per token.
-- **New:** graceful shutdown on `SIGTERM`/`SIGINT` — Postgres pool and Redis connection now close cleanly instead of the process just disappearing.
-- **New:** a self-imposed memory watchdog that triggers a clean restart before Railway's kernel would otherwise force-kill the process.
-- **Fixed (the big one):** Upload's raw file bytes were being serialized into Redis on every wizard step (path selection → summary → commit) instead of once. Now held in a short-lived in-process cache; only a lightweight reference touches session state. This directly explains "crashes faster when actively using it."
-- **New:** `GET /health` endpoint for Railway to poll.
-- **Cleanup:** removed `archiver` from dependencies — listed in `package.json` but never actually used anywhere in the code. Lazy-loaded `adm-zip` so it's only pulled into memory when a zip upload actually happens, not on every scene load.
-
-### v0.4.0 — Completed the 3 noted gaps, plus another bug-scan pass
-The 3 items explicitly noted as "reported, not fixed" in v0.3.1, now actually wired:
-
-- **Notification toggles now do something** for 3 of the 4 categories:
-  - ⚠️ **System Alerts** — Settings now proactively pushes a message (not just an Activity Log entry) when Postgres or Redis is unreachable, debounced to once per 10 minutes so it doesn't spam on repeated views.
-  - 🔑 **Token Health** — a new shared error helper detects GitHub auth failures (expired/revoked token) anywhere in the bot and responds with the specific "reconnect" message we originally designed, instead of a generic error. Wired into Upload, Create/Rename/Delete Repo, Visibility toggle, Download, Edit File, and Bulk Actions.
-  - ⏳ **Long Operations** — Bulk Actions (5+ repos) now sends an explicit "long operation finished" callout when this is on, in addition to the normal summary.
-  - 🔔 **GitHub Activity** remains honestly documented as pending — it needs a receiving webhook endpoint, still a deferred item, not silently pretending to work.
-- **Browse Files now paginates** (8 items/page) — a large folder no longer risks exceeding Telegram's inline-keyboard button limit.
-- **Bulk Actions now stop cleanly on a bad token mid-batch** instead of grinding through every remaining repo and reporting the same failure N times — detects it once, reports it once, shows what did complete beforehand.
-
-**Additional bugs found during this pass and fixed:**
-- Deep-audited every button's callback data against the router again (habit now) — no new orphaned callbacks found this round.
-- Verified the System Alert debounce logic wasn't accidentally checking its own just-written log entry (would have suppressed the very first alert every time) — caught and reordered before shipping.
-
-### v0.3.1 — Deep audit bug fixes
-A full cross-reference pass (every button's callback data checked against the router, every BBTB label checked against its handler) turned up 5 real issues, all fixed:
-
-- **Fixed (serious):** the global ❌ Cancel button only cleared 2 of 5 possible pending session flows. Tapping Cancel while creating a tag, editing a default, or mid-way through typing "RESET" to confirm a full data wipe left that flag stuck active — meaning an unrelated later message could get silently misinterpreted in that stale context (worst case: an unrelated message happening to read "RESET" could trigger an unintended full data wipe). Cancel now clears every pending flow's flag, every time.
-- **Fixed:** Edit File's and Rename Repo's confirm steps treated *any* stray callback (not just the intended button) as if it meant "confirm" — including a tap on an unrelated old button elsewhere in the chat. Both now explicitly check for the exact expected callback and reject anything else.
-- **Fixed:** stale/expired button taps left Telegram's loading spinner stuck with no response. Every unmatched callback now gets an explicit "This button has expired" reply.
-- **Removed:** dead code — a leftover "Upload Here" button path from before that feature was redesigned as a BBTB button; the flag that would have triggered it was never actually set anywhere.
-- **Verified, not changed:** re-audited Bulk Actions' progress-line rendering (looked suspicious, traced through by hand — confirmed correct), and cross-checked every new v0.3.0 table's SQL constraints against every `ON CONFLICT` clause in the corresponding JS (all match).
-
-**Confirmed still open** (reported, not yet fixed — awaiting direction): 3 of the 4 Notification toggles (System Alerts, Long Operations, Token Health) save state but nothing reads them yet; Browse Files has no pagination for large folders; token-expiry-mid-action doesn't route to the specific reconnect message we designed for it.
-
-### v0.3.0 — Feature expansion
-Nine new features, one long-standing bug fixed properly, added carefully so nothing sits half-wired:
-
-- **Fixed:** Edit File's ❌ Cancel (and every exit path — success, error, stale-file conflict) dumped you at Main Menu instead of back to the exact Browse Files folder you came from.
-- **Fixed:** Repo View still showed the old single-language emoji-circle format instead of the percentage breakdown already fixed elsewhere in v0.2.0 — now consistent everywhere, using the locked tree-character formatting standard.
-- **New:** 📌 Pinned Repos, with manual reorder (⬆️⬇️) — entry point lives in My Repos' BBTB, not Main Menu.
-- **New:** 🏷️ Tags — create/assign/remove per repo, filter My Repos by tag, bulk-select by tag, shown as chips wherever a repo is listed.
-- **New:** 🧹 Bulk Repo Actions — multi-select with smart shortcuts (Select All, Invert, Stale 6mo+, by visibility, by tag), delete/visibility/download in one pass, live per-item progress, and an honest partial-failure report if some fail.
-- **New:** 📥 Batch Upload — the existing Upload flow now collects multiple loose files before asking for a path, one combined commit.
-- **New:** 🔁 Replace (file) and 🔁 Replace Folder (full sync with an explicit delete-preview before committing — the only place Upload is allowed to remove files, and only with your confirmation).
-- **New:** ⬆️ Upload Here — uploads straight into whatever folder you're browsing.
-- **New:** ⚙️ My Defaults — saved visibility/commit-message/upload-path/sort/filter, with a pattern-based "learn from me" suggestion after 3 consistent choices.
-- **New:** 📦 Storage & Data — live counts of what GitroHub stores about you, granular or full-reset clearing (full reset requires typing "RESET", not just a tap), JSON/text export, and configurable auto-cleanup.
-- **New:** 🔑 Access Log — separate from general Activity, tracks connect/reconnect/disconnect events specifically, with an optional alert on new connections.
-- **Internal:** caught and fixed two features that were built but never wired to anything callable (`checkVisibilityPattern`, `getLastPath`) during a dead-code sweep before release — both now genuinely affect the Create Repo and Upload flows.
-- **Internal:** caught and fixed two new `reply_markup` BBTB/inline conflicts (same class of bug as v0.1.1) introduced in the new Bulk Select screens, caught by the same automated scan before shipping.
-
-### v0.2.0 — Real-world testing fixes
-A big pass of fixes based on hands-on testing against a live account:
-
-- **Fixed:** Download Repo (and external repo download) produced an empty 9-byte zip for any private repo — the code was fetching an unauthenticated `github.com/.../archive/...zip` URL, which 404s without a session for private repos. Now uses Octokit's authenticated archive endpoint, works for private and public repos alike.
-- **Fixed:** Repo list showed a single guessed "primary language" with an emoji circle. Now shows a real top-3 language breakdown with percentages (`GET /repos/{owner}/{repo}/languages`), and repos are visually separated with divider lines instead of running together.
-- **Fixed:** Tapping ↕️ Sort or 🔎 Filter crashed with `400: message can't be edited` — these were trying to edit a message that didn't exist from that context (a BBTB tap has no prior bot message attached to edit). Now they send their own fresh message, edit *that*, briefly show a confirmation, auto-delete it, then send a fresh repo list.
-- **Fixed (structural):** Any BBTB button or even `/start` got silently swallowed while inside a wizard (Create Repo, Upload, Rename, Edit File) — Telegraf hands control entirely to the active scene, so handlers registered afterward never ran. Fixed by attaching the exact same navigation handlers directly onto every scene as first-class escape hatches, so `/start`, `/cancel`, and every BBTB nav button now work identically whether or not a wizard is active.
-- **Fixed:** "⬆️ Upload Files" button (shown on empty repos and after creating a new repo) did nothing — its callback pattern was never wired up in the router.
-- **Fixed:** Repo deletion failed with "Must have admin rights to Repository" — the OAuth scope only requested `repo`, not `delete_repo`. Scope now requests both. **You'll need to disconnect and reconnect once** for this to take effect on an already-linked account.
-- **Fixed:** Uploading a photo via Telegram's image picker failed with a generic "send a document" message — now explicitly explains photos get compressed (altering file bytes) and tells you to use the 📎 File option instead.
-- **Fixed:** Typing a manual upload path had an unreachable "(leave blank for root)" instruction — Telegram doesn't allow sending empty text. Added an explicit "📍 Use Root" button instead.
-- **Improved:** Before asking for a manual upload path, the bot now shows the repo's current top-level file/folder structure for context.
-- **Improved:** Upload change-detection now shows exact size deltas for modified files (e.g. `helper.js: 2.1 KB → 2.4 KB`), and refuses outright with a clear message — no Commit button offered at all — when nothing actually changed, instead of allowing a no-op commit.
-- **New:** Bot commands (`/start`, `/settings`, `/cancel`) now register automatically via `setMyCommands` on boot — no manual BotFather setup needed.
-- **New:** Distinct disconnected-state flow — BBTB now shows only "🔗 Connect GitHub" and "⚙️ Settings" while logged out (instead of the full menu with dead buttons underneath), and Settings shows clear "Not connected" placeholders instead of blank/broken GitHub-dependent fields. Disconnecting now resets the BBTB immediately.
-- **Improved:** Welcome-back message now shows your GitHub username as `@username` and includes a live repo count.
-
-### v0.1.1 — Bug fix
-- **Fixed:** inline keyboards were being silently dropped on 7 screens due to a `reply_markup` conflict between inline and BBTB keyboards sharing one message.
-
-### v0.1.0 — Initial build
-- Owner-only gate, OAuth Web Flow with animated callback page, My Repos, Create/Rename/Delete repo, Visibility toggle, Upload, Browse Files, Download, Fork, Settings dashboard, Activity Log, Notifications.
-
-</details>
-
----
-
+### v0.1.0 — Initial release
+
+The first release of GitroHub: a private, owner-only Telegram bot for managing your GitHub account end-to-end from a phone.
+
+**Core**
+- Owner-only gate — the bot responds to exactly one Telegram ID (`OWNER_ID`); everyone else is silently ignored, with zero processing and zero log noise.
+- GitHub OAuth connect flow with a signed-JWT `state` parameter (binds the callback to the right Telegram chat) and an animated HTML confirmation page (particle background, circuit-line animation, live status feed, countdown auto-redirect back into Telegram).
+- Access tokens encrypted at rest with AES-256-GCM, `repo`-scope only.
+- One Node process running both the Telegraf bot (webhook or long-polling) and a small Express server for `/callback` and `/webhook/github`.
+
+**Repos**
+- Create, rename, delete, and toggle visibility.
+- List with filter, sort, and fuzzy + weighted search (name, description, recency, star count).
+- Fork any public repo; star/unstar from Search's external-repo screen.
+- Clone URL shown in all three variants — HTTPS, SSH, `gh repo clone` — each tap-to-copy.
+- Repo View: description, license, last 3 commits, README preview or full-file send, health flag, "last synced" size timestamp, Open in Browser.
+- A repo rename cascades its tags, pin position, upload-path memory, mute state, and live webhook registration onto the new name in one transactional step.
+
+**Files**
+- Full tree navigation (Browse Files), view/send/edit/delete any file.
+- Upload a single file or a `.zip` (auto-strips the GitHub-style wrapper folder), with 🆕 New / ✏️ Modified / ➖ Unchanged detection before committing.
+- Batch Upload — collect several loose files into one combined commit and summary.
+- Replace — swap a single file's content by sending a new one, or fully sync a folder (add/update/delete) with an explicit delete preview before committing.
+- Upload Here — upload straight into the folder you're currently browsing, path pre-filled.
+- Download any of your repos, or any public external repo pasted as a link.
+
+**Organization**
+- Pinned Repos, grouped into named sections, with drag-style reorder scoped per section.
+- Tags — nested (e.g. "Work" → "Work/Client-A"), a fixed 6-color palette, optional auto-rules (language match, name pattern), and per-tag defaults for visibility/upload-path/commit-message.
+- Smart Folders — save a composable filter (visibility + language + staleness + tag + name) as a named quick-access view.
+- Recently Viewed and Search History, each clearable independently.
+
+**Bulk actions**
+- Multi-select with a composable filter builder (clauses stack — e.g. private AND stale-90d AND tagged "side-project"), plus a "Save as Smart Folder" shortcut.
+- Delete, change visibility, or download in one pass, with live progress and honest per-item failure reporting.
+- Retry Failed Only after a partial failure.
+- Undo for bulk visibility changes — up to 5 actions held at once, each independently reversible for an hour. (Delete and rename are excluded — delete is permanent on GitHub's side, and rename is collision-prone, so neither is a safe undo candidate.)
+
+**Notifications**
+- A real GitHub webhook receiver (`/webhook/github`, HMAC-verified per repo) driving push/issues/PR/release/CI (`workflow_run`, terminal state only)/deployment-status alerts.
+- Rapid-fire events digest into one message instead of several, via a durable Redis-backed buffer that survives a bot restart mid-window.
+- Per-repo mute, independent of the global notification toggles.
+- Optional quiet-hours window that holds digests rather than delivering them immediately.
+- Optional daily/weekly rollup summary ("3 repos touched, 12 changes via bot, 2 pushes received").
+
+**Settings & visibility into the bot itself**
+- Live Postgres/Redis health, GitHub rate-limit budget (color-coded, read passively off headers already present on outgoing calls — no extra request spent), memory/uptime, bot version.
+- Activity Log, filterable to errors-only.
+- Access Log — connection history with rules-based anomaly flags (reconnect shortly after a disconnect; GitHub scope changed between sessions).
+- My Defaults — saved visibility/commit-message/upload-path/sort/filter, a "learn from me" nudge when your actual usage diverges from the current default, and an old→new changelog of every default change.
+- Storage & Data — see exactly what GitroHub remembers about you, clear it granularly or fully (typed confirmation required), export it, and auto-cleanup of old activity.
+- Rolling 30-day size history per repo, shown as a text sparkline alongside the current prior-vs-now delta.
+- `GET /health` — `200`/`ok` or `503`/`degraded` based on live Postgres + Redis reachability, meant for Railway's health check to catch a degraded instance proactively.
+
+**Under the hood**
+- GitHub API layer: passive rate-limit tracking, adaptive retry backoff that widens under a low budget, request coalescing for duplicate in-flight reads, and an ETag-conditional cache on the (expensive, frequently-hit) recursive tree fetch so an unchanged tree costs nothing against the rate limit.
+- Memory-hardened for Railway's 512MB free tier: a V8 heap ceiling via `NODE_OPTIONS=--max-old-space-size=384`, a self-imposed RSS watchdog that shuts down cleanly before the kernel force-kills the process, and upload file bytes kept in a short-lived in-process cache instead of round-tripping through Redis session state.
+- Telegram updates processed one at a time with pending updates dropped on boot, so a restart can't trigger a delivery burst.
+- Postgres pool capped at `PG_POOL_MAX` (default 3) and GitHub API clients cached per token.
+- `migrate.js` runs `schema.sql` on every boot using `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` throughout, so the schema is always current without any manual step.

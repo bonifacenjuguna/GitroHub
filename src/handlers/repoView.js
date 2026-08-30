@@ -312,7 +312,7 @@ async function _executeToggleVisibility(ctx, repoName) {
   }
 }
 
-/** ✏️ Description — v0.8.1 #46. Low-risk/instantly-reversible, unlike
+/** ✏️ Description — low-risk/instantly-reversible, unlike
  * Rename (which affects clone URLs), so no confirm step, matching how
  * Description is entered during Create Repo (type it, move on). */
 async function askEditDescription(ctx, repoName) {
@@ -364,7 +364,7 @@ const LICENSE_OPTIONS = [
   ['bsd-3-clause', 'BSD'],
 ];
 
-/** ⚖️ License — v0.8.1 #15. GitHub has no "set license" API field; a
+/** ⚖️ License — GitHub has no "set license" API field; a
  * repo's detected license comes from GitHub actually scanning a LICENSE
  * file (licensee). Same mechanism as the visibility flow otherwise:
  * show current state, confirm before changing. */
@@ -444,7 +444,7 @@ async function showCloneUrl(ctx, repoName) {
   if (!token) return;
   const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
-  // v0.9.3 — SSH and gh-cli variants alongside HTTPS, each its own code
+  // SSH and gh-cli variants alongside HTTPS, each its own code
   // block so any one of the three is independently tap-to-copy.
   const sshUrl = `git@github.com:${user.login}/${repoName}.git`;
   await ctx.reply(
@@ -609,10 +609,9 @@ async function downloadRepo(ctx, repoName) {
 }
 
 async function togglePin(ctx, repoName) {
-  // Gated behind requireConnected (v0.8.1 #25/#21) — this used to write to
-  // the DB first and only discover we were disconnected on the follow-up
-  // re-render, so a stale button could pin/unpin a repo with zero warning
-  // until AFTER the write already happened. Check first, write second.
+  // Gated behind requireConnected — checked first, before any DB write, so
+  // a stale button can't pin/unpin a repo with zero warning if the account
+  // is disconnected. Check first, write second.
   const token = await requireConnected(ctx);
   if (!token) return;
 

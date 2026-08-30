@@ -8,10 +8,10 @@ const style = require('./buttonStyle');
  * actions. Inline keyboards carry content + destructive/final confirms.
  * Every zone below matches what was agreed on screen-by-screen.
  *
- * v0.8.6 — revised after seeing v0.8.5 rendered live: Delete Repo's "Yes,
- * Delete" and "Cancel" both showing red made it impossible to tell which
- * was actually dangerous. Cancel now means exactly one thing everywhere —
- * "the safe way out" — so it's green, not red. Since every actual
+ * Delete Repo's "Yes, Delete" and "Cancel" are never both red — a color
+ * only works as a danger signal if it isn't also used for the safe option.
+ * Cancel means exactly one thing everywhere — "the safe way out" — so
+ * it's green, not red. Since every actual
  * confirm/cancel PAIR lives in inline keyboards (per the rule above),
  * BBTB never has a true "destructive execute" (red) case either — just
  * Cancel (green) and everything else (blue, the default for

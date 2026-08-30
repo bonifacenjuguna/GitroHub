@@ -18,15 +18,14 @@ let botMode = null; // 'webhook' | 'polling' — tracks which so shutdown knows 
  * exception — every path ends here so connections close cleanly instead
  * of the process just disappearing mid-write.
  *
- * v0.8.4 hardening: every step below now has its own timeout, AND the
- * whole sequence is capped by a hard deadline. Previously none of this
- * had any bound — httpServer.close() famously hangs waiting for idle
- * keep-alive connections to close on their own (it doesn't force them),
- * and Redis's client.quit() has known hangs under certain reconnect
- * states. Either one hanging meant process.exit() never ran, silently
- * defeating the entire point of the watchdog: instead of a clean
- * preemptive restart, the process would just sit there — still consuming
- * memory — until Railway's kernel eventually force-killed it anyway.
+ * Every step below has its own timeout, AND the
+ * whole sequence is capped by a hard deadline — httpServer.close() famously
+ * hangs waiting for idle keep-alive connections to close on their own (it
+ * doesn't force them), and Redis's client.quit() has known hangs under
+ * certain reconnect states. Either one hanging would mean process.exit()
+ * never runs, silently defeating the entire point of the watchdog: instead
+ * of a clean preemptive restart, the process would just sit there — still
+ * consuming memory — until Railway's kernel eventually force-killed it anyway.
  */
 const SHUTDOWN_STEP_TIMEOUT_MS = 5000;
 const SHUTDOWN_HARD_DEADLINE_MS = 8000;
@@ -91,13 +90,13 @@ async function shutdown(reason) {
  * Railway's hard container limit, and triggers the SAME clean shutdown
  * path above rather than waiting for the kernel to SIGKILL the process.
  *
- * v0.8.4 hardening — two changes:
+ * Two design choices worth noting:
  *
  * 1. Adaptive check interval, not just a fixed 2-minute post-boot window.
- *    A flat 30s cadence after boot leaves a real blind spot: a sharp spike
- *    well after startup (e.g. a burst of concurrent GitHub requests) could
- *    blow past the ceiling within that 30s gap before the watchdog even
- *    looks again. Now checks every 5s whenever RSS is within 20% of the
+ *    A flat 30s cadence after boot would leave a real blind spot: a sharp
+ *    spike well after startup (e.g. a burst of concurrent GitHub requests)
+ *    could blow past the ceiling within that 30s gap before the watchdog
+ *    even looks again. Checks every 5s whenever RSS is within 20% of the
  *    ceiling, regardless of how long the process has been up — the fast
  *    cadence follows actual risk, not just a fixed post-boot window.
  *
@@ -139,7 +138,7 @@ function startMemoryWatchdog() {
 }
 
 /**
- * v0.9.3 — flushes any webhook digest windows that have come due (see
+ * Flushes any webhook digest windows that have come due (see
  * lib/webhookDigest.js). A plain setInterval, deliberately separate from
  * the memory watchdog's adaptive-cadence logic above — unrelated concern,
  * unrelated failure modes; tangling them would make both harder to reason
@@ -189,7 +188,7 @@ function startWebhookDigestPoller(bot) {
 }
 
 /**
- * v0.9.3 — daily/weekly rollup delivery. Checked hourly; a Redis marker
+ * Daily/weekly rollup delivery. Checked hourly; a Redis marker
  * (not in-memory) records the last date a rollup was sent per user+period,
  * so a bot restart can't cause a duplicate send within the same day/week —
  * same reasoning as the digest poller's "durable due-marker over

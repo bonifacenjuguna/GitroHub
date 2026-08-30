@@ -2,7 +2,7 @@
  * Runs an async mapper over items with a maximum number in flight at once,
  * instead of firing all of them simultaneously via Promise.all(items.map(...)).
  *
- * Why this exists (v0.8.4 hardening): Pinned Repos fetches tree-stats for
+ * Why this exists: Pinned Repos fetches tree-stats for
  * every pinned repo via Promise.all() with no cap — pin 15-20 repos and
  * opening the screen fires that many concurrent GitHub requests at once,
  * each holding a socket + response buffer simultaneously, on a

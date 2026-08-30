@@ -2,13 +2,13 @@ const { pool } = require('../db/postgres');
 const logger = require('./logger');
 
 /**
- * v0.9.3 bug fix: every repo_name-keyed table (tags, pins, path memory,
- * notification mutes, webhooks, recently-viewed) previously went orphaned
- * on rename — GitHub itself redirects the old URL, but nothing here ever
- * followed. A renamed repo silently lost its tags, pin position, upload
- * path memory, mute state, and live webhook registration, with no error
- * and no visible sign anything was wrong until one of those features
- * quietly stopped working.
+ * Keeps every repo_name-keyed table (tags, pins, path memory,
+ * notification mutes, webhooks, recently-viewed) bound to a repo through a
+ * rename — GitHub itself redirects the old URL, but nothing on this side
+ * follows automatically otherwise. Without this, a renamed repo would
+ * silently lose its tags, pin position, upload path memory, mute state,
+ * and live webhook registration, with no error and no visible sign
+ * anything was wrong until one of those features quietly stopped working.
  *
  * Run in a single transaction: either every table follows the rename, or
  * none do (a partial cascade — e.g. tags moved but webhooks didn't — would

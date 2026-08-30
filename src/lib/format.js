@@ -103,7 +103,7 @@ function activityStatus(repo) {
 }
 
 /**
- * Locked bot-wide repo-card layout (v0.8.0 redesign) — used everywhere a
+ * Locked bot-wide repo-card layout — used everywhere a
  * repo is listed: My Repos, Repo View, Pinned, Search results, Bulk Select
  * previews, and Stats. One function so every screen renders identically and
  * a future style change only touches one place.

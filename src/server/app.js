@@ -49,7 +49,7 @@ function describeWebhookEvent(event, payload) {
   if (event === 'issues' && payload.action === 'opened') return `New issue: "${payload.issue.title}"`;
   if (event === 'pull_request' && payload.action === 'opened') return `New PR: "${payload.pull_request.title}"`;
   if (event === 'release' && payload.action === 'published') return `New release: ${payload.release.tag_name}`;
-  // v0.9.3 — richer event coverage. workflow_run fires for every state
+  // workflow_run fires for every state
   // transition (requested/in_progress/completed) — only the terminal
   // 'completed' action is worth a notification, otherwise a single CI run
   // would spam 2-3 messages for its own lifecycle.
@@ -66,12 +66,10 @@ function describeWebhookEvent(event, payload) {
 
 function createApp(bot) {
   const app = express();
-  // Bug fix: express.static() expects a DIRECTORY to serve from, not a
-  // single file path — the old `express.static(path/to/logo.png)` mounted
-  // at '/logo.png' never actually resolved correctly, which is why the
-  // callback page's logo silently failed to load. Serving the whole
-  // public/ directory at root is the standard, correct pattern — also
-  // future-proofs any other static assets added to public/ later.
+  // express.static() serves a DIRECTORY, not a single file path — mounting
+  // the whole public/ directory at root means /logo.png (used by the
+  // callback page) resolves correctly, and future-proofs any other
+  // static assets added to public/ later.
   app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
   app.get('/', (req, res) => {
@@ -225,7 +223,7 @@ function createApp(bot) {
 
       await activity.log(registration.telegram_id, '🔔', `${summary} → ${repoFullName}`, {});
 
-      // v0.9.3 — digest buffering instead of an immediate send. Quiet
+      // Digest buffering instead of an immediate send. Quiet
       // hours (if configured) simply widen the effective window: the
       // event still buffers immediately, but delivery is deferred until
       // quiet hours end (checked by the flush poller, see bot.js).

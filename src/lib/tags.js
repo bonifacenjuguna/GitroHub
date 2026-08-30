@@ -2,7 +2,7 @@ const { pool } = require('../db/postgres');
 
 // Fixed small palette for tag chip rendering — deliberately not free-form
 // hex, so chips stay visually consistent with the rest of the bot's
-// outcome-based color system (see CHANGELOG v0.8.5-v0.8.7).
+// outcome-based color system (see design principles in README).
 const COLOR_CLASSES = ['default', 'blue', 'green', 'red', 'purple', 'orange'];
 
 async function listTags(telegramId) {

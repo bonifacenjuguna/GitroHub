@@ -34,7 +34,7 @@ CREATE INDEX IF NOT EXISTS idx_activity_log_telegram_id_created
 CREATE INDEX IF NOT EXISTS idx_activity_log_errors
   ON activity_log (telegram_id, is_error, created_at DESC);
 
--- ── v0.3.0 additions ─────────────────────────────────────────
+-- ── My Defaults, Storage & Access ───────────────────────────────
 
 -- My Defaults, Storage & Data auto-cleanup, Access Log alerts
 ALTER TABLE users ADD COLUMN IF NOT EXISTS default_visibility TEXT NOT NULL DEFAULT 'private';
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS access_log (
 );
 CREATE INDEX IF NOT EXISTS idx_access_log_user ON access_log (telegram_id, created_at DESC);
 
--- ── v0.9.0 additions ─────────────────────────────────────────
+-- ── Search History & Size Snapshots ─────────────────────────────
 
 -- Search history — last few searches per user, shown as quick-tap suggestions
 CREATE TABLE IF NOT EXISTS search_history (
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS size_snapshots (
   snapshotted_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- ── v0.9.1 additions ─────────────────────────────────────────
+-- ── Recently Viewed ──────────────────────────────────────────────
 
 -- Recently viewed repos — quick-tap shortcuts back to whatever you actually
 -- opened recently, same shape as search_history.
@@ -149,7 +149,7 @@ CREATE TABLE IF NOT EXISTS repo_webhooks (
   PRIMARY KEY (telegram_id, repo_name)
 );
 
--- ── v0.9.3 additions ─────────────────────────────────────────
+-- ── Nested Tags & Auto-Rules ─────────────────────────────────────
 
 -- Nested tags (self-reference; NULL parent = top-level) + color class for
 -- chip rendering. Existing rows get parent_id=NULL, color_class='default'.

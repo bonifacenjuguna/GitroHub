@@ -78,8 +78,9 @@ const scene = new Scenes.WizardScene(
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, oldName);
       repoCache.invalidateTreeStats(ctx.from.id, oldName);
-      // v0.9.3 fix: tags/pins/path-memory/mutes/webhooks were previously
-      // left keyed to the old name and silently orphaned — see renameCascade.js.
+      // Keeps tags/pins/path-memory/mutes/webhooks bound to the repo
+      // through the rename instead of staying keyed to the old name —
+      // see renameCascade.js.
       try {
         const renameCascade = require('../lib/renameCascade');
         await renameCascade.cascadeRename(ctx.from.id, oldName, newName);

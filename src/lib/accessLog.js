@@ -1,7 +1,7 @@
 const { pool } = require('../db/postgres');
 
 /**
- * v0.9.3 — rules-based anomaly detection, evaluated at write time so the
+ * Rules-based anomaly detection, evaluated at write time so the
  * flag is stored once and never recomputed. Two checks, both cheap
  * (single prior-row lookup), deliberately not ML — appropriate for a
  * single-owner bot where "unusual" just means "worth a second look",

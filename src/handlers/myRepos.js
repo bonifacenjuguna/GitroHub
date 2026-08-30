@@ -129,8 +129,8 @@ async function showMyRepos(ctx, { edit = false } = {}) {
     const [pinList, tagMap, treeStatsResults] = await Promise.all([
       pins.list(telegramId),
       tags.tagsForRepos(telegramId, pageRepos.map((r) => r.name)),
-      // Real size, not GitHub's lagging cache (v0.8.1 #14 — this now
-      // matches Repo View's behavior). Only fetched for the 3 repos on
+      // Real size, not GitHub's lagging cache — matches Repo View's
+      // behavior. Only fetched for the 3 repos on
       // THIS page, not the whole list, so pagination keeps this cheap —
       // each page load costs one extra tree call per visible repo, not per
       // repo you own.
@@ -224,8 +224,8 @@ async function showStats(ctx) {
       trendLine = `▸ ${arrow} ${sign}${format.escapeMd(format.formatBytes(Math.abs(delta)))} since ${format.escapeMd(format.relativeTime(previous.snapshotted_at))}\n`;
     }
   }
-  // v0.9.3 — rolling 30-day sparkline, one data point per calendar day
-  // (size_snapshot_history), instead of just the single prior-vs-now delta.
+  // Rolling 30-day sparkline, one data point per calendar day
+  // (size_snapshot_history), alongside the single prior-vs-now delta.
   let sparkLine = '';
   try {
     const history = await sizeSnapshot.getHistory(ctx.from.id, 30);
@@ -259,9 +259,9 @@ async function showStats(ctx) {
 
 async function showFilterMenu(ctx) {
   // Sent as a brand-new message (not an edit) — a BBTB tap has no prior
-  // bot message to edit, which is exactly what caused the old
-  // "400: message can't be edited" crash. The callback handler in bot.js
-  // edits THIS fresh message, so that edit is always safe.
+  // bot message to edit, so editing directly would fail with Telegram's
+  // "400: message can't be edited" error. The callback handler in bot.js
+  // edits THIS fresh message instead, so that edit is always safe.
   await ctx.reply('🔎 *Filter repositories by:*', {
     parse_mode: 'MarkdownV2',
     ...inline.filterMenu,

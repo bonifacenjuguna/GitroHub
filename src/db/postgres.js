@@ -30,12 +30,10 @@ pool.on('error', (err) => {
 
 /**
  * Ping the database and return round-trip latency in ms.
- * Used by Settings screen to show live DB health. Cached for 5s (v0.8.1
- * hardening #A) — this was previously an uncached fresh round-trip on
- * every call despite the README already claiming otherwise, and v0.8.1
- * made Settings' Refresh Status trivially spammable (inline, chained,
- * one tap = a fresh message with another refresh button), so an
- * uncached ping here is now real, easily-repeated DB load.
+ * Used by Settings screen to show live DB health. Cached for 5s — Settings'
+ * Refresh Status is trivially spammable (inline, chained, one tap = a
+ * fresh message with another refresh button), so an uncached ping here
+ * would be real, easily-repeated DB load.
  */
 let cachedPing = null;
 async function ping() {

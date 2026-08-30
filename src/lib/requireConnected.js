@@ -5,11 +5,11 @@
  * so stale buttons from before a disconnect stop offering dead actions)
  * and returns null so the caller can bail out.
  *
- * Fetches the user row once (v0.8.1 hardening) instead of the previous
- * isConnected() + getDecryptedToken() pair, which each independently
- * called getUser() — two full Postgres queries where one suffices. This
- * function is called at the top of nearly every gated handler in the bot,
- * so the duplicate query was a real, if small, cost on every single call.
+ * Fetches the user row once — a single getUser() call rather than an
+ * isConnected() + getDecryptedToken() pair that would each independently
+ * call getUser() and cost two full Postgres queries where one suffices.
+ * This function is called at the top of nearly every gated handler in the
+ * bot, so keeping it to one query matters even though each query is cheap.
  */
 async function requireConnected(ctx) {
   const telegramId = ctx.from.id;

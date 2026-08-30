@@ -36,9 +36,9 @@ async function showActivity(ctx, { page = 1, errorsOnly = false, edit = false, s
   if (edit) {
     await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
   } else {
-    // BBTB marker only on first open — chained refresh taps (#49) pass
+    // BBTB marker only on first open — chained refresh taps pass
     // skipBbtb since the reply keyboard is already showing correctly and
-    // resending it every tap would be exactly the clutter this pass fixed.
+    // resending it every tap would just be clutter.
     if (!skipBbtb) await ctx.reply('📜 Activity', bbtb.activityLog);
     await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
   }

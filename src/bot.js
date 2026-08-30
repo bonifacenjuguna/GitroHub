@@ -41,20 +41,20 @@ async function sendCancelledMenu(ctx) {
 }
 
 /**
- * GLOBAL SCENE ESCAPE HATCH — see v0.2.0 changelog for the full story.
+ * GLOBAL SCENE ESCAPE HATCH.
  * Registers the same navigation handlers directly on each scene so
  * /start, /cancel, and every BBTB nav button work identically whether or
  * not a wizard is currently active.
  *
  * `selfEntryLabels` excludes the specific label(s) that are how you ENTER
  * this exact scene in the first place. Without this, entering a scene via
- * a BBTB tap (e.g. "➕ New Repo") causes Telegraf to re-process that same
- * text INSIDE the newly-entered scene — where it would immediately match
- * its own escape hatch, leave, and re-enter again, bouncing several times
- * before settling (each bounce doing real session I/O). This was a real
- * bug, not a timeout issue — found by tracing why only scenes triggered
- * by a BBTB label (New Repo, Upload) were affected, while ones triggered
- * by inline buttons (Rename, Edit File) never were.
+ * a BBTB tap (e.g. "➕ New Repo") would cause Telegraf to re-process that
+ * same text INSIDE the newly-entered scene — where it would immediately
+ * match its own escape hatch, leave, and re-enter again, bouncing several
+ * times before settling (each bounce doing real session I/O). This only
+ * affects scenes entered by a BBTB label (New Repo, Upload); scenes
+ * entered by inline buttons (Rename, Edit File) are unaffected, since
+ * there's no re-processed text for the escape hatch to match.
  */
 function attachGlobalEscapes(scene, handlerMap, onLeave, selfEntryLabels = []) {
   const excluded = new Set([...SCENE_INTERNAL_LABELS, ...selfEntryLabels]);
@@ -283,10 +283,9 @@ function createBot() {
     if (data === 'search:type:myrepos') {
       await ctx.answerCbQuery();
       ctx.session.awaitingSearch = true;
-      // #12 — recent searches as quick-tap suggestions, best-effort
-      // Bug fix (found live, pre-dates this session): bot.js sits at
-      // src/bot.js, sibling to src/lib/ — '../lib/searchHistory' incorrectly
-      // climbed one level above src/ entirely. Corrected to './lib/searchHistory'.
+      // Recent searches as quick-tap suggestions, best-effort.
+      // bot.js sits at src/bot.js, sibling to src/lib/, so the require
+      // path is './lib/searchHistory'.
       const searchHistory = require('./lib/searchHistory');
       const recent = await searchHistory.recent(ctx.from.id, 5).catch(() => []);
       await ctx.reply('🔍 Type a name or keyword to fuzzy-search your repos.', bbtb.cancelOnly);
@@ -743,7 +742,7 @@ function createBot() {
       await ctx.answerCbQuery();
       return bulkActions.undoBulkAction(ctx, data.split('bulk:undo:')[1]);
     }
-    // v0.9.3 — composable filter builder clauses
+    // Composable filter builder clauses
     if (data.startsWith('bulkfilter:add:')) {
       await ctx.answerCbQuery();
       const [, , type, ...rest] = data.split(':');
@@ -758,7 +757,7 @@ function createBot() {
       await ctx.answerCbQuery();
       return bulkActions.promptSaveAsView(ctx);
     }
-    // v0.9.3 — Smart Folders (saved views)
+    // Smart Folders (saved views)
     if (data.startsWith('savedview:apply:')) {
       await ctx.answerCbQuery();
       const savedViews = require('./lib/savedViews');

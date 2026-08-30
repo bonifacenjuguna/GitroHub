@@ -24,9 +24,9 @@ async function handleSearchInput(ctx, query) {
 }
 
 /** 📁 My Repos search entry point — fuzzy-searches only your own repos.
- * No longer guesses intent from a single shared box (see handlePublicRepoInput
- * for the other half of the v0.8.0 search split) — a GitHub link pasted here
- * is treated as a literal (probably not matching) search term, not auto-detected. */
+ * Doesn't guess intent from a single shared box (see handlePublicRepoInput
+ * for the other explicit entry point) — a GitHub link pasted here is
+ * treated as a literal (probably not matching) search term, not auto-detected. */
 async function handleMyReposSearchInput(ctx, query) {
   return handleRepoSearch(ctx, query);
 }
@@ -52,8 +52,8 @@ async function handleRepoSearch(ctx, query) {
   await searchHistory.record(ctx.from.id, query); // #12 — best-effort, non-blocking to the actual search
 
   const repos = await repoCache.getRepos(ctx.from.id, token);
-  // v0.9.3 — multi-field: name is still weighted highest (see searchRanking),
-  // but description now participates in the fuzzy pass too, so "the repo
+  // Multi-field: name is still weighted highest (see searchRanking),
+  // but description also participates in the fuzzy pass, so "the repo
   // about parsing CSVs" can surface even with a totally different name.
   const fuse = new Fuse(repos, { keys: [{ name: 'name', weight: 0.8 }, { name: 'description', weight: 0.2 }], threshold: 0.4, includeScore: true });
   const searchRanking = require('../lib/searchRanking');
@@ -206,8 +206,8 @@ async function forkExternal(ctx) {
   );
 }
 
-/** actionLock-protected — Fork was the one destructive action in this file
- * without double-tap protection (see v0.8.1 #17). */
+/** actionLock-protected — Fork is a destructive action, so it's guarded
+ * with double-tap protection like the rest of this file's destructive actions. */
 async function executeForkExternal(ctx) {
   const { owner, repo } = ctx.session.externalRepo;
   const token = await requireConnected(ctx);

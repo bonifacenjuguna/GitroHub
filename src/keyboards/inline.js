@@ -179,8 +179,8 @@ function notificationsMenu(prefs) {
     [style.callback(`${check(prefs.systemAlerts)} System Alerts`, 'notif:toggle:systemAlerts')],
     [style.callback(`${check(prefs.longOps)} Long Operations`, 'notif:toggle:longOps')],
     [style.callback(`${check(prefs.tokenHealth)} Token Health`, 'notif:toggle:tokenHealth')],
-    // v0.9.3 — daily/weekly rollup summary + quiet hours, cycling on tap
-    // rather than a separate picker screen — keeps this one flat menu.
+    // Daily/weekly rollup summary + quiet hours cycle on tap rather than
+    // a separate picker screen — keeps this one flat menu.
     [style.callback(`Rollup: ${rollupLabel}`, 'notif:cyclerollup')],
     [style.callback(`Quiet Hours: ${quietLabel}`, 'notif:setquiet')],
     [style.callback('⬅️ Back', 'settings:back', style.BLUE)],
@@ -207,11 +207,10 @@ function activityPagination(page, totalPages, errorsOnly) {
   rows.push([
     style.callback(errorsOnly ? '⬅️ Back to Full Log' : '⚠️ Errors Only', `activity:filter:${!errorsOnly}`),
   ]);
-  // Access Log relocated here from its own Settings BBTB row (#47) — same
-  // content/flow as before, just reachable from inside Activity now.
-  // Refresh relocated here too (#49), same chained-fresh-message pattern
-  // as Settings' Refresh Status, instead of its own BBTB row that (per a
-  // v0.8.1 audit) was actually colliding with My Repos' Refresh button.
+  // Access Log lives here, reachable from inside Activity rather than its
+  // own Settings row. Refresh uses the same chained-fresh-message pattern
+  // as Settings' Refresh Status, and lives here instead of its own BBTB
+  // row to avoid colliding with My Repos' Refresh button.
   rows.push([
     style.callback('🔑 Access Log', 'activity:accesslog', style.BLUE),
     style.callback('🔄 Refresh', `activity:refresh:${errorsOnly}`),
@@ -219,8 +218,8 @@ function activityPagination(page, totalPages, errorsOnly) {
   return Markup.inlineKeyboard(rows);
 }
 
-/** v0.8.0 search split — two explicit entry points instead of one box that
- * guessed intent from the input (fuzzy name vs pasted URL). */
+/** Two explicit search entry points instead of one box that guesses intent
+ * from the input (fuzzy name vs pasted URL). */
 function searchTypeMenu() {
   return Markup.inlineKeyboard([
     [style.callback('📁 My Repos', 'search:type:myrepos', style.BLUE)],

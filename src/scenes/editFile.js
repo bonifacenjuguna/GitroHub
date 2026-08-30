@@ -9,9 +9,9 @@ const activity = require('../lib/activity');
 
 /**
  * Returns the user to exactly where they were — the Browse Files folder
- * containing this file — instead of dumping them at Main Menu. This was a
- * reported bug: Cancel (and every exit path) used to hard-reset to
- * bbtb.mainMenu regardless of context.
+ * containing this file — instead of dumping them at Main Menu. Cancel
+ * (and every exit path) is scoped to this context rather than
+ * hard-resetting to bbtb.mainMenu regardless of where the flow started.
  */
 async function returnToFolder(ctx, repoName, filePath) {
   const browseFiles = require('../handlers/browseFiles');

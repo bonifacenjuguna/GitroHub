@@ -12,7 +12,7 @@ async function getPrevious(telegramId) {
 
 /**
  * Overwrites the "latest" row (still one per user — fast lookup for the
- * single trend delta) AND, v0.9.3, appends to size_snapshot_history for a
+ * single trend delta) and appends to size_snapshot_history for a
  * real rolling series. History is capped by only inserting once per
  * calendar day per user (checked here rather than via a separate cron),
  * so repeatedly opening Stats in one day doesn't flood the series with

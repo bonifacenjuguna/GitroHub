@@ -4,10 +4,9 @@ const tags = require('../lib/tags');
 const format = require('../lib/format');
 const requireConnected = require('../lib/requireConnected');
 
-// Every write function below is gated behind requireConnected (v0.8.1 #25/#22)
-// — previously NONE of them checked connection state at all, so a stale
-// button from an old message could add/remove/create tags for a repo with
-// zero indication anything was wrong, even fully disconnected.
+// Every write function below is gated behind requireConnected — this stops
+// a stale button from an old message from adding/removing/creating tags for
+// a repo when the account is disconnected, instead of failing silently.
 
 async function showRepoTags(ctx, repoName) {
   const token = await requireConnected(ctx);

@@ -289,7 +289,7 @@ const scene = new Scenes.WizardScene(
       if (changed.length > 0) {
         const dir = changed[0].path.split('/').slice(0, -1).join('/');
         await pathMemory.setLastPath(ctx.from.id, ctx.wizard.state.repoName, dir);
-        // v0.9.3 — feeds the global "learned default upload path" suggestion
+        // Feeds the global "learned default upload path" suggestion
         // (lib/defaults.checkUploadPathPattern), separate from this
         // per-repo memory.
         const defaultsLib = require('../lib/defaults');

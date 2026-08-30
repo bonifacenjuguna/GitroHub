@@ -31,7 +31,7 @@ async function connect() {
 /**
  * Ping Redis and return round-trip latency in ms.
  * Used by Settings screen to show live DB health. Cached for 5s — same
- * reasoning as Postgres's ping cache (v0.8.1 hardening #A).
+ * reasoning as Postgres's ping cache.
  */
 let cachedPing = null;
 async function ping() {

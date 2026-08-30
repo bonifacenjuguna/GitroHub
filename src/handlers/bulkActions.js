@@ -216,7 +216,7 @@ async function _execute(ctx, action) {
   const selected = getSelection(ctx);
   const user = await repoCache.getUser(ctx.from.id, token);
 
-  // v0.9.3 — snapshot prior state before the batch runs, for undo. Only
+  // Snapshot prior state before the batch runs, for undo. Only
   // meaningful for visibility changes; returns null (no-op) otherwise.
   const undoLogId = await captureUndoState(ctx, action, selected).catch(() => null);
 
@@ -314,7 +314,7 @@ async function _execute(ctx, action) {
     await ctx.reply(summary, bbtb.bulkComplete);
   }
 
-  // v0.9.3 — undo offer, only when a reversible snapshot was actually taken.
+  // Undo offer, only when a reversible snapshot was actually taken.
   if (undoLogId) {
     await ctx.reply(
       `Undo available for 1 hour.`,
@@ -360,9 +360,9 @@ async function runAction(token, owner, repoName, action, telegramId) {
 }
 
 /**
- * v0.9.3 — records prior visibility per-repo BEFORE the bulk change runs,
+ * Records prior visibility per-repo BEFORE the bulk change runs,
  * so a full batch can be reversed with one tap. Only visibility is wired
- * up here; delete/download were never reversible candidates (see
+ * up here; delete/download are not reversible candidates (see
  * lib/bulkUndo's REVERSIBLE_ACTIONS).
  */
 async function captureUndoState(ctx, action, repoNames) {
