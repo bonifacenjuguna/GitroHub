@@ -284,7 +284,10 @@ function createBot() {
       await ctx.answerCbQuery();
       ctx.session.awaitingSearch = true;
       // #12 — recent searches as quick-tap suggestions, best-effort
-      const searchHistory = require('../lib/searchHistory');
+      // Bug fix (found live, pre-dates this session): bot.js sits at
+      // src/bot.js, sibling to src/lib/ — '../lib/searchHistory' incorrectly
+      // climbed one level above src/ entirely. Corrected to './lib/searchHistory'.
+      const searchHistory = require('./lib/searchHistory');
       const recent = await searchHistory.recent(ctx.from.id, 5).catch(() => []);
       await ctx.reply('🔍 Type a name or keyword to fuzzy-search your repos.', bbtb.cancelOnly);
       if (recent.length) {
@@ -301,7 +304,7 @@ function createBot() {
     }
     if (data === 'search:clearhistory') {
       await ctx.answerCbQuery();
-      const searchHistory = require('../lib/searchHistory');
+      const searchHistory = require('./lib/searchHistory');
       await searchHistory.clear(ctx.from.id);
       return ctx.editMessageText('🗑 Search history cleared.');
     }

@@ -2,13 +2,18 @@
 
 All notable changes to GitroHub, newest first. See [README.md](./README.md) for the current feature set and setup instructions.
 
-**Jump to:** [v0.9.3](#v093--smart-folders-nested-tags-github-api-hardening-and-a-real-bug-fix) · [v0.9.2](#v092--root-cause-bug-sweep-missing-imports-webhook-cleanup-callback-safety) · [v0.9.1](#v091--webhook-notifications-recently-viewed-undo-history-and-more) · [v0.9.0](#v090--15-features-fork-tags-star-toggle-undo-search-history-and-more) · [v0.8.7](#v087--colors-redesigned-around-outcome-not-button-role) · [v0.8.6](#v086--button-color-remapping-after-seeing-it-live) · [v0.8.5](#v085--button-color-styling-bot-api-94) · [v0.8.4](#v084--memory-and-watchdog-hardening) · [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
+**Jump to:** [v0.9.4](#v094--live-crash-fix-broken-searchhistory-require-path-in-botjs) · [v0.9.3](#v093--smart-folders-nested-tags-github-api-hardening-and-a-real-bug-fix) · [v0.9.2](#v092--root-cause-bug-sweep-missing-imports-webhook-cleanup-callback-safety) · [v0.9.1](#v091--webhook-notifications-recently-viewed-undo-history-and-more) · [v0.9.0](#v090--15-features-fork-tags-star-toggle-undo-search-history-and-more) · [v0.8.7](#v087--colors-redesigned-around-outcome-not-button-role) · [v0.8.6](#v086--button-color-remapping-after-seeing-it-live) · [v0.8.5](#v085--button-color-styling-bot-api-94) · [v0.8.4](#v084--memory-and-watchdog-hardening) · [v0.8.3](#v083--rename-crash-fix-callback-page-redesign-docs-cleanup) · [v0.8.2](#v082--deep-bug-sweep-on-the-v081-checkpoint) · [v0.8.1](#v081--stability-checkpoint-root-cause-pass-not-patches) · [v0.8.0](#v080--card-redesign-search-split-and-new-screens) · [v0.1.0–v0.7.2](#v010--v072--getting-the-bot-stable-click-to-expand)
 
 ---
 
 ---
 
-### v0.9.3 — Smart Folders, nested tags, GitHub API hardening, and a real bug fix
+### v0.9.4 — Live crash fix: broken searchHistory require path in bot.js
+
+User-reported: tapping 📁 My Repos under 🔍 Search Repo threw `Cannot find module '../lib/searchHistory'`.
+
+- **Fixed:** two call sites in `bot.js` (the "recent searches" suggestion list, and "🗑 Clear History") used `require('../lib/searchHistory')`. `bot.js` lives at `src/bot.js`, a sibling of `src/lib/` — `../lib/searchHistory` incorrectly climbed one level above `src/` entirely (looking for a `/lib/` folder at the project root, which doesn't exist), instead of `./lib/searchHistory`. This bug pre-dates v0.9.3's changes — confirmed present in the v0.9.2 source before any of this session's edits — and only ever surfaced at runtime because these two lazy `require()` calls only execute when that specific button is tapped, not at bot startup.
+- **Verified, not just patched:** rather than fix only the two reported lines, ran a full audit of every relative `require()` in the codebase (all ~90 files) by resolving each one programmatically against the real filesystem, not by eyeballing paths. Confirmed no other instance of this bug class exists anywhere — both directions checked (top-level `src/*.js` files wrongly using `../`, and one-level-deep files like `handlers/`/`scenes/` wrongly using `./`).
 
 A "make everything more sophisticated" pass across Tags/Pins/Defaults, Bulk Actions, Search, the GitHub API layer, Webhooks, and Activity/Stats — plus one genuine latent bug found and fixed along the way, not part of the original ask.
 
