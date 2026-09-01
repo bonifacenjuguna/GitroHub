@@ -213,7 +213,7 @@ async function createRepo(token, { name, isPrivate, description, licenseTemplate
     const { data } = await octo.repos.createForAuthenticatedUser({
       name,
       private: isPrivate,
-      description: description || undefined,
+      description: description ? sanitizeDescription(description) : undefined,
       license_template: licenseTemplate || undefined,
       auto_init: true, // ensures a default branch + initial commit exist immediately
       request: { signal },
@@ -269,10 +269,20 @@ async function setVisibility(token, owner, repo, isPrivate) {
   })(), 'Change visibility');
 }
 
+/** GitHub rejects repo descriptions containing control characters (e.g.
+ * stray \n, \t, or other C0/C1 codes that sneak in via copy-paste from
+ * Telegram). Strip them and collapse any resulting whitespace so the
+ * request never 422s on this. */
+function sanitizeDescription(description) {
+  if (!description) return '';
+  // eslint-disable-next-line no-control-regex
+  return description.replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
 async function updateDescription(token, owner, repo, description) {
   return withAbortTimeout((signal) => (async () => {
     const octo = client(token);
-    const { data } = await octo.repos.update({ owner, repo, description: description || '', request: { signal } });
+    const { data } = await octo.repos.update({ owner, repo, description: sanitizeDescription(description), request: { signal } });
     return data;
   })(), 'Update description');
 }
