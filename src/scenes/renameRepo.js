@@ -78,6 +78,12 @@ const scene = new Scenes.WizardScene(
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, oldName);
       repoCache.invalidateTreeStats(ctx.from.id, oldName);
+      // If the repo just renamed was the one "open" in Repo View, keep
+      // session state pointing at it under its new name — otherwise every
+      // BBTB action that reads ctx.session.currentRepo (Upload, Browse
+      // Files, Download, Visibility, License, ...) would keep targeting a
+      // name that no longer exists until the person reopens it manually.
+      if (ctx.session.currentRepo === oldName) ctx.session.currentRepo = repo.name;
       // Keeps tags/pins/path-memory/mutes/webhooks bound to the repo
       // through the rename instead of staying keyed to the old name —
       // see renameCascade.js.

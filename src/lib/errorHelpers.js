@@ -40,8 +40,15 @@ async function replyGithubError(ctx, err, actionDescription) {
       const users = require('./users');
       const prefs = await users.getNotificationPrefs(ctx.from.id);
       if (prefs && prefs.tokenHealth) {
+        // Deliberately NOT logged as 'disconnected' — the account is still
+        // shown as connected (users.disconnect() is never called here), and
+        // accessLog's anomaly detection specifically watches for a
+        // reconnect shortly after a 'disconnected' event. Reusing that
+        // label for a mid-action token rejection would falsely flag the
+        // person's next real reconnect as "reconnected shortly after
+        // disconnecting" even though nothing was ever actually disconnected.
         const accessLog = require('./accessLog');
-        await accessLog.record(ctx.from.id, 'disconnected', 'Token rejected by GitHub mid-action (likely expired/revoked)');
+        await accessLog.record(ctx.from.id, 'token_rejected', 'Token rejected by GitHub mid-action (likely expired/revoked)');
         // The Access Log entry above is a silent record — Token Health being
         // "on" should also mean an actual push, same as every other
         // Notification category. Sent as its own message (not folded into

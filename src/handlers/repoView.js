@@ -105,7 +105,7 @@ async function showRepoView(ctx, repoName) {
     // penalize the health flag for a fetch error that isn't really about
     // the repo".
     github.getFileContent(token, repo.owner.login, repo.name, 'README.md')
-      .then((f) => ({ exists: true, content: f.content }))
+      .then((f) => ({ exists: true, content: f.content.toString('utf8') }))
       .catch((err) => ({ exists: err.status === 404 ? false : undefined, content: null })),
     github.getRecentCommits(token, repo.owner.login, repo.name, 3).catch(() => []),
   ]);
@@ -493,6 +493,18 @@ async function undoAction(ctx, undoId) {
  * itself stays registered, we just skip sending while muted, avoiding a
  * delete+recreate round trip with GitHub for something reversible locally). */
 async function toggleWebhookEnable(ctx, repoName) {
+  // Locked, same as every other write action here — without this, a fast
+  // double-tap before the screen re-renders (the button only disappears
+  // once Repo View redraws) could register two live webhooks on GitHub for
+  // the same repo. Only the second's id/secret would ever get saved, so
+  // the first becomes an orphan that keeps firing and failing signature
+  // verification forever, with no way to clean it up from inside the bot.
+  const actionLock = require('../lib/actionLock');
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'webhookEnable', () => _toggleWebhookEnable(ctx, repoName));
+  if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
+}
+
+async function _toggleWebhookEnable(ctx, repoName) {
   const token = await requireConnected(ctx);
   if (!token) return;
   try {
@@ -572,7 +584,7 @@ async function sendFullReadme(ctx, repoName) {
     const user = await repoCache.getUser(ctx.from.id, token);
     const file = await github.getFileContent(token, user.login, repoName, 'README.md');
     const filePath = path.join('/tmp', `${repoName}-README.md`);
-    fs.writeFileSync(filePath, file.content);
+    fs.writeFileSync(filePath, file.content); // file.content is a Buffer — writeFileSync accepts it directly
     await ctx.replyWithDocument({ source: filePath, filename: 'README.md' });
     fs.unlink(filePath, () => {});
   } catch (err) {

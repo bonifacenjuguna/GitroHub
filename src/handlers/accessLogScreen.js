@@ -5,8 +5,8 @@ const users = require('../lib/users');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
 
-const EVENT_ICON = { connected: '🟢', reconnected: '🟢', disconnected: '🔴' };
-const EVENT_LABEL = { connected: 'Connected', reconnected: 'Reconnected (scope updated)', disconnected: 'Disconnected' };
+const EVENT_ICON = { connected: '🟢', reconnected: '🟢', disconnected: '🔴', token_rejected: '⚠️' };
+const EVENT_LABEL = { connected: 'Connected', reconnected: 'Reconnected (scope updated)', disconnected: 'Disconnected', token_rejected: 'Token rejected mid-action' };
 
 async function showAccessLog(ctx, { fromActivity = false } = {}) {
   const [events, user] = await Promise.all([

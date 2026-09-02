@@ -380,9 +380,11 @@ async function classifyFiles(ctx, fileRefs) {
 
 async function processSingleFile(ctx, buffer, filename, isBackNav = false) {
   if (!isBackNav) {
-    const content = buffer.toString('utf8');
-    const contentRef = fileBufferCache.put(content);
-    ctx.wizard.state.pendingFiles = [{ filename, contentRef, size: Buffer.byteLength(content, 'utf8'), path: null }];
+    // Cache the raw Buffer, not a UTF-8-decoded string — decoding here and
+    // re-encoding on commit is lossy for anything that isn't valid UTF-8
+    // text (images, PDFs, and other binary files would come out corrupted).
+    const contentRef = fileBufferCache.put(buffer);
+    ctx.wizard.state.pendingFiles = [{ filename, contentRef, size: buffer.length, path: null }];
     delete ctx.wizard.state.pendingFiles[0].status;
   }
 
@@ -479,12 +481,15 @@ async function processZip(ctx, buffer) {
 
   const fileRefs = entries.map((e) => {
     const relativePath = stripPrefix ? e.entryName.slice(stripPrefix.length) : e.entryName;
-    const content = e.getData().toString('utf8');
+    // Keep the raw Buffer from the zip entry — same reasoning as the
+    // single-file path above; a UTF-8 round-trip here would corrupt any
+    // binary file bundled in the zip (images, fonts, etc.).
+    const content = e.getData();
     const contentRef = fileBufferCache.put(content);
     return {
       path: withPresetDir(ctx, relativePath),
       contentRef,
-      size: Buffer.byteLength(content, 'utf8'),
+      size: content.length,
     };
   });
 

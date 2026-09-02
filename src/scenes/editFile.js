@@ -32,7 +32,8 @@ const scene = new Scenes.WizardScene(
 
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
-      const { content, sha } = await github.getFileContent(token, user.login, repoName, filePath);
+      const { content: contentBuf, sha } = await github.getFileContent(token, user.login, repoName, filePath);
+      const content = contentBuf.toString('utf8');
       ctx.wizard.state.originalContent = content;
       ctx.wizard.state.sha = sha;
 

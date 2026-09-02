@@ -448,12 +448,38 @@ async function getTreeStats(token, owner, repo, branch = null) {
   return { sizeBytes, fileCount, folderCount, sizeIncomplete };
 }
 
+/** Encodes file content to base64 for GitHub's Contents/Git Data APIs without
+ * ever routing through a UTF-8 string round-trip — that round-trip is lossy
+ * for arbitrary bytes (images, PDFs, zips, executables, ...), silently
+ * corrupting anything that isn't valid UTF-8 text. Buffers are encoded as-is;
+ * plain strings (e.g. hand-typed commit content, license text) still go
+ * through Buffer.from(..., 'utf8') since those are always genuine text. */
+function toBase64(content) {
+  return (Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8')).toString('base64');
+}
+
+/**
+ * Fetches a file's raw bytes as a Buffer — NOT decoded to a string — since
+ * this is used for binary files (images, etc.) as well as text. Callers that
+ * know they have text (Browse Files' text preview, Edit File, README/LICENSE
+ * handling) should call `.toString('utf8')` on `content` themselves.
+ *
+ * GitHub's Contents API only returns inline `content` for files under 1MB —
+ * for anything larger it comes back with an empty/missing content field even
+ * though `size` is correctly reported. Silently treating that as "empty
+ * file" would be actively dangerous for callers like Edit File (could
+ * overwrite a real file with near-nothing), so this throws a clear,
+ * recognizable error instead of returning a corrupted result.
+ */
 async function getFileContent(token, owner, repo, path) {
   return withRetry((signal) => (async () => {
     const octo = client(token);
     const { data } = await octo.repos.getContent({ owner, repo, path, request: { signal } });
     if (Array.isArray(data)) throw new Error('Path is a directory, not a file');
-    const content = Buffer.from(data.content, data.encoding).toString('utf8');
+    if (!data.content && data.size > 0) {
+      throw new Error(`File is too large to fetch inline (${data.size} bytes) — GitHub's API only returns content for files under 1MB.`);
+    }
+    const content = Buffer.from(data.content || '', data.encoding || 'base64');
     return { content, sha: data.sha, size: data.size };
   })(), 'Get file content');
 }
@@ -461,6 +487,7 @@ async function getFileContent(token, owner, repo, path) {
 /**
  * Create or update a single file — one commit per call.
  * For multi-file zip uploads, use commitMultipleFiles() instead (one commit total).
+ * `content` may be a Buffer (preserves binary fidelity) or a plain text string.
  */
 async function putFile(token, owner, repo, path, content, message, existingSha = null) {
   return withAbortTimeout((signal) => (async () => {
@@ -470,7 +497,7 @@ async function putFile(token, owner, repo, path, content, message, existingSha =
       repo,
       path,
       message,
-      content: Buffer.from(content, 'utf8').toString('base64'),
+      content: toBase64(content),
       sha: existingSha || undefined,
       request: { signal },
     });
@@ -521,7 +548,7 @@ async function commitMultipleFiles(token, owner, repo, files, message, deletions
         const { data: blob } = await octo.git.createBlob({
           owner,
           repo,
-          content: Buffer.from(f.content).toString('base64'),
+          content: toBase64(f.content),
           encoding: 'base64',
           request: { signal },
         });

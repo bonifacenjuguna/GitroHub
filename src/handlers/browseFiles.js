@@ -111,7 +111,8 @@ async function viewFileContent(ctx, repoName, filePath) {
 
   try {
     const user = await repoCache.getUser(ctx.from.id, token);
-    const { content, size } = await github.getFileContent(token, user.login, repoName, filePath);
+    const { content: contentBuf, size } = await github.getFileContent(token, user.login, repoName, filePath);
+    const content = contentBuf.toString('utf8'); // safe: isTextFile() already gated this call
     const lines = content.split('\n');
     const preview = lines.slice(0, 40).join('\n');
     const truncated = lines.length > 40;
@@ -134,7 +135,10 @@ async function sendFileAsDocument(ctx, repoName, filePath) {
   try {
     const user = await repoCache.getUser(ctx.from.id, token);
     const { content } = await github.getFileContent(token, user.login, repoName, filePath);
-    await ctx.replyWithDocument({ source: Buffer.from(content, 'utf8'), filename: fileName });
+    // content is already the raw file Buffer — sending it as-is preserves
+    // byte-for-byte fidelity for binary files (images, PDFs, etc.), unlike
+    // routing it through a UTF-8 string first.
+    await ctx.replyWithDocument({ source: content, filename: fileName });
   } catch (err) {
     await ctx.reply(format.errorMessage('Couldn\u2019t send file', err.message, 'Try again.'));
   }
