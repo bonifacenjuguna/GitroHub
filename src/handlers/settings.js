@@ -58,6 +58,31 @@ async function showSettings(ctx, { skipBbtb = false } = {}) {
   const dbLine = (s) => (s.ok ? `🟢 Connected \\(${s.ms}ms\\)` : `🔴 Unreachable \\(${format.escapeMd(s.error || 'timeout')}\\)`);
   const scopeLine = connected ? format.escapeMd((user.github_scope || 'repo').split(',').join(', ')) : '—';
 
+  // 🤖 Automation stats — best-effort, a hiccup here should never block the
+  // rest of this screen (system status has to stay reliable even if one
+  // of the newer subsystems is having a bad moment).
+  let automationLine = '⚙️ Not connected';
+  if (connected) {
+    try {
+      const tags = require('../lib/tags');
+      const muteRules = require('../lib/automationMuteRules');
+      const [userTags, muteRulesList, lastRunResult] = await Promise.all([
+        tags.listTags(telegramId),
+        muteRules.listMuteRules(telegramId),
+        activity.recent(telegramId, { limit: 1, automatedOnly: true }),
+      ]);
+      const activeTagRules = userTags.filter((t) => t.auto_rule_json).length;
+      const activeMuteRules = muteRulesList.length;
+      const lastRun = lastRunResult.rows[0] ? format.relativeTime(lastRunResult.rows[0].created_at) : 'never';
+      automationLine =
+        `├ Auto\\-Tag rules: ${activeTagRules} active\n` +
+        `├ Auto\\-Mute rules: ${activeMuteRules} active\n` +
+        `└ Last rules run: ${format.escapeMd(lastRun)}`;
+    } catch (_) {
+      automationLine = '└ Unable to fetch';
+    }
+  }
+
   const text =
     `⚙️ *Settings & System Status*\n\n` +
     `👤 *ACCOUNT*\n` +
@@ -69,6 +94,8 @@ async function showSettings(ctx, { skipBbtb = false } = {}) {
     `🗄️ *DATABASE*\n` +
     `├ PostgreSQL: ${dbLine(pgStatus)}\n` +
     `└ Redis: ${dbLine(redisStatus)}\n\n` +
+    `🤖 *AUTOMATION*\n` +
+    `${automationLine}\n\n` +
     `🖥️ *SYSTEM*\n` +
     `├ Uptime: ${format.escapeMd(formatUptime(Date.now() - startTime))}\n` +
     `├ Host: Railway\n` +

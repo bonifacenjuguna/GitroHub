@@ -1,4 +1,5 @@
 const { pool } = require('../db/postgres');
+const ruleEngine = require('./ruleEngine');
 
 // Fixed small palette for tag chip rendering — deliberately not free-form
 // hex, so chips stay visually consistent with the rest of the bot's
@@ -60,10 +61,9 @@ async function descendantTagIds(telegramId, tagId) {
 }
 
 /** Evaluates every tag with an auto_rule_json against one repo's data and
- * returns the ids of tags that should apply. Rule shape:
- * {"field":"language","op":"eq","value":"Python"}
- * {"field":"name","op":"matches","value":"api-*"}
- * {"field":"visibility","op":"eq","value":"private"|"public"}
+ * returns the ids of tags that should apply. Matching itself lives in
+ * lib/ruleEngine.js, shared with 🔕 Auto-Mute rules — same rule shape,
+ * same fields (language / name / visibility / fork), same wildcard syntax.
  * Caller (myRepos refresh) is responsible for actually assigning + only
  * doing so once per repo (one-time confirmation, not silent re-tagging). */
 async function evaluateAutoRules(telegramId, repo) {
@@ -75,28 +75,14 @@ async function evaluateAutoRules(telegramId, repo) {
   for (const t of rows) {
     let rule;
     try { rule = JSON.parse(t.auto_rule_json); } catch (_) { continue; }
-    const fieldValue = rule.field === 'language' ? repo.language
-      : rule.field === 'name' ? repo.name
-      : rule.field === 'visibility' ? (repo.private ? 'private' : 'public')
-      : undefined;
-    if (fieldValue == null) continue;
-    if (rule.op === 'eq' && fieldValue === rule.value) matches.push(t);
-    if (rule.op === 'matches') {
-      const re = new RegExp('^' + rule.value.split('*').map((s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$', 'i');
-      if (re.test(fieldValue)) matches.push(t);
-    }
+    if (ruleEngine.matchesRule(rule, repo)) matches.push(t);
   }
   return matches;
 }
 
-/** Human-readable one-liner for a rule object (or a null/undefined rule),
- * used everywhere a tag's auto-rule needs to be shown on screen. */
+/** Human-readable one-liner for a rule object (or a null/undefined rule). */
 function describeRule(rule) {
-  if (!rule) return 'No rule set';
-  if (rule.field === 'language') return `💻 Language = ${rule.value}`;
-  if (rule.field === 'name') return `📛 Name matches "${rule.value}"`;
-  if (rule.field === 'visibility') return `🔒 Visibility = ${rule.value === 'private' ? 'Private' : 'Public'}`;
-  return 'Unrecognized rule';
+  return ruleEngine.describeRule(rule);
 }
 
 async function setAutoRule(telegramId, tagId, rule /* null clears */) {

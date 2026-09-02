@@ -97,6 +97,23 @@ const bulkComplete = Markup.keyboard([
   [b('📁 My Repos'), b('⬆️ Menu')],
 ]).resize();
 
+// 🤖 Automation hub — mirrors My Repos' 3-row shape: two 3-across rows for
+// the sub-sections + frequent actions (equal-weight, not a sequence), Back
+// on its own row.
+const automation = Markup.keyboard([
+  [b('🏷️ Auto-Tag'), b('🔕 Auto-Mute'), b('📜 Log')],
+  [b('⚙️ Defaults'), b('▶️ Run Rules Now'), b('🗂️ Stale Repos')],
+  [b('⬆️ Back to Settings')],
+]).resize();
+
+// Auto-Tag Rules and Auto-Mute Rules both nest one level under Automation
+// and both want the same "run what I've set up" action close at hand —
+// same shape as Browse Files nesting under Repo View.
+const automationRules = Markup.keyboard([
+  [b('▶️ Run Rules Now')],
+  [b('⬆️ Back to Automation')],
+]).resize();
+
 const backToSettings = Markup.keyboard([
   [b('⬆️ Back to Settings')],
 ]).resize();
@@ -129,5 +146,7 @@ module.exports = {
   bulkComplete,
   backToSettings,
   backToAutomation,
+  automation,
+  automationRules,
   remove,
 };

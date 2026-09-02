@@ -245,3 +245,17 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_end INT;  -- 0-23
 -- directly — feeds the Automation Log's separate, filtered view.
 ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS is_automated BOOLEAN NOT NULL DEFAULT FALSE;
 CREATE INDEX IF NOT EXISTS idx_activity_log_automated ON activity_log (telegram_id, is_automated, created_at DESC);
+
+-- 🔕 Auto-Mute Rules — same condition shape as tags' auto_rule_json
+-- (field/op/value, see lib/ruleEngine.js) but not tied to a tag: these
+-- mute Live Alert notifications for any repo that already has alerts
+-- enabled and matches. A user can have several active at once.
+CREATE TABLE IF NOT EXISTS automation_mute_rules (
+  id SERIAL PRIMARY KEY,
+  telegram_id BIGINT NOT NULL,
+  field TEXT NOT NULL,
+  op TEXT NOT NULL,
+  value TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_automation_mute_rules_user ON automation_mute_rules (telegram_id);

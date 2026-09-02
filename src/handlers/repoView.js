@@ -529,7 +529,24 @@ async function _toggleWebhookEnable(ctx, repoName) {
     const hook = await github.createWebhook(token, user.login, repoName, `${config.BASE_URL}/webhook/github`, secret);
     await repoWebhooks.save(ctx.from.id, repoName, hook.id, secret);
     await activity.log(ctx.from.id, '🔔', `Live alerts enabled → ${repoName}`);
-    await ctx.reply(format.successMessage(`Live alerts enabled for ${repoName}.`));
+
+    // 🤖 Automation — check Auto-Mute rules immediately against this repo,
+    // same as they'd apply on the next ▶️ Run Rules Now, so a repo that
+    // matches (e.g. "mute all forks") never sits un-muted just because it
+    // happened to have alerts enabled between now and the next manual run.
+    let mutedNote = '';
+    try {
+      const muteRules = require('../lib/automationMuteRules');
+      const repo = await github.getRepo(token, user.login, repoName);
+      const matches = await muteRules.evaluateMuteRules(ctx.from.id, repo);
+      if (matches.length > 0) {
+        await notificationMutes.mute(ctx.from.id, repoName);
+        await activity.log(ctx.from.id, '🔕', `Auto-mute rule applied → ${repoName}`, { isAutomated: true });
+        mutedNote = ' (auto-muted — matches an Auto-Mute rule)';
+      }
+    } catch (_) { /* non-fatal — Auto-Mute is a bonus check, not a dependency of enabling alerts */ }
+
+    await ctx.reply(format.successMessage(`Live alerts enabled for ${repoName}${mutedNote}.`));
   } catch (err) {
     await ctx.reply(format.errorMessage('Couldn\u2019t enable live alerts', err.message, 'Check the bot has admin access to this repo, then try again.'));
   }

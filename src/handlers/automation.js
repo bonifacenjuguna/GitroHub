@@ -1,37 +1,63 @@
-const { Markup } = require('telegraf');
-const style = require('../keyboards/buttonStyle');
 const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const format = require('../lib/format');
 const config = require('../config');
 const requireConnected = require('../lib/requireConnected');
 const tags = require('../lib/tags');
+const muteRules = require('../lib/automationMuteRules');
+const ruleEngine = require('../lib/ruleEngine');
 const activity = require('../lib/activity');
+
+const STALE_DAYS = 90;
 
 /**
  * 🤖 Automation — the parent hub for everything that acts on repos without
- * a person tapping through it manually: Defaults (starting values), Auto-Tag
- * Rules (background tagging by condition), and the Automation Log (an audit
- * trail of what ran on its own, separate from the person's own actions).
+ * a person tapping through it manually: Defaults (starting values),
+ * Auto-Tag Rules (background tagging), Auto-Mute Rules (background
+ * notification muting), a 🗂️ Stale Repos nudge, and the Automation Log
+ * (an audit trail of what ran on its own).
  *
  * Defaults itself is untouched — same handler, same data, same behavior —
  * just relocated one level deeper (myDefaults.showDefaults, entered via
- * 'automation:defaults' instead of its own BBTB button).
+ * the '⚙️ Defaults' BBTB button or 'automation:defaults' callback instead
+ * of its own top-level BBTB button).
  */
 async function showAutomationHub(ctx, { skipBbtb = false } = {}) {
   const users = require('../lib/users');
   const connected = await users.isConnected(ctx.from.id);
   if (!connected) return;
 
+  const [userTags, muteRulesList, lastRunResult] = await Promise.all([
+    tags.listTags(ctx.from.id),
+    muteRules.listMuteRules(ctx.from.id),
+    activity.recent(ctx.from.id, { limit: 1, automatedOnly: true }),
+  ]);
+  const activeTagRules = userTags.filter((t) => t.auto_rule_json).length;
+  const activeMuteRules = muteRulesList.length;
+  const lastRun = lastRunResult.rows[0] ? format.relativeTime(lastRunResult.rows[0].created_at) : 'never';
+
+  // Stale-repo nudge is a bonus stat, computed best-effort — a hiccup
+  // fetching the repo list should never block the hub itself from showing.
+  let staleNote = '';
+  try {
+    const staleCount = (await getStaleRepos(ctx)).length;
+    if (staleCount > 0) {
+      staleNote = `\n\n🗂️ *${staleCount}* repo${staleCount === 1 ? '' : 's'} haven\u2019t been pushed to in ${STALE_DAYS}\\+ days — 🗂️ Stale Repos below\\.`;
+    }
+  } catch (_) { /* non-fatal */ }
+
   const text =
     `🤖 *Automation*\n\n` +
     `Rules and background behavior that act on your repos without a manual tap every time\\.\n\n` +
     `▸ ⚙️ *Defaults* — starting values for new repos, uploads, sort/filter, notifications\\.\n` +
-    `▸ 🏷️ *Auto\\-Tag* — automatically tag repos that match a condition \\(language, name pattern, visibility\\)\\.\n` +
-    `▸ 📜 *Log* — what ran on its own, kept separate from things you did yourself\\.`;
+    `▸ 🏷️ *Auto\\-Tag* — ${activeTagRules} active rule${activeTagRules === 1 ? '' : 's'}\\. Tags repos matching a condition\\.\n` +
+    `▸ 🔕 *Auto\\-Mute* — ${activeMuteRules} active rule${activeMuteRules === 1 ? '' : 's'}\\. Mutes alerts on repos matching a condition\\.\n` +
+    `▸ 📜 *Log* — what ran on its own, kept separate from things you did yourself\\.\n\n` +
+    `🕐 Last rules run: ${format.escapeMd(lastRun)}` +
+    staleNote;
 
-  if (!skipBbtb) await ctx.reply('🤖 Automation', bbtb.backToSettings);
-  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.automationHub() });
+  if (!skipBbtb) await ctx.reply('🤖 Automation', bbtb.automation);
+  await ctx.reply(text, { parse_mode: 'MarkdownV2' });
 }
 
 // ─── Auto-Tag Rules ────────────────────────────────────────────────
@@ -53,6 +79,7 @@ async function showAutoTagRules(ctx) {
       .join('\n');
   }
 
+  await ctx.reply('🏷️ Auto-Tag Rules', bbtb.automationRules);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.autoTagRulesMenu(userTags) });
 }
 
@@ -75,6 +102,10 @@ async function selectRuleField(ctx, tagId, field) {
     await ctx.reply('Choose the visibility that should trigger this tag:', inline.ruleVisibilityMenu(tagId));
     return;
   }
+  if (field === 'fork') {
+    await ctx.reply('Choose whether this tag should trigger on forks or non-forks:', inline.ruleForkMenu(tagId));
+    return;
+  }
   ctx.session.automationRuleInput = { tagId, field };
   const prompt = field === 'language'
     ? '💻 Type the exact language name as GitHub reports it (e.g. Python, JavaScript, TypeScript).'
@@ -84,6 +115,12 @@ async function selectRuleField(ctx, tagId, field) {
 
 async function setVisibilityRule(ctx, tagId, value) {
   await tags.setAutoRule(ctx.from.id, Number(tagId), { field: 'visibility', op: 'eq', value });
+  await ctx.reply(format.successMessage('Rule saved'));
+  return showAutoTagRules(ctx);
+}
+
+async function setForkRule(ctx, tagId, value) {
+  await tags.setAutoRule(ctx.from.id, Number(tagId), { field: 'fork', op: 'eq', value });
   await ctx.reply(format.successMessage('Rule saved'));
   return showAutoTagRules(ctx);
 }
@@ -120,57 +157,6 @@ async function clearRule(ctx, tagId) {
   return showAutoTagRules(ctx);
 }
 
-/** Applies every active rule against every repo, retroactively — separate
- * from the per-repo suggestion on Repo View (which only checks the one
- * repo you're looking at, as it's opened). Locked like every other
- * multi-repo write in the bot (see Bulk Actions) since it fans out across
- * the whole account in one tap. */
-async function runRulesNow(ctx) {
-  const actionLock = require('../lib/actionLock');
-  const { skipped } = await actionLock.withLock(ctx.from.id, 'runAutoRules', () => _runRulesNow(ctx));
-  if (skipped) await ctx.reply('⏳ Already running — please wait a moment.');
-}
-
-async function _runRulesNow(ctx) {
-  const token = await requireConnected(ctx);
-  if (!token) return;
-
-  const repoCache = require('../lib/repoCache');
-  const allRepos = await repoCache.getRepos(ctx.from.id, token);
-  const existingByRepo = await tags.tagsForRepos(ctx.from.id, allRepos.map((r) => r.name));
-
-  let tagsApplied = 0;
-  let reposAffected = 0;
-  await ctx.reply(`▶️ Checking ${allRepos.length} repo(s) against your auto-tag rules...`);
-
-  for (const repo of allRepos) {
-    const matches = await tags.evaluateAutoRules(ctx.from.id, repo);
-    if (matches.length === 0) continue;
-    const already = new Set((existingByRepo[repo.name] || []).map((t) => t.id));
-    const newMatches = matches.filter((m) => !already.has(m.id));
-    if (newMatches.length === 0) continue;
-    for (const m of newMatches) {
-      await tags.assignTag(ctx.from.id, repo.name, m.id);
-      tagsApplied++;
-    }
-    reposAffected++;
-  }
-
-  await activity.log(
-    ctx.from.id,
-    '🤖',
-    `Auto-tag rules run → ${tagsApplied} tag(s) applied across ${reposAffected} repo(s)`,
-    { isAutomated: true }
-  );
-
-  await ctx.reply(
-    tagsApplied > 0
-      ? `✅ Applied ${tagsApplied} tag(s) across ${reposAffected} repo(s).`
-      : '➖ No new matches — everything\u2019s already tagged correctly.'
-  );
-  return showAutoTagRules(ctx);
-}
-
 /** One-tap accept for the suggestion shown inline on Repo View when an
  * active rule matches a repo that doesn't have that tag yet. */
 async function applySuggestedTag(ctx, repoName, tagId) {
@@ -196,6 +182,185 @@ async function dismissSuggestion(ctx) {
   } catch (_) { /* message too old to edit — non-fatal, it's just a suggestion */ }
 }
 
+// ─── Auto-Mute Rules ───────────────────────────────────────────────
+
+async function showMuteRules(ctx) {
+  const rules = await muteRules.listMuteRules(ctx.from.id);
+
+  let text = `🔕 *Auto\\-Mute Rules*\n\nAutomatically mute Live Alert notifications for repos matching a condition — handy for forks or low\\-priority repos\\. Only ever affects repos that already have alerts enabled\\.\n\n`;
+  if (rules.length === 0) {
+    text += `No mute rules yet\\.`;
+  } else {
+    text += rules.map((r, i) => `${i + 1}\\. ${format.escapeMd(ruleEngine.describeRule(r))}`).join('\n');
+  }
+
+  await ctx.reply('🔕 Auto-Mute Rules', bbtb.automationRules);
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.muteRulesMenu(rules) });
+}
+
+async function startAddMuteRule(ctx) {
+  await ctx.reply('What should trigger an automatic mute?', inline.muteRuleFieldMenu());
+}
+
+async function selectMuteRuleField(ctx, field) {
+  if (field === 'visibility') {
+    await ctx.reply('Choose the visibility that should trigger a mute:', inline.muteRuleVisibilityMenu());
+    return;
+  }
+  if (field === 'fork') {
+    await ctx.reply('Choose whether this should trigger on forks or non-forks:', inline.muteRuleForkMenu());
+    return;
+  }
+  ctx.session.automationMuteRuleInput = { field };
+  const prompt = field === 'language'
+    ? '💻 Type the exact language name as GitHub reports it (e.g. Python, JavaScript, TypeScript).'
+    : '📛 Type a name pattern, using * as a wildcard (e.g. archive-*, *-old).';
+  await ctx.reply(prompt, bbtb.cancelOnly);
+}
+
+async function setMuteVisibilityRule(ctx, value) {
+  await muteRules.createMuteRule(ctx.from.id, { field: 'visibility', op: 'eq', value });
+  await ctx.reply(format.successMessage('Mute rule added'));
+  return showMuteRules(ctx);
+}
+
+async function setMuteForkRule(ctx, value) {
+  await muteRules.createMuteRule(ctx.from.id, { field: 'fork', op: 'eq', value });
+  await ctx.reply(format.successMessage('Mute rule added'));
+  return showMuteRules(ctx);
+}
+
+async function handleMuteRuleValueInput(ctx, text) {
+  const state = ctx.session.automationMuteRuleInput;
+  delete ctx.session.automationMuteRuleInput;
+  if (!state) return;
+
+  if (text === '❌ Cancel') {
+    await ctx.reply('Cancelled.');
+    return showMuteRules(ctx);
+  }
+
+  const value = text.trim();
+  if (!value) {
+    await ctx.reply('Send a value as text, or ❌ Cancel.');
+    ctx.session.automationMuteRuleInput = state;
+    return;
+  }
+
+  const rule = state.field === 'name'
+    ? { field: 'name', op: 'matches', value }
+    : { field: 'language', op: 'eq', value };
+  await muteRules.createMuteRule(ctx.from.id, rule);
+  await ctx.reply(format.successMessage('Mute rule added'));
+  return showMuteRules(ctx);
+}
+
+async function deleteMuteRule(ctx, ruleId) {
+  await muteRules.deleteMuteRule(ctx.from.id, Number(ruleId));
+  await ctx.reply('🗑 Mute rule deleted.');
+  return showMuteRules(ctx);
+}
+
+// ─── Run everything ────────────────────────────────────────────────
+
+/** Applies every active Auto-Tag AND Auto-Mute rule against every repo,
+ * retroactively — separate from the per-repo tag suggestion on Repo View
+ * (which only checks the one repo you're looking at) and separate from the
+ * live auto-mute check on 🔔 Enable Live Alerts (which only checks that one
+ * repo at the moment you turn alerts on). Locked like every other
+ * multi-repo write in the bot (see Bulk Actions) since it fans out across
+ * the whole account in one tap. */
+async function runAllRulesNow(ctx) {
+  const actionLock = require('../lib/actionLock');
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'runAutomationRules', () => _runAllRulesNow(ctx));
+  if (skipped) await ctx.reply('⏳ Already running — please wait a moment.');
+}
+
+async function _runAllRulesNow(ctx) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+
+  const repoCache = require('../lib/repoCache');
+  const repoWebhooks = require('../lib/repoWebhooks');
+  const notificationMutes = require('../lib/notificationMutes');
+
+  const allRepos = await repoCache.getRepos(ctx.from.id, token);
+  const existingByRepo = await tags.tagsForRepos(ctx.from.id, allRepos.map((r) => r.name));
+  const muteRulesList = await muteRules.listMuteRules(ctx.from.id);
+
+  await ctx.reply(`▶️ Checking ${allRepos.length} repo(s) against your automation rules...`);
+
+  let tagsApplied = 0;
+  let reposTagged = 0;
+  let reposMuted = 0;
+
+  for (const repo of allRepos) {
+    // Auto-Tag
+    const matches = await tags.evaluateAutoRules(ctx.from.id, repo);
+    if (matches.length > 0) {
+      const already = new Set((existingByRepo[repo.name] || []).map((t) => t.id));
+      const newMatches = matches.filter((m) => !already.has(m.id));
+      if (newMatches.length > 0) {
+        for (const m of newMatches) {
+          await tags.assignTag(ctx.from.id, repo.name, m.id);
+          tagsApplied++;
+        }
+        reposTagged++;
+      }
+    }
+
+    // Auto-Mute — only ever touches repos that already have alerts enabled
+    if (muteRulesList.length > 0) {
+      const reg = await repoWebhooks.get(ctx.from.id, repo.name).catch(() => null);
+      if (reg) {
+        const alreadyMuted = await notificationMutes.isMuted(ctx.from.id, repo.name).catch(() => false);
+        if (!alreadyMuted && muteRulesList.some((r) => ruleEngine.matchesRule(r, repo))) {
+          await notificationMutes.mute(ctx.from.id, repo.name);
+          reposMuted++;
+        }
+      }
+    }
+  }
+
+  await activity.log(
+    ctx.from.id,
+    '🤖',
+    `Automation run → ${tagsApplied} tag(s) applied across ${reposTagged} repo(s), ${reposMuted} repo(s) muted`,
+    { isAutomated: true }
+  );
+
+  const parts = [];
+  if (tagsApplied > 0) parts.push(`applied ${tagsApplied} tag(s) across ${reposTagged} repo(s)`);
+  if (reposMuted > 0) parts.push(`muted ${reposMuted} repo(s)`);
+  await ctx.reply(parts.length > 0 ? `✅ Done — ${parts.join(', ')}.` : '➖ No new matches — everything\u2019s already up to date.');
+
+  return showAutomationHub(ctx, { skipBbtb: true });
+}
+
+// ─── Stale Repos ───────────────────────────────────────────────────
+
+async function getStaleRepos(ctx) {
+  const token = await requireConnected(ctx);
+  if (!token) return [];
+  const repoCache = require('../lib/repoCache');
+  const allRepos = await repoCache.getRepos(ctx.from.id, token);
+  const cutoff = Date.now() - STALE_DAYS * 24 * 60 * 60 * 1000;
+  return allRepos
+    .filter((r) => new Date(r.pushed_at).getTime() < cutoff)
+    .sort((a, b) => new Date(a.pushed_at) - new Date(b.pushed_at));
+}
+
+async function showStaleRepos(ctx) {
+  const stale = await getStaleRepos(ctx);
+  let text = `🗂️ *Stale Repos*\n\nNo push in ${STALE_DAYS}\\+ days — might be worth archiving, tagging, or just checking on\\.\n\n`;
+  text += stale.length === 0
+    ? `Nothing stale — everything\u2019s been touched recently\\.`
+    : `Showing ${Math.min(stale.length, 15)} of ${stale.length}\\.`;
+
+  const withLabels = stale.slice(0, 15).map((r) => ({ ...r, staleLabel: format.relativeTime(r.pushed_at) }));
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.staleReposMenu(withLabels) });
+}
+
 // ─── Automation Log ────────────────────────────────────────────────
 
 async function showAutomationLog(ctx, { page = 1, edit = false } = {}) {
@@ -206,7 +371,7 @@ async function showAutomationLog(ctx, { page = 1, edit = false } = {}) {
   const { rows, total } = await activity.recent(telegramId, { limit, offset, automatedOnly: true });
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  let text = `📜 *Automation Log*\n\nWhat GitroHub did on its own \\(auto\\-tag rules, applied suggestions\\) — separate from your own taps\\.\n\n`;
+  let text = `📜 *Automation Log*\n\nWhat GitroHub did on its own \\(auto\\-tag rules, auto\\-mute rules, applied suggestions\\) — separate from your own taps\\.\n\n`;
   if (rows.length === 0) {
     text += 'Nothing automated has run yet\\.';
   } else {
@@ -220,6 +385,7 @@ async function showAutomationLog(ctx, { page = 1, edit = false } = {}) {
   if (edit) {
     await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
   } else {
+    await ctx.reply('📜 Automation Log', bbtb.backToAutomation);
     await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
   }
 }
@@ -230,10 +396,20 @@ module.exports = {
   startEditRule,
   selectRuleField,
   setVisibilityRule,
+  setForkRule,
   handleRuleValueInput,
   clearRule,
-  runRulesNow,
   applySuggestedTag,
   dismissSuggestion,
+  showMuteRules,
+  startAddMuteRule,
+  selectMuteRuleField,
+  setMuteVisibilityRule,
+  setMuteForkRule,
+  handleMuteRuleValueInput,
+  deleteMuteRule,
+  runAllRulesNow,
+  showStaleRepos,
+  getStaleRepos,
   showAutomationLog,
 };

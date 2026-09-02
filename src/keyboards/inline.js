@@ -194,41 +194,30 @@ function disconnectConfirm() {
   ]);
 }
 
-/** 🤖 Automation hub — 3 across for the main sections (they're all
- * equal-weight destinations, not a sequence), Run Rules Now on its own row
- * since it's an action, not a navigation target. */
-function automationHub() {
-  return Markup.inlineKeyboard([
-    [
-      style.callback('⚙️ Defaults', 'automation:defaults', style.BLUE),
-      style.callback('🏷️ Auto-Tag', 'automation:tagrules', style.BLUE),
-      style.callback('📜 Log', 'automation:log', style.BLUE),
-    ],
-    [style.callback('▶️ Run Auto-Tag Rules Now', 'automation:runrules')],
-    [style.callback('⬅️ Back', 'settings:back', style.BLUE)],
-  ]);
-}
-
-/** Auto-Tag Rules list — one row per tag, ⚡ = rule active / ➖ = none. */
+/** Auto-Tag Rules list — one row per tag, ⚡ = rule active / ➖ = none.
+ * Run Rules Now moved to BBTB (it's a frequent, low-risk action — belongs
+ * there, not competing for space with the content below it). */
 function autoTagRulesMenu(userTags) {
   const rows = userTags.map((t) => [
     style.callback(`${t.auto_rule_json ? '⚡' : '➖'} ${t.emoji} ${t.name}`, `automation:rule:edit:${t.id}`),
   ]);
-  rows.push([style.callback('▶️ Run Rules Now', 'automation:runrules')]);
   rows.push([style.callback('⬅️ Back', 'automation:hub', style.BLUE)]);
   return Markup.inlineKeyboard(rows);
 }
 
-/** Field picker for one tag's rule — 3 across, condition types are
- * equal-weight picks, not a sequence. Clear Rule only shown once a rule
- * already exists, and stays colorless: removing a rule is reversible and
- * low-stakes, not in the same tier as Delete Repo/File. */
+/** Field picker for one tag's rule — 2x2, condition types are equal-weight
+ * picks, not a sequence. Clear Rule only shown once a rule already exists,
+ * and stays colorless: removing a rule is reversible and low-stakes, not
+ * in the same tier as Delete Repo/File. */
 function ruleFieldMenu(tagId, hasRule) {
   const rows = [
     [
       style.callback('💻 Language', `automation:rule:field:${tagId}:language`),
       style.callback('📛 Name', `automation:rule:field:${tagId}:name`),
+    ],
+    [
       style.callback('🔒 Visibility', `automation:rule:field:${tagId}:visibility`),
+      style.callback('🍴 Fork', `automation:rule:field:${tagId}:fork`),
     ],
   ];
   if (hasRule) rows.push([style.callback('🗑 Clear Rule', `automation:rule:clear:${tagId}`)]);
@@ -246,6 +235,16 @@ function ruleVisibilityMenu(tagId) {
   ]);
 }
 
+function ruleForkMenu(tagId) {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('🍴 Is a Fork', `automation:rule:setfork:${tagId}:fork`),
+      style.callback('🌱 Not a Fork', `automation:rule:setfork:${tagId}:notfork`),
+    ],
+    [style.callback('⬅️ Back', `automation:rule:edit:${tagId}`, style.BLUE)],
+  ]);
+}
+
 /** One-tap suggestion offered inline on Repo View when an auto-tag rule
  * matches a repo that doesn't have that tag yet — colorless (a value pick,
  * same tier as any other suggestion), with an explicit Dismiss so it
@@ -257,6 +256,61 @@ function autoTagSuggestion(repoName, tagId) {
       style.callback('➖ Dismiss', 'automation:dismisssuggested'),
     ],
   ]);
+}
+
+/** 🔕 Auto-Mute rules list — each rule's description lives in the message
+ * text (numbered), buttons are purely actions: delete #N, add, back. A
+ * button whose only job was to display text with no real tap behavior
+ * isn't a real button, so descriptions never become tappable labels here. */
+function muteRulesMenu(rules) {
+  const rows = rules.map((r, i) => [style.callback(`🗑 Delete #${i + 1}`, `automation:mute:delete:${r.id}`)]);
+  rows.push([style.callback('➕ Add Rule', 'automation:mute:add', style.BLUE)]);
+  rows.push([style.callback('⬅️ Back', 'automation:hub', style.BLUE)]);
+  return Markup.inlineKeyboard(rows);
+}
+
+function muteRuleFieldMenu() {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('💻 Language', 'automation:mute:field:language'),
+      style.callback('📛 Name', 'automation:mute:field:name'),
+    ],
+    [
+      style.callback('🔒 Visibility', 'automation:mute:field:visibility'),
+      style.callback('🍴 Fork', 'automation:mute:field:fork'),
+    ],
+    [style.callback('⬅️ Back', 'automation:muterules', style.BLUE)],
+  ]);
+}
+
+function muteRuleVisibilityMenu() {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('🔒 Private', 'automation:mute:setvisibility:private'),
+      style.callback('🌐 Public', 'automation:mute:setvisibility:public'),
+    ],
+    [style.callback('⬅️ Back', 'automation:mute:add', style.BLUE)],
+  ]);
+}
+
+function muteRuleForkMenu() {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('🍴 Is a Fork', 'automation:mute:setfork:fork'),
+      style.callback('🌱 Not a Fork', 'automation:mute:setfork:notfork'),
+    ],
+    [style.callback('⬅️ Back', 'automation:mute:add', style.BLUE)],
+  ]);
+}
+
+/** 🗂️ Stale Repos — each repo reuses the exact same 'repo:<name>' callback
+ * My Repos' own list uses, so tapping one opens the real Repo View. */
+function staleReposMenu(repos) {
+  const rows = repos.map((r) => [
+    style.callback(`📦 ${r.name} — ${r.staleLabel}`, `repo:${r.name}`, style.BLUE),
+  ]);
+  rows.push([style.callback('⬅️ Back', 'automation:hub', style.BLUE)]);
+  return Markup.inlineKeyboard(rows);
 }
 
 function automationLogPagination(page, totalPages) {
@@ -325,10 +379,15 @@ module.exports = {
   connectButton,
   activityPagination,
   searchTypeMenu,
-  automationHub,
   autoTagRulesMenu,
   ruleFieldMenu,
   ruleVisibilityMenu,
+  ruleForkMenu,
   autoTagSuggestion,
+  muteRulesMenu,
+  muteRuleFieldMenu,
+  muteRuleVisibilityMenu,
+  muteRuleForkMenu,
+  staleReposMenu,
   automationLogPagination,
 };

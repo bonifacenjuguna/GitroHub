@@ -201,6 +201,12 @@ function createBot() {
     '⬆️ Back to Settings': (ctx) => settings.showSettings(ctx),
     '🤖 Automation': (ctx) => automation.showAutomationHub(ctx),
     '⬆️ Back to Automation': (ctx) => automation.showAutomationHub(ctx),
+    '🏷️ Auto-Tag': (ctx) => automation.showAutoTagRules(ctx),
+    '🔕 Auto-Mute': (ctx) => automation.showMuteRules(ctx),
+    '📜 Log': (ctx) => automation.showAutomationLog(ctx),
+    '⚙️ Defaults': (ctx) => myDefaults.showDefaults(ctx),
+    '▶️ Run Rules Now': (ctx) => automation.runAllRulesNow(ctx),
+    '🗂️ Stale Repos': (ctx) => automation.showStaleRepos(ctx),
     '📦 Storage': (ctx) => storageData.showStorageData(ctx),
     // 🔄 Refresh Status and 🔑 Access Log are no longer BBTB buttons —
     // relocated to inline (see #47/#48). Their handler functions are still
@@ -247,6 +253,7 @@ function createBot() {
     delete ctx.session.creatingTag;
     delete ctx.session.editingDefault;
     delete ctx.session.automationRuleInput;
+    delete ctx.session.automationMuteRuleInput;
     delete ctx.session.awaitingFullReset;
     delete ctx.session.editingDescription;
     await sendCancelledMenu(ctx);
@@ -261,6 +268,7 @@ function createBot() {
     if (ctx.session.creatingTag) return tags.handleCreateTagInput(ctx);
     if (ctx.session.editingDefault) return myDefaults.handleTextInput(ctx);
     if (ctx.session.automationRuleInput) return automation.handleRuleValueInput(ctx, ctx.message.text);
+    if (ctx.session.automationMuteRuleInput) return automation.handleMuteRuleValueInput(ctx, ctx.message.text);
     if (ctx.session.awaitingFullReset) return storageData.handleResetConfirmationText(ctx);
     if (ctx.session.editingDescription) return repoView.handleDescriptionInput(ctx, ctx.message.text);
 
@@ -668,7 +676,9 @@ function createBot() {
     if (data === 'automation:hub') { await ctx.answerCbQuery(); return automation.showAutomationHub(ctx, { skipBbtb: true }); }
     if (data === 'automation:defaults') { await ctx.answerCbQuery(); return myDefaults.showDefaults(ctx); }
     if (data === 'automation:tagrules') { await ctx.answerCbQuery(); return automation.showAutoTagRules(ctx); }
-    if (data === 'automation:runrules') { await ctx.answerCbQuery(); return automation.runRulesNow(ctx); }
+    if (data === 'automation:muterules') { await ctx.answerCbQuery(); return automation.showMuteRules(ctx); }
+    if (data === 'automation:runrules') { await ctx.answerCbQuery(); return automation.runAllRulesNow(ctx); }
+
     if (data.startsWith('automation:rule:edit:')) { await ctx.answerCbQuery(); return automation.startEditRule(ctx, data.split(':')[3]); }
     if (data.startsWith('automation:rule:field:')) {
       await ctx.answerCbQuery();
@@ -680,6 +690,11 @@ function createBot() {
       const [, , , tagId, value] = data.split(':');
       return automation.setVisibilityRule(ctx, tagId, value);
     }
+    if (data.startsWith('automation:rule:setfork:')) {
+      await ctx.answerCbQuery();
+      const [, , , tagId, value] = data.split(':');
+      return automation.setForkRule(ctx, tagId, value);
+    }
     if (data.startsWith('automation:rule:clear:')) { await ctx.answerCbQuery(); return automation.clearRule(ctx, data.split(':')[3]); }
     if (data.startsWith('automation:applysuggested:')) {
       await ctx.answerCbQuery();
@@ -689,6 +704,13 @@ function createBot() {
       return automation.applySuggestedTag(ctx, repoName, tagId);
     }
     if (data === 'automation:dismisssuggested') { await ctx.answerCbQuery(); return automation.dismissSuggestion(ctx); }
+
+    if (data === 'automation:mute:add') { await ctx.answerCbQuery(); return automation.startAddMuteRule(ctx); }
+    if (data.startsWith('automation:mute:field:')) { await ctx.answerCbQuery(); return automation.selectMuteRuleField(ctx, data.split(':')[3]); }
+    if (data.startsWith('automation:mute:setvisibility:')) { await ctx.answerCbQuery(); return automation.setMuteVisibilityRule(ctx, data.split(':')[3]); }
+    if (data.startsWith('automation:mute:setfork:')) { await ctx.answerCbQuery(); return automation.setMuteForkRule(ctx, data.split(':')[3]); }
+    if (data.startsWith('automation:mute:delete:')) { await ctx.answerCbQuery(); return automation.deleteMuteRule(ctx, data.split(':')[3]); }
+
     if (data === 'automation:log') { await ctx.answerCbQuery(); return automation.showAutomationLog(ctx); }
     if (data.startsWith('automation:log:page:')) {
       await ctx.answerCbQuery();
