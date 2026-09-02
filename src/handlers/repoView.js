@@ -191,6 +191,21 @@ async function showRepoView(ctx, repoName) {
   // the BBTB once via a tiny marker message, then the real content with only inline.
   await ctx.reply('📦 Repo View', bbtb.repoView);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.repoActions(repo.name, pinned, repo.html_url, webhookState, readmeResult.exists) });
+
+  // 🤖 Automation — surface any active auto-tag rule that matches this repo
+  // and isn't applied yet, as a one-tap suggestion. Best-effort: a rules
+  // lookup hiccup here should never block the repo card itself from showing.
+  try {
+    const matches = await tags.evaluateAutoRules(ctx.from.id, repo);
+    const already = new Set(repoTags.map((t) => t.id));
+    const unapplied = matches.find((m) => !already.has(m.id));
+    if (unapplied) {
+      await ctx.reply(
+        `🤖 Auto\\-tag rule matches: ${unapplied.emoji} *${format.escapeMd(unapplied.name)}*\\. Apply it to this repo?`,
+        { parse_mode: 'MarkdownV2', ...inline.autoTagSuggestion(repo.name, unapplied.id) }
+      );
+    }
+  } catch (_) { /* non-fatal — Automation suggestions are a bonus, not a dependency */ }
 }
 
 async function showRepoDetails(ctx, repoName) {

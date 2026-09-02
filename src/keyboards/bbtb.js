@@ -47,7 +47,7 @@ const browseFiles = Markup.keyboard([
 // itself (chained fresh-message pattern), and Access Log is reachable
 // from inside Activity instead of its own Settings row.
 const settings = Markup.keyboard([
-  [b('📜 Activity'), b('⚙️ Defaults'), b('📦 Storage')],
+  [b('📜 Activity'), b('🤖 Automation'), b('📦 Storage')],
   [b('🚪 Disconnect'), b('⬆️ Back to Menu')],
 ]).resize();
 
@@ -101,6 +101,13 @@ const backToSettings = Markup.keyboard([
   [b('⬆️ Back to Settings')],
 ]).resize();
 
+// Nested one level under 🤖 Automation (Defaults, Auto-Tag Rules) — "back"
+// from these returns to the Automation hub, not all the way out to
+// Settings, matching how Browse Files' "Back to Repo" doesn't jump to Menu.
+const backToAutomation = Markup.keyboard([
+  [b('⬆️ Back to Automation')],
+]).resize();
+
 const remove = Markup.removeKeyboard();
 
 module.exports = {
@@ -121,5 +128,6 @@ module.exports = {
   bulkActionMenu,
   bulkComplete,
   backToSettings,
+  backToAutomation,
   remove,
 };

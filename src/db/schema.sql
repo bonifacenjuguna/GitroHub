@@ -237,3 +237,11 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS quiet_hours_end INT;  -- 0-23
 -- Commit message template placeholders live on the existing
 -- default_commit_message column itself (e.g. "Update {filename} — {date}"),
 -- expanded at commit time — no schema change needed for that piece.
+
+-- ── Automation ───────────────────────────────────────────────────
+
+-- Marks an activity_log row as something GitroHub did on its own (auto-tag
+-- rules, applied suggestions) rather than something the person tapped
+-- directly — feeds the Automation Log's separate, filtered view.
+ALTER TABLE activity_log ADD COLUMN IF NOT EXISTS is_automated BOOLEAN NOT NULL DEFAULT FALSE;
+CREATE INDEX IF NOT EXISTS idx_activity_log_automated ON activity_log (telegram_id, is_automated, created_at DESC);

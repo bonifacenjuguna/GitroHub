@@ -34,7 +34,7 @@ async function showDefaults(ctx) {
     [style.callback('🔔 Notifications', 'defaults:notifications', style.BLUE)],
   ];
 
-  await ctx.reply('⚙️ My Defaults', bbtb.backToSettings);
+  await ctx.reply('⚙️ My Defaults', bbtb.backToAutomation);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 

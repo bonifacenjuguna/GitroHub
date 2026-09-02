@@ -194,6 +194,81 @@ function disconnectConfirm() {
   ]);
 }
 
+/** 🤖 Automation hub — 3 across for the main sections (they're all
+ * equal-weight destinations, not a sequence), Run Rules Now on its own row
+ * since it's an action, not a navigation target. */
+function automationHub() {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('⚙️ Defaults', 'automation:defaults', style.BLUE),
+      style.callback('🏷️ Auto-Tag', 'automation:tagrules', style.BLUE),
+      style.callback('📜 Log', 'automation:log', style.BLUE),
+    ],
+    [style.callback('▶️ Run Auto-Tag Rules Now', 'automation:runrules')],
+    [style.callback('⬅️ Back', 'settings:back', style.BLUE)],
+  ]);
+}
+
+/** Auto-Tag Rules list — one row per tag, ⚡ = rule active / ➖ = none. */
+function autoTagRulesMenu(userTags) {
+  const rows = userTags.map((t) => [
+    style.callback(`${t.auto_rule_json ? '⚡' : '➖'} ${t.emoji} ${t.name}`, `automation:rule:edit:${t.id}`),
+  ]);
+  rows.push([style.callback('▶️ Run Rules Now', 'automation:runrules')]);
+  rows.push([style.callback('⬅️ Back', 'automation:hub', style.BLUE)]);
+  return Markup.inlineKeyboard(rows);
+}
+
+/** Field picker for one tag's rule — 3 across, condition types are
+ * equal-weight picks, not a sequence. Clear Rule only shown once a rule
+ * already exists, and stays colorless: removing a rule is reversible and
+ * low-stakes, not in the same tier as Delete Repo/File. */
+function ruleFieldMenu(tagId, hasRule) {
+  const rows = [
+    [
+      style.callback('💻 Language', `automation:rule:field:${tagId}:language`),
+      style.callback('📛 Name', `automation:rule:field:${tagId}:name`),
+      style.callback('🔒 Visibility', `automation:rule:field:${tagId}:visibility`),
+    ],
+  ];
+  if (hasRule) rows.push([style.callback('🗑 Clear Rule', `automation:rule:clear:${tagId}`)]);
+  rows.push([style.callback('⬅️ Back', 'automation:tagrules', style.BLUE)]);
+  return Markup.inlineKeyboard(rows);
+}
+
+function ruleVisibilityMenu(tagId) {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('🔒 Private', `automation:rule:setvisibility:${tagId}:private`),
+      style.callback('🌐 Public', `automation:rule:setvisibility:${tagId}:public`),
+    ],
+    [style.callback('⬅️ Back', `automation:rule:edit:${tagId}`, style.BLUE)],
+  ]);
+}
+
+/** One-tap suggestion offered inline on Repo View when an auto-tag rule
+ * matches a repo that doesn't have that tag yet — colorless (a value pick,
+ * same tier as any other suggestion), with an explicit Dismiss so it
+ * doesn't feel like it's demanding an answer. */
+function autoTagSuggestion(repoName, tagId) {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('✅ Apply', `automation:applysuggested:${repoName}:${tagId}`),
+      style.callback('➖ Dismiss', 'automation:dismisssuggested'),
+    ],
+  ]);
+}
+
+function automationLogPagination(page, totalPages) {
+  const rows = [];
+  const nav = [];
+  if (page > 1) nav.push(style.callback('⬅️ Prev', `automation:log:page:${page - 1}`, style.BLUE));
+  if (page < totalPages) nav.push(style.callback('Next ➡️', `automation:log:page:${page + 1}`, style.BLUE));
+  if (nav.length) rows.push(nav);
+  rows.push([style.callback('⬅️ Back to Automation', 'automation:hub', style.BLUE)]);
+  return Markup.inlineKeyboard(rows);
+}
+
 function connectButton(url) {
   return Markup.inlineKeyboard([[Markup.button.url('🔗 Connect GitHub Account', url)]]);
 }
@@ -250,4 +325,10 @@ module.exports = {
   connectButton,
   activityPagination,
   searchTypeMenu,
+  automationHub,
+  autoTagRulesMenu,
+  ruleFieldMenu,
+  ruleVisibilityMenu,
+  autoTagSuggestion,
+  automationLogPagination,
 };

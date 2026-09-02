@@ -20,6 +20,7 @@ const pinned = require('./handlers/pinned');
 const tags = require('./handlers/tags');
 const bulkActions = require('./handlers/bulkActions');
 const myDefaults = require('./handlers/myDefaults');
+const automation = require('./handlers/automation');
 const storageData = require('./handlers/storageData');
 const accessLogScreen = require('./handlers/accessLogScreen');
 
@@ -198,7 +199,8 @@ function createBot() {
     '📜 Activity': (ctx) => activityLog.showActivity(ctx),
     '🚪 Disconnect': (ctx) => settings.askDisconnect(ctx),
     '⬆️ Back to Settings': (ctx) => settings.showSettings(ctx),
-    '⚙️ Defaults': (ctx) => myDefaults.showDefaults(ctx),
+    '🤖 Automation': (ctx) => automation.showAutomationHub(ctx),
+    '⬆️ Back to Automation': (ctx) => automation.showAutomationHub(ctx),
     '📦 Storage': (ctx) => storageData.showStorageData(ctx),
     // 🔄 Refresh Status and 🔑 Access Log are no longer BBTB buttons —
     // relocated to inline (see #47/#48). Their handler functions are still
@@ -244,6 +246,7 @@ function createBot() {
     ctx.session.awaitingFileSearch = false;
     delete ctx.session.creatingTag;
     delete ctx.session.editingDefault;
+    delete ctx.session.automationRuleInput;
     delete ctx.session.awaitingFullReset;
     delete ctx.session.editingDescription;
     await sendCancelledMenu(ctx);
@@ -257,6 +260,7 @@ function createBot() {
     if (ctx.session.awaitingQuietHours) return settings.handleQuietHoursInput(ctx, ctx.message.text);
     if (ctx.session.creatingTag) return tags.handleCreateTagInput(ctx);
     if (ctx.session.editingDefault) return myDefaults.handleTextInput(ctx);
+    if (ctx.session.automationRuleInput) return automation.handleRuleValueInput(ctx, ctx.message.text);
     if (ctx.session.awaitingFullReset) return storageData.handleResetConfirmationText(ctx);
     if (ctx.session.editingDescription) return repoView.handleDescriptionInput(ctx, ctx.message.text);
 
@@ -659,6 +663,37 @@ function createBot() {
     if (data.startsWith('defaults:setsort:')) { await ctx.answerCbQuery(); return myDefaults.setSort(ctx, data.split(':')[2]); }
     if (data.startsWith('defaults:setfilter:')) { await ctx.answerCbQuery(); return myDefaults.setFilter(ctx, data.split(':')[2]); }
     if (data === 'defaults:togglelearn') { await ctx.answerCbQuery(); return myDefaults.toggleLearn(ctx); }
+
+    // 🤖 Automation
+    if (data === 'automation:hub') { await ctx.answerCbQuery(); return automation.showAutomationHub(ctx, { skipBbtb: true }); }
+    if (data === 'automation:defaults') { await ctx.answerCbQuery(); return myDefaults.showDefaults(ctx); }
+    if (data === 'automation:tagrules') { await ctx.answerCbQuery(); return automation.showAutoTagRules(ctx); }
+    if (data === 'automation:runrules') { await ctx.answerCbQuery(); return automation.runRulesNow(ctx); }
+    if (data.startsWith('automation:rule:edit:')) { await ctx.answerCbQuery(); return automation.startEditRule(ctx, data.split(':')[3]); }
+    if (data.startsWith('automation:rule:field:')) {
+      await ctx.answerCbQuery();
+      const [, , , tagId, field] = data.split(':');
+      return automation.selectRuleField(ctx, tagId, field);
+    }
+    if (data.startsWith('automation:rule:setvisibility:')) {
+      await ctx.answerCbQuery();
+      const [, , , tagId, value] = data.split(':');
+      return automation.setVisibilityRule(ctx, tagId, value);
+    }
+    if (data.startsWith('automation:rule:clear:')) { await ctx.answerCbQuery(); return automation.clearRule(ctx, data.split(':')[3]); }
+    if (data.startsWith('automation:applysuggested:')) {
+      await ctx.answerCbQuery();
+      const rest = data.split('automation:applysuggested:')[1];
+      const tagId = rest.split(':').pop();
+      const repoName = rest.slice(0, rest.length - tagId.length - 1);
+      return automation.applySuggestedTag(ctx, repoName, tagId);
+    }
+    if (data === 'automation:dismisssuggested') { await ctx.answerCbQuery(); return automation.dismissSuggestion(ctx); }
+    if (data === 'automation:log') { await ctx.answerCbQuery(); return automation.showAutomationLog(ctx); }
+    if (data.startsWith('automation:log:page:')) {
+      await ctx.answerCbQuery();
+      return automation.showAutomationLog(ctx, { page: Number(data.split(':')[3]), edit: true });
+    }
     if (data.startsWith('createrepo:learndefault:')) {
       await ctx.answerCbQuery();
       const value = data.split('createrepo:learndefault:')[1];
