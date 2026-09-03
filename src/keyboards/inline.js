@@ -131,6 +131,16 @@ function fileActions(path) {
   ]);
 }
 
+/** Fallback shown when a file can't be rendered inline — always offers the
+ * raw download, and a direct link to GitHub's own (much broader) preview
+ * support when we know the repo's URL for this session. */
+function filePreviewFallback(path, githubUrl) {
+  const rows = [[style.callback('📥 Send as File', `file:raw:${path}`, style.BLUE)]];
+  if (githubUrl) rows.push([style.url('🌐 View on GitHub', githubUrl, style.BLUE)]);
+  rows.push([style.callback('⬅️ Back', `browse:parent:${path}`, style.BLUE)]);
+  return Markup.inlineKeyboard(rows);
+}
+
 function deleteFileConfirm(path) {
   return Markup.inlineKeyboard([
     [style.callback('✅ Yes, Delete', `file:delete:confirm:${path}`, style.RED)],
@@ -369,6 +379,7 @@ module.exports = {
   createRepoSuccess,
   fileTree,
   fileActions,
+  filePreviewFallback,
   deleteFileConfirm,
   uploadPathChoice,
   uploadSummaryConfirm,

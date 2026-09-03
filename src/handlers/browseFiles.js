@@ -10,14 +10,62 @@ const { Markup } = require('telegraf');
 const style = require('../keyboards/buttonStyle');
 
 const TEXT_EXTENSIONS = new Set([
-  'js', 'ts', 'jsx', 'tsx', 'json', 'md', 'txt', 'html', 'css', 'py', 'java',
-  'c', 'cpp', 'h', 'go', 'rs', 'rb', 'php', 'sh', 'yml', 'yaml', 'xml', 'sql',
-  'env', 'gitignore', 'toml', 'ini', 'lock',
+  // Code
+  'js', 'mjs', 'cjs', 'ts', 'tsx', 'jsx', 'vue', 'svelte', 'py', 'java', 'kt', 'kts',
+  'swift', 'dart', 'go', 'rs', 'rb', 'php', 'c', 'h', 'cpp', 'hpp', 'cc', 'cs',
+  'scala', 'clj', 'ex', 'exs', 'erl', 'hs', 'jl', 'nim', 'lua', 'r', 'pl', 'pm',
+  'sh', 'bash', 'zsh', 'ps1', 'bat', 'cmd', 'vim', 'm', 'mm',
+  // Data / config
+  'json', 'jsonc', 'yml', 'yaml', 'xml', 'toml', 'ini', 'cfg', 'conf', 'properties',
+  'env', 'lock', 'csv', 'tsv', 'sql', 'graphql', 'gql', 'proto',
+  // Docs / markup
+  'md', 'mdx', 'txt', 'rst', 'tex', 'adoc', 'log', 'diff', 'patch',
+  'html', 'htm', 'css', 'scss', 'sass', 'less', 'svg',
+  // Misc
+  'gitignore', 'gitattributes', 'editorconfig', 'npmrc', 'babelrc', 'eslintrc',
+  'prettierrc', 'dockerignore', 'gemfile', 'rakefile', 'podfile', 'ipynb',
 ]);
 
+// Filenames the extension check alone would miss — no dot, or the dot isn't
+// really an extension (Dockerfile, Makefile, and friends).
+const TEXT_FILENAMES = new Set([
+  'dockerfile', 'makefile', 'rakefile', 'gemfile', 'podfile', 'procfile',
+  'license', 'licence', 'readme', 'changelog', 'authors', 'contributing',
+  'notice', 'copying', 'vagrantfile', 'brewfile', 'jenkinsfile',
+]);
+
+// Raster formats Telegram's sendPhoto actually accepts — SVG is deliberately
+// excluded here (it's XML text, not a raster image Telegram can render as a
+// photo) and instead flows through the text-preview path above.
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp']);
+const MAX_INLINE_PHOTO_BYTES = 10 * 1024 * 1024; // Telegram's own ceiling for photo uploads
+
 function isTextFile(filename) {
-  const ext = filename.split('.').pop().toLowerCase();
+  const base = filename.toLowerCase();
+  if (TEXT_FILENAMES.has(base)) return true;
+  const ext = base.includes('.') ? base.split('.').pop() : '';
   return TEXT_EXTENSIONS.has(ext);
+}
+
+function isImageFile(filename) {
+  const ext = filename.toLowerCase().split('.').pop();
+  return IMAGE_EXTENSIONS.has(ext);
+}
+
+/** Renders a Jupyter notebook (.ipynb, which is really just JSON) as a
+ * readable cell-by-cell transcript instead of a wall of raw JSON — GitHub
+ * renders these specially too, this is the text-mode equivalent. */
+function renderNotebookPreview(jsonText) {
+  const nb = JSON.parse(jsonText);
+  const cells = nb.cells || [];
+  if (cells.length === 0) return '(empty notebook)';
+  return cells
+    .map((c, i) => {
+      const src = Array.isArray(c.source) ? c.source.join('') : (c.source || '');
+      const label = c.cell_type === 'markdown' ? '📝 Markdown' : c.cell_type === 'code' ? '💻 Code' : '▪️ Cell';
+      return `── ${label} [${i + 1}] ──\n${src}`;
+    })
+    .join('\n\n');
 }
 
 /** Builds a one-level directory listing from the full recursive tree */
@@ -101,29 +149,60 @@ async function viewFileContent(ctx, repoName, filePath) {
   if (!token) return;
 
   const fileName = filePath.split('/').pop();
-
-  if (!isTextFile(fileName)) {
-    return ctx.reply(
-      format.errorMessage(`Can\u2019t show content`, `${fileName} is likely a binary file`, 'Use "Send as File" instead.'),
-      inline.fileActions(filePath)
-    );
-  }
+  // Deep-links straight to GitHub's own file view for whatever this bot
+  // can't render inline (PDFs, 3D models, Office docs, etc.) — GitHub can
+  // preview far more formats than fit in a Telegram message, so rather
+  // than dead-ending on "can't show this", hand off to the real thing.
+  const githubUrl = ctx.session.repoUrl ? `${ctx.session.repoUrl}/blob/HEAD/${filePath}` : null;
 
   try {
     const user = await repoCache.getUser(ctx.from.id, token);
+
+    if (isImageFile(fileName)) {
+      const { content, size } = await github.getFileContent(token, user.login, repoName, filePath);
+      if (size > MAX_INLINE_PHOTO_BYTES) {
+        await ctx.reply(
+          format.errorMessage('Image too large to preview inline', `${format.formatBytes(size)} exceeds Telegram's inline photo limit`, 'Use "Send as File" instead, or view it on GitHub.'),
+          inline.filePreviewFallback(filePath, githubUrl)
+        );
+        return;
+      }
+      await ctx.replyWithPhoto({ source: content, filename: fileName }, { caption: `🖼️ ${fileName}` });
+      return;
+    }
+
+    if (!isTextFile(fileName)) {
+      await ctx.reply(
+        format.errorMessage('Can\u2019t preview this file type here', `${fileName} isn\u2019t a format Telegram can render inline`, 'Use "Send as File" to download it, or view it on GitHub.'),
+        inline.filePreviewFallback(filePath, githubUrl)
+      );
+      return;
+    }
+
     const { content: contentBuf, size } = await github.getFileContent(token, user.login, repoName, filePath);
-    const content = contentBuf.toString('utf8'); // safe: isTextFile() already gated this call
-    const lines = content.split('\n');
+    const raw = contentBuf.toString('utf8'); // safe: isTextFile() already gated this call
+    const ext = fileName.toLowerCase().includes('.') ? fileName.toLowerCase().split('.').pop() : '';
+
+    let displayText = raw;
+    let renderNote = '';
+    if (ext === 'ipynb') {
+      try { displayText = renderNotebookPreview(raw); } catch (_) { renderNote = '\n⚠️ Couldn\u2019t parse notebook structure — showing raw JSON\\.'; }
+    } else if (ext === 'json' || ext === 'jsonc') {
+      try { displayText = JSON.stringify(JSON.parse(raw), null, 2); } catch (_) { /* not valid JSON, fall back to raw */ }
+    }
+
+    const lines = displayText.split('\n');
     const preview = lines.slice(0, 40).join('\n');
     const truncated = lines.length > 40;
 
     let text = `📄 *${format.escapeMd(fileName)}* \\(${format.escapeMd(format.formatBytes(size))}\\)\n\n`;
     text += '```\n' + format.escapeCodeBlock(preview.slice(0, 3500)) + '\n```';
     if (truncated) text += `\n⚠️ Showing first 40 lines only\\. Use "Send as File" for full file\\.`;
+    text += renderNote;
 
     await ctx.reply(text, { parse_mode: 'MarkdownV2' });
   } catch (err) {
-    await ctx.reply(format.errorMessage('Couldn\u2019t load file', err.message, 'Try again.'));
+    await ctx.reply(format.errorMessage('Couldn\u2019t load file', err.message, 'Try again.'), inline.filePreviewFallback(filePath, githubUrl));
   }
 }
 

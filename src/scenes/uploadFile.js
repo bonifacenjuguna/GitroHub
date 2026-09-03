@@ -27,6 +27,7 @@ const typePathBbtb = Markup.keyboard([
 function releasePendingFiles(ctx) {
   const files = ctx.wizard.state.pendingFiles;
   if (files) fileBufferCache.releaseAll(files.map((f) => f.contentRef).filter(Boolean));
+  if (ctx.wizard.state.pendingZipRef) fileBufferCache.release(ctx.wizard.state.pendingZipRef);
 }
 
 /** Exposed so bot.js's global scene-escape handler can clean up cached
@@ -82,8 +83,29 @@ const scene = new Scenes.WizardScene(
     }
 
     if (ctx.message && ctx.message.text === '❌ Cancel') {
+      releasePendingFiles(ctx);
       await ctx.reply('Upload cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
+    }
+
+    // 🔒 Password-protected zip — this step re-enters itself waiting for a
+    // password reply rather than advancing, since we're still logically
+    // "receiving the file" until extraction actually succeeds.
+    if (ctx.wizard.state.awaitingZipPassword) {
+      if (!ctx.message || !ctx.message.text) {
+        await ctx.reply('Send the zip password as text, or ❌ Cancel.');
+        return;
+      }
+      const password = ctx.message.text.trim();
+      const buffer = fileBufferCache.get(ctx.wizard.state.pendingZipRef);
+      delete ctx.wizard.state.awaitingZipPassword;
+      if (!buffer) {
+        // Cache entry expired (session sat idle past the TTL) — nothing to retry with.
+        delete ctx.wizard.state.pendingZipRef;
+        await ctx.reply(format.errorMessage('Upload failed', 'the file expired while waiting for a password', 'Please resend the zip.'));
+        return promptForFile(ctx);
+      }
+      return processZip(ctx, buffer, password);
     }
 
     if (ctx.message && ctx.message.photo) {
@@ -101,21 +123,35 @@ const scene = new Scenes.WizardScene(
     }
 
     const doc = ctx.message.document;
-    const isZip = doc.file_name.toLowerCase().endsWith('.zip');
+    const lowerName = doc.file_name.toLowerCase();
 
-    if (isZip && doc.file_size > config.MAX_ZIP_SIZE_BYTES) {
+    if (lowerName.endsWith('.rar') || lowerName.endsWith('.7z')) {
       await ctx.reply(format.errorMessage(
-        'Zip exceeds size limit',
+        'Archive format not supported',
+        `${doc.file_name} is a RAR/7z archive`,
+        'Re-export as .zip, .tar, or .tar.gz (.tgz) and resend.'
+      ));
+      return;
+    }
+
+    const isZip = lowerName.endsWith('.zip');
+    const isTarGz = lowerName.endsWith('.tar.gz') || lowerName.endsWith('.tgz');
+    const isTar = !isTarGz && lowerName.endsWith('.tar');
+    const isArchive = isZip || isTar || isTarGz;
+
+    if (isArchive && doc.file_size > config.MAX_ZIP_SIZE_BYTES) {
+      await ctx.reply(format.errorMessage(
+        'Archive exceeds size limit',
         `${doc.file_name} is ${format.formatBytes(doc.file_size)}, limit is ${format.formatBytes(config.MAX_ZIP_SIZE_BYTES)}`,
         'Please split or compress further, then resend.'
       ));
       return;
     }
-    if (!isZip && doc.file_size > config.MAX_SINGLE_FILE_BYTES) {
+    if (!isArchive && doc.file_size > config.MAX_SINGLE_FILE_BYTES) {
       await ctx.reply(format.errorMessage(
         'File exceeds size limit',
         `${doc.file_name} is ${format.formatBytes(doc.file_size)}, limit is ${format.formatBytes(config.MAX_SINGLE_FILE_BYTES)}`,
-        'For larger files, zip them first (up to 1MB compressed), then resend.'
+        'For larger files, archive them first (up to 1MB compressed), then resend.'
       ));
       return;
     }
@@ -134,9 +170,8 @@ const scene = new Scenes.WizardScene(
     }
     const buffer = Buffer.from(await res.arrayBuffer());
 
-    if (isZip) {
-      return processZip(ctx, buffer);
-    }
+    if (isZip) return processZip(ctx, buffer);
+    if (isTar || isTarGz) return processTar(ctx, buffer, isTarGz);
     return processSingleFile(ctx, buffer, doc.file_name);
   },
 
@@ -323,7 +358,8 @@ function statusIcon(status) {
 async function promptForFile(ctx) {
   const dirLabel = ctx.wizard.state.presetDir ? ` (into ${ctx.wizard.state.presetDir}/)` : '';
   await ctx.reply(
-    `📤 Send a file or a .zip (max ${format.formatBytes(config.MAX_ZIP_SIZE_BYTES)}) to upload to ${ctx.wizard.state.repoName}${dirLabel}\n\n` +
+    `📤 Send a file, .zip, .tar, or .tar.gz/.tgz (max ${format.formatBytes(config.MAX_ZIP_SIZE_BYTES)}) to upload to ${ctx.wizard.state.repoName}${dirLabel}\n\n` +
+    `🔒 Password-protected zips are supported — I'll ask for the password if one's needed.\n\n` +
     `⚠️ Send it as a document/file attachment (📎 icon → File) — not via the photo/gallery picker, which compresses images and would alter the file's bytes.`,
     bbtb.cancelOnly
   );
@@ -437,8 +473,24 @@ async function processSingleFile(ctx, buffer, filename, isBackNav = false) {
   return ctx.wizard.selectStep(2);
 }
 
-async function processZip(ctx, buffer) {
+async function processZip(ctx, buffer, password) {
   await ctx.reply(`📦 Zip received (${format.formatBytes(buffer.length)}) — extracting...`);
+
+  // 🔒 Password-protected zip detection — reads the encryption bit directly
+  // out of the zip's own headers (lib/zipCrypto.js) rather than guessing at
+  // adm-zip's error text, so this part is reliable regardless of version.
+  const { isZipEncrypted } = require('../lib/zipCrypto');
+  let encrypted = false;
+  try {
+    encrypted = isZipEncrypted(buffer);
+  } catch (_) { /* malformed header scan — AdmZip's own parsing below will surface the real error */ }
+
+  if (encrypted && !password) {
+    ctx.wizard.state.pendingZipRef = ctx.wizard.state.pendingZipRef || fileBufferCache.put(buffer);
+    ctx.wizard.state.awaitingZipPassword = true;
+    await ctx.reply('🔒 This zip is password-protected. Send the password as text, or ❌ Cancel.', bbtb.cancelOnly);
+    return;
+  }
 
   let zip;
   try {
@@ -453,6 +505,29 @@ async function processZip(ctx, buffer) {
   if (entries.length === 0) {
     await ctx.reply(format.errorMessage('Upload failed', 'the zip contains no files', 'Check the archive and try again.'));
     return;
+  }
+
+  // Verify the password actually decrypts before doing anything else with
+  // it — a wrong password re-prompts instead of failing the whole upload.
+  // (This is the one part of password support that couldn't be tested
+  // directly in this environment — adm-zip isn't installed here, so its
+  // getData(password) behavior is taken from its documented API rather
+  // than a live run. If a correct password still gets rejected here,
+  // that's the spot to check first.)
+  if (encrypted) {
+    try {
+      entries[0].getData(password);
+    } catch (err) {
+      ctx.wizard.state.pendingZipRef = ctx.wizard.state.pendingZipRef || fileBufferCache.put(buffer);
+      ctx.wizard.state.awaitingZipPassword = true;
+      await ctx.reply('🔒 That password didn\u2019t work. Send the correct password as text, or ❌ Cancel.', bbtb.cancelOnly);
+      return;
+    }
+  }
+
+  if (ctx.wizard.state.pendingZipRef) {
+    fileBufferCache.release(ctx.wizard.state.pendingZipRef);
+    delete ctx.wizard.state.pendingZipRef;
   }
 
   // Zip bomb guard: check total UNCOMPRESSED size from the entries'
@@ -484,13 +559,80 @@ async function processZip(ctx, buffer) {
     // Keep the raw Buffer from the zip entry — same reasoning as the
     // single-file path above; a UTF-8 round-trip here would corrupt any
     // binary file bundled in the zip (images, fonts, etc.).
-    const content = e.getData();
+    const content = encrypted ? e.getData(password) : e.getData();
     const contentRef = fileBufferCache.put(content);
     return {
       path: withPresetDir(ctx, relativePath),
       contentRef,
       size: content.length,
     };
+  });
+
+  const classified = await classifyFiles(ctx, fileRefs);
+  if (!classified) return ctx.scene.leave();
+
+  ctx.wizard.state.pendingFiles = classified;
+  return showSummary(ctx);
+}
+
+/** .tar and .tar.gz/.tgz — gzip decoding uses Node's built-in zlib (no
+ * dependency), archive parsing uses lib/tarReader.js (also no dependency,
+ * see that file for why it's hand-rolled instead of a package). */
+async function processTar(ctx, buffer, gzipped) {
+  await ctx.reply(`📦 ${gzipped ? 'tar.gz' : 'tar'} received (${format.formatBytes(buffer.length)}) — extracting...`);
+
+  let raw = buffer;
+  if (gzipped) {
+    try {
+      const zlib = require('zlib');
+      raw = zlib.gunzipSync(buffer);
+    } catch (err) {
+      await ctx.reply(format.errorMessage('Upload failed', 'the file isn\u2019t a valid gzip stream', 'Re-export the archive and try again.'));
+      return;
+    }
+  }
+
+  // Same zip-bomb-style guard as the zip path, applied to the decompressed size.
+  if (raw.length > config.MAX_ZIP_UNCOMPRESSED_BYTES) {
+    await ctx.reply(format.errorMessage(
+      'Upload failed',
+      `this archive decompresses to ${format.formatBytes(raw.length)}, which exceeds the ${format.formatBytes(config.MAX_ZIP_UNCOMPRESSED_BYTES)} limit`,
+      'Check the archive and try again.'
+    ));
+    return;
+  }
+
+  const { extractTar } = require('../lib/tarReader');
+  let entries, skippedCount;
+  try {
+    ({ entries, skippedCount } = extractTar(raw));
+  } catch (err) {
+    await ctx.reply(format.errorMessage('Upload failed', 'the tar file appears corrupted', 'Re-export the archive and try again.'));
+    return;
+  }
+
+  if (entries.length === 0 && skippedCount === 0) {
+    await ctx.reply(format.errorMessage('Upload failed', 'the archive contains no readable files', 'Check the archive and try again.'));
+    return;
+  }
+  if (skippedCount > 0) {
+    await ctx.reply(
+      `⚠️ ${skippedCount} file${skippedCount === 1 ? '' : 's'} skipped — ${skippedCount === 1 ? 'it has' : 'they have'} a path too long for this reader to handle safely (GNU long-filename entries). Shorten the path(s) and re-archive if you need ${skippedCount === 1 ? 'it' : 'them'} included.`
+    );
+  }
+  if (entries.length === 0) return; // everything was a long-name entry — nothing left to upload
+
+  const topLevels = new Set(entries.map((e) => e.name.split('/')[0]));
+  let stripPrefix = '';
+  if (topLevels.size === 1) {
+    const only = [...topLevels][0];
+    if (entries.every((e) => e.name.startsWith(`${only}/`))) stripPrefix = `${only}/`;
+  }
+
+  const fileRefs = entries.map((e) => {
+    const relativePath = stripPrefix ? e.name.slice(stripPrefix.length) : e.name;
+    const contentRef = fileBufferCache.put(e.data);
+    return { path: withPresetDir(ctx, relativePath), contentRef, size: e.data.length };
   });
 
   const classified = await classifyFiles(ctx, fileRefs);
