@@ -32,8 +32,11 @@ async function showAutomationHub(ctx, { skipBbtb = false } = {}) {
     muteRules.listMuteRules(ctx.from.id),
     activity.recent(ctx.from.id, { limit: 1, automatedOnly: true }),
   ]);
+  const backupRulesLib = require('../lib/automationBackupRules');
+  const backupRulesList = await backupRulesLib.listBackupRules(ctx.from.id);
   const activeTagRules = userTags.filter((t) => t.auto_rule_json).length;
   const activeMuteRules = muteRulesList.length;
+  const activeBackupRules = backupRulesList.length;
   const lastRun = lastRunResult.rows[0] ? format.relativeTime(lastRunResult.rows[0].created_at) : 'never';
 
   // Stale-repo nudge is a bonus stat, computed best-effort — a hiccup
@@ -52,6 +55,7 @@ async function showAutomationHub(ctx, { skipBbtb = false } = {}) {
     `▸ ⚙️ *Defaults* — starting values for new repos, uploads, sort/filter, notifications\\.\n` +
     `▸ 🏷️ *Auto\\-Tag* — ${activeTagRules} active rule${activeTagRules === 1 ? '' : 's'}\\. Tags repos matching a condition\\.\n` +
     `▸ 🔕 *Auto\\-Mute* — ${activeMuteRules} active rule${activeMuteRules === 1 ? '' : 's'}\\. Mutes alerts on repos matching a condition\\.\n` +
+    `▸ 💾 *Auto\\-Backup* — ${activeBackupRules} active rule${activeBackupRules === 1 ? '' : 's'}\\. Weekly zip snapshots for matching repos\\.\n` +
     `▸ 📜 *Log* — what ran on its own, kept separate from things you did yourself\\.\n\n` +
     `🕐 Last rules run: ${format.escapeMd(lastRun)}` +
     staleNote;
@@ -261,6 +265,142 @@ async function deleteMuteRule(ctx, ruleId) {
   return showMuteRules(ctx);
 }
 
+// ─── Auto-Backup Rules ─────────────────────────────────────────────
+
+async function showBackupRules(ctx) {
+  const backupRules = require('../lib/automationBackupRules');
+  const rules = await backupRules.listBackupRules(ctx.from.id);
+
+  let text = `💾 *Auto\\-Backup Rules*\n\nRepos matching a condition get a zip snapshot sent here weekly, or on demand with ▶️ Backup Now\\.\n\n`;
+  text += rules.length === 0
+    ? `No backup rules yet\\.`
+    : rules.map((r, i) => `${i + 1}\\. ${format.escapeMd(ruleEngine.describeRule(r))}`).join('\n');
+
+  await ctx.reply('💾 Auto-Backup Rules', bbtb.automationBackupRules);
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.backupRulesMenu(rules) });
+}
+
+async function startAddBackupRule(ctx) {
+  await ctx.reply('What should trigger an automatic backup?', inline.backupRuleFieldMenu());
+}
+
+async function selectBackupRuleField(ctx, field) {
+  if (field === 'visibility') {
+    await ctx.reply('Choose the visibility that should trigger a backup:', inline.backupRuleVisibilityMenu());
+    return;
+  }
+  if (field === 'fork') {
+    await ctx.reply('Choose whether this should trigger on forks or non-forks:', inline.backupRuleForkMenu());
+    return;
+  }
+  ctx.session.automationBackupRuleInput = { field };
+  const prompt = field === 'language'
+    ? '💻 Type the exact language name as GitHub reports it (e.g. Python, JavaScript, TypeScript).'
+    : '📛 Type a name pattern, using * as a wildcard (e.g. important-*, core-*).';
+  await ctx.reply(prompt, bbtb.cancelOnly);
+}
+
+async function setBackupVisibilityRule(ctx, value) {
+  const backupRules = require('../lib/automationBackupRules');
+  await backupRules.createBackupRule(ctx.from.id, { field: 'visibility', op: 'eq', value });
+  await ctx.reply(format.successMessage('Backup rule added'));
+  return showBackupRules(ctx);
+}
+
+async function setBackupForkRule(ctx, value) {
+  const backupRules = require('../lib/automationBackupRules');
+  await backupRules.createBackupRule(ctx.from.id, { field: 'fork', op: 'eq', value });
+  await ctx.reply(format.successMessage('Backup rule added'));
+  return showBackupRules(ctx);
+}
+
+async function handleBackupRuleValueInput(ctx, text) {
+  const state = ctx.session.automationBackupRuleInput;
+  delete ctx.session.automationBackupRuleInput;
+  if (!state) return;
+
+  if (text === '❌ Cancel') {
+    await ctx.reply('Cancelled.');
+    return showBackupRules(ctx);
+  }
+
+  const value = text.trim();
+  if (!value) {
+    await ctx.reply('Send a value as text, or ❌ Cancel.');
+    ctx.session.automationBackupRuleInput = state;
+    return;
+  }
+
+  const rule = state.field === 'name'
+    ? { field: 'name', op: 'matches', value }
+    : { field: 'language', op: 'eq', value };
+  const backupRules = require('../lib/automationBackupRules');
+  await backupRules.createBackupRule(ctx.from.id, rule);
+  await ctx.reply(format.successMessage('Backup rule added'));
+  return showBackupRules(ctx);
+}
+
+async function deleteBackupRule(ctx, ruleId) {
+  const backupRules = require('../lib/automationBackupRules');
+  await backupRules.deleteBackupRule(ctx.from.id, Number(ruleId));
+  await ctx.reply('🗑 Backup rule deleted.');
+  return showBackupRules(ctx);
+}
+
+/** Zips and sends every repo matching an active backup rule, right now.
+ * Deliberately separate from ▶️ Run Rules Now — downloading+sending a zip
+ * per matching repo is a much heavier, slower operation than the metadata
+ * writes tag/mute rules do, so it stays an explicit, separate tap. Locked
+ * the same way, for the same double-tap reason. */
+async function runBackupNow(ctx) {
+  const actionLock = require('../lib/actionLock');
+  const { skipped } = await actionLock.withLock(ctx.from.id, 'runAutomationBackup', () => _runBackupNow(ctx));
+  if (skipped) await ctx.reply('⏳ Already backing up — please wait a moment.');
+}
+
+async function _runBackupNow(ctx) {
+  const token = await requireConnected(ctx);
+  if (!token) return;
+
+  const backupRules = require('../lib/automationBackupRules');
+  const rules = await backupRules.listBackupRules(ctx.from.id);
+  if (rules.length === 0) {
+    await ctx.reply('➖ No backup rules set up yet — add one first.');
+    return showBackupRules(ctx);
+  }
+
+  const repoCache = require('../lib/repoCache');
+  const github = require('../lib/github');
+  const user = await repoCache.getUser(ctx.from.id, token);
+  const allRepos = await repoCache.getRepos(ctx.from.id, token);
+  const matches = await backupRules.matchingRepos(ctx.from.id, allRepos);
+
+  if (matches.length === 0) {
+    await ctx.reply('➖ No repos currently match your backup rules.');
+    return showBackupRules(ctx);
+  }
+
+  await ctx.reply(`💾 Backing up ${matches.length} repo(s)...`);
+
+  let sent = 0;
+  for (const repo of matches) {
+    try {
+      const zipBuffer = await github.downloadZip(token, user.login, repo.name, repo.default_branch);
+      await ctx.replyWithDocument(
+        { source: zipBuffer, filename: `${repo.name}-backup-${new Date().toISOString().slice(0, 10)}.zip` },
+        { caption: `💾 ${repo.name}` }
+      );
+      sent++;
+    } catch (err) {
+      await ctx.reply(format.errorMessage(`Backup failed for ${repo.name}`, err.message, 'Continuing with the rest.'));
+    }
+  }
+
+  await activity.log(ctx.from.id, '💾', `Auto-backup run → ${sent} repo(s) sent`, { isAutomated: true });
+  await ctx.reply(format.successMessage(`Backed up ${sent} of ${matches.length} repo(s)`));
+  return showBackupRules(ctx);
+}
+
 // ─── Run everything ────────────────────────────────────────────────
 
 /** Applies every active Auto-Tag AND Auto-Mute rule against every repo,
@@ -371,7 +511,7 @@ async function showAutomationLog(ctx, { page = 1, edit = false } = {}) {
   const { rows, total } = await activity.recent(telegramId, { limit, offset, automatedOnly: true });
   const totalPages = Math.max(1, Math.ceil(total / limit));
 
-  let text = `📜 *Automation Log*\n\nWhat GitroHub did on its own \\(auto\\-tag rules, auto\\-mute rules, applied suggestions\\) — separate from your own taps\\.\n\n`;
+  let text = `📜 *Automation Log*\n\nWhat GitroHub did on its own \\(auto\\-tag rules, auto\\-mute rules, auto\\-backup runs, applied suggestions\\) — separate from your own taps\\.\n\n`;
   if (rows.length === 0) {
     text += 'Nothing automated has run yet\\.';
   } else {
@@ -408,6 +548,14 @@ module.exports = {
   setMuteForkRule,
   handleMuteRuleValueInput,
   deleteMuteRule,
+  showBackupRules,
+  startAddBackupRule,
+  selectBackupRuleField,
+  setBackupVisibilityRule,
+  setBackupForkRule,
+  handleBackupRuleValueInput,
+  deleteBackupRule,
+  runBackupNow,
   runAllRulesNow,
   showStaleRepos,
   getStaleRepos,

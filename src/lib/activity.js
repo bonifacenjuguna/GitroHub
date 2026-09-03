@@ -60,4 +60,15 @@ async function recentRename(telegramId, repoName, withinDays = 14) {
   return match ? { previousName: match[1], renamedAt: rows[0].created_at } : null;
 }
 
-module.exports = { log, recent, recentRename };
+/** Deletes activity_log rows older than N days — called daily by the
+ * scheduler in index.js. Without this the table grows forever; nothing
+ * else in the app ever removes a row from it. */
+async function pruneOlderThan(days) {
+  const { rowCount } = await pool.query(
+    `DELETE FROM activity_log WHERE created_at < now() - ($1 || ' days')::interval`,
+    [days]
+  );
+  return rowCount;
+}
+
+module.exports = { log, recent, recentRename, pruneOlderThan };

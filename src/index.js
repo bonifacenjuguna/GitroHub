@@ -231,6 +231,120 @@ function startRollupScheduler(bot) {
 }
 
 /**
+ * 🤖 Automation's background tasks — daily log pruning, weekly auto-backup
+ * runs, and weekly stale-repo nudges. Same hourly-check + Redis-marker
+ * pattern as the rollup scheduler above, offset by an hour so the two
+ * don't hit the database in the same tick.
+ */
+function startAutomationScheduler(bot) {
+  const HOURLY_MS = 60 * 60 * 1000;
+  const TASK_HOUR_UTC = 9;
+
+  async function poll() {
+    try {
+      const now = new Date();
+      if (now.getUTCHours() === TASK_HOUR_UTC) {
+        const redisDb = require('./db/redis');
+        const dateKey = now.toISOString().slice(0, 10);
+
+        // Daily: prune activity_log + access_log rows past retention —
+        // neither table has any other cleanup path, so without this they
+        // grow forever.
+        const pruneMarker = `automation-prune:${dateKey}`;
+        if (!(await redisDb.client.exists(pruneMarker))) {
+          const config = require('./config');
+          const activity = require('./lib/activity');
+          const accessLog = require('./lib/accessLog');
+          const prunedActivity = await activity.pruneOlderThan(config.LOG_RETENTION_DAYS);
+          const prunedAccess = await accessLog.pruneOlderThan(config.LOG_RETENTION_DAYS);
+          logger.info('Automation: pruned old logs', { prunedActivity, prunedAccess });
+          await redisDb.client.set(pruneMarker, '1', { EX: 25 * 60 * 60 });
+        }
+
+        // Weekly (Monday): auto-backup runs + stale-repo nudges
+        if (now.getUTCDay() === 1) {
+          const weekMarker = `automation-weekly:${dateKey}`;
+          if (!(await redisDb.client.exists(weekMarker))) {
+            await runWeeklyAutomation(bot);
+            await redisDb.client.set(weekMarker, '1', { EX: 25 * 60 * 60 });
+          }
+        }
+      }
+    } catch (err) {
+      logger.error('Automation scheduler failed', { message: err.message });
+    }
+    setTimeout(poll, HOURLY_MS).unref();
+  }
+  setTimeout(poll, HOURLY_MS).unref();
+}
+
+/** Only visits users who could actually have something to do this week —
+ * at least one backup rule, or the stale nudge toggled on — rather than
+ * looping every connected account regardless of whether automation is
+ * configured at all. */
+async function runWeeklyAutomation(bot) {
+  const { pool } = require('./db/postgres');
+  const users = require('./lib/users');
+  const backupRules = require('./lib/automationBackupRules');
+  const repoCache = require('./lib/repoCache');
+  const github = require('./lib/github');
+  const activity = require('./lib/activity');
+
+  const { rows: candidates } = await pool.query(
+    `SELECT DISTINCT u.telegram_id FROM users u
+     LEFT JOIN automation_backup_rules abr ON abr.telegram_id = u.telegram_id
+     WHERE u.notif_stale_nudge = TRUE OR abr.id IS NOT NULL`
+  );
+
+  for (const { telegram_id: telegramId } of candidates) {
+    try {
+      const token = await users.getDecryptedToken(telegramId);
+      if (!token) continue;
+      const user = await repoCache.getUser(telegramId, token).catch(() => null);
+      if (!user) continue;
+      const allRepos = await repoCache.getRepos(telegramId, token);
+
+      // Auto-Backup
+      const matches = await backupRules.matchingRepos(telegramId, allRepos);
+      let backedUp = 0;
+      for (const repo of matches) {
+        try {
+          const zipBuffer = await github.downloadZip(token, user.login, repo.name, repo.default_branch);
+          await bot.telegram.sendDocument(
+            telegramId,
+            { source: zipBuffer, filename: `${repo.name}-backup-${new Date().toISOString().slice(0, 10)}.zip` },
+            { caption: `💾 Weekly backup: ${repo.name}` }
+          );
+          backedUp++;
+        } catch (err) {
+          logger.error('Weekly backup failed for one repo', { telegramId, repo: repo.name, message: err.message });
+        }
+      }
+      if (backedUp > 0) {
+        await activity.log(telegramId, '💾', `Weekly auto-backup → ${backedUp} repo(s) sent`, { isAutomated: true });
+      }
+
+      // Stale-repo nudge
+      const prefs = await users.getNotificationPrefs(telegramId);
+      if (prefs && prefs.staleNudge) {
+        const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+        const stale = allRepos.filter((r) => new Date(r.pushed_at).getTime() < cutoff);
+        if (stale.length > 0) {
+          const names = stale.slice(0, 10).map((r) => `• ${r.name}`).join('\n');
+          const message =
+            `🗂️ Weekly nudge: ${stale.length} repo(s) haven't been pushed to in 90+ days:\n\n${names}` +
+            `${stale.length > 10 ? `\n… and ${stale.length - 10} more` : ''}` +
+            `\n\nOpen 🤖 Automation → 🗂️ Stale Repos for details.`;
+          await bot.telegram.sendMessage(telegramId, message).catch(() => {});
+        }
+      }
+    } catch (err) {
+      logger.error('Weekly automation failed for user', { telegramId, message: err.message });
+    }
+  }
+}
+
+/**
  * Process-level safety net. An uncaught exception leaves Node in an
  * undefined state — best practice is to log it clearly and exit via the
  * same clean shutdown path. Unhandled promise rejections are logged but
@@ -313,6 +427,7 @@ async function main() {
   startMemoryWatchdog();
   startWebhookDigestPoller(bot);
   startRollupScheduler(bot);
+  startAutomationScheduler(bot);
 
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));

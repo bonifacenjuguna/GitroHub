@@ -27,12 +27,13 @@ module.exports = {
   DATABASE_URL: required('DATABASE_URL'),
   REDIS_URL: required('REDIS_URL'),
 
-  BOT_VERSION: process.env.BOT_VERSION || '0.4.0',
+  BOT_VERSION: process.env.BOT_VERSION || '0.5.0',
 
   // Hard limits (from design spec)
   MAX_ZIP_SIZE_BYTES: 1 * 1024 * 1024, // 1MB
   MAX_ZIP_UNCOMPRESSED_BYTES: 15 * 1024 * 1024, // 15MB decompressed — zip bomb guard
   MAX_SINGLE_FILE_BYTES: 5 * 1024 * 1024, // 5MB — single-file uploads (not zips)
+  LOG_RETENTION_DAYS: 90, // activity_log + access_log rows older than this get pruned daily
   MAX_TELEGRAM_FILE_SIZE_BYTES: 20 * 1024 * 1024, // 20MB (bot send limit)
   REPOS_PER_PAGE: 3, // richer card format needs fewer per page to stay glanceable on a phone
   FILES_PER_PAGE: 8,

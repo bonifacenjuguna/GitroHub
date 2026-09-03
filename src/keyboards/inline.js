@@ -189,6 +189,7 @@ function notificationsMenu(prefs) {
     [style.callback(`${check(prefs.systemAlerts)} System Alerts`, 'notif:toggle:systemAlerts')],
     [style.callback(`${check(prefs.longOps)} Long Operations`, 'notif:toggle:longOps')],
     [style.callback(`${check(prefs.tokenHealth)} Token Health`, 'notif:toggle:tokenHealth')],
+    [style.callback(`${check(prefs.staleNudge)} Stale Repo Nudge (weekly)`, 'notif:toggle:staleNudge')],
     // Daily/weekly rollup summary + quiet hours cycle on tap rather than
     // a separate picker screen — keeps this one flat menu.
     [style.callback(`Rollup: ${rollupLabel}`, 'notif:cyclerollup')],
@@ -313,6 +314,48 @@ function muteRuleForkMenu() {
   ]);
 }
 
+/** 💾 Auto-Backup rules list — same shape as Auto-Mute's list. */
+function backupRulesMenu(rules) {
+  const rows = rules.map((r, i) => [style.callback(`🗑 Delete #${i + 1}`, `automation:backup:delete:${r.id}`)]);
+  rows.push([style.callback('➕ Add Rule', 'automation:backup:add', style.BLUE)]);
+  rows.push([style.callback('⬅️ Back', 'automation:hub', style.BLUE)]);
+  return Markup.inlineKeyboard(rows);
+}
+
+function backupRuleFieldMenu() {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('💻 Language', 'automation:backup:field:language'),
+      style.callback('📛 Name', 'automation:backup:field:name'),
+    ],
+    [
+      style.callback('🔒 Visibility', 'automation:backup:field:visibility'),
+      style.callback('🍴 Fork', 'automation:backup:field:fork'),
+    ],
+    [style.callback('⬅️ Back', 'automation:backuprules', style.BLUE)],
+  ]);
+}
+
+function backupRuleVisibilityMenu() {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('🔒 Private', 'automation:backup:setvisibility:private'),
+      style.callback('🌐 Public', 'automation:backup:setvisibility:public'),
+    ],
+    [style.callback('⬅️ Back', 'automation:backup:add', style.BLUE)],
+  ]);
+}
+
+function backupRuleForkMenu() {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('🍴 Is a Fork', 'automation:backup:setfork:fork'),
+      style.callback('🌱 Not a Fork', 'automation:backup:setfork:notfork'),
+    ],
+    [style.callback('⬅️ Back', 'automation:backup:add', style.BLUE)],
+  ]);
+}
+
 /** 🗂️ Stale Repos — each repo reuses the exact same 'repo:<name>' callback
  * My Repos' own list uses, so tapping one opens the real Repo View. */
 function staleReposMenu(repos) {
@@ -335,6 +378,26 @@ function automationLogPagination(page, totalPages) {
 
 function connectButton(url) {
   return Markup.inlineKeyboard([[Markup.button.url('🔗 Connect GitHub Account', url)]]);
+}
+
+/** 💾 Export/Import — the two actions plus Back, no reason for more than
+ * one row here. */
+function exportImportMenu() {
+  return Markup.inlineKeyboard([
+    [style.callback('⬇️ Export Settings', 'exportimport:export', style.BLUE)],
+    [style.callback('⬆️ Import Settings', 'exportimport:import', style.BLUE)],
+    [style.callback('⬅️ Back', 'settings:back', style.BLUE)],
+  ]);
+}
+
+/** Import is the one genuinely destructive part of this feature (it
+ * overwrites Defaults + Notification prefs outright) so it gets the same
+ * explicit-confirm treatment as Delete Repo/File — RED for the same reason. */
+function importConfirm() {
+  return Markup.inlineKeyboard([
+    [style.callback('✅ Yes, Import', 'exportimport:import:confirm', style.RED)],
+    [style.callback('❌ Cancel', 'exportimport:import:cancel', style.GREEN)],
+  ]);
 }
 
 function activityPagination(page, totalPages, errorsOnly) {
@@ -399,6 +462,12 @@ module.exports = {
   muteRuleFieldMenu,
   muteRuleVisibilityMenu,
   muteRuleForkMenu,
+  backupRulesMenu,
+  backupRuleFieldMenu,
+  backupRuleVisibilityMenu,
+  backupRuleForkMenu,
   staleReposMenu,
   automationLogPagination,
+  exportImportMenu,
+  importConfirm,
 };

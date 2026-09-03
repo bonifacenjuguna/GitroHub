@@ -48,7 +48,8 @@ const browseFiles = Markup.keyboard([
 // from inside Activity instead of its own Settings row.
 const settings = Markup.keyboard([
   [b('📜 Activity'), b('🤖 Automation'), b('📦 Storage')],
-  [b('🚪 Disconnect'), b('⬆️ Back to Menu')],
+  [b('💾 Export/Import'), b('🚪 Disconnect')],
+  [b('⬆️ Back to Menu')],
 ]).resize();
 
 const cancelOnly = Markup.keyboard([[g('❌ Cancel')]]).resize();
@@ -98,12 +99,13 @@ const bulkComplete = Markup.keyboard([
 ]).resize();
 
 // 🤖 Automation hub — mirrors My Repos' 3-row shape: two 3-across rows for
-// the sub-sections + frequent actions (equal-weight, not a sequence), Back
-// on its own row.
+// the sub-sections + frequent actions (equal-weight, not a sequence), then
+// a paired action+Back row (same pattern My Repos uses for Bulk Select +
+// Back to Menu).
 const automation = Markup.keyboard([
-  [b('🏷️ Auto-Tag'), b('🔕 Auto-Mute'), b('📜 Log')],
-  [b('⚙️ Defaults'), b('▶️ Run Rules Now'), b('🗂️ Stale Repos')],
-  [b('⬆️ Back to Settings')],
+  [b('🏷️ Auto-Tag'), b('🔕 Auto-Mute'), b('💾 Auto-Backup')],
+  [b('⚙️ Defaults'), b('▶️ Run Rules Now'), b('📜 Log')],
+  [b('🗂️ Stale Repos'), b('⬆️ Back to Settings')],
 ]).resize();
 
 // Auto-Tag Rules and Auto-Mute Rules both nest one level under Automation
@@ -111,6 +113,15 @@ const automation = Markup.keyboard([
 // same shape as Browse Files nesting under Repo View.
 const automationRules = Markup.keyboard([
   [b('▶️ Run Rules Now')],
+  [b('⬆️ Back to Automation')],
+]).resize();
+
+// Auto-Backup Rules gets its own "Backup Now" instead of the shared "Run
+// Rules Now" — it's a heavier operation (downloads + sends a zip per
+// matching repo), so it stays a deliberate, separate tap rather than
+// silently riding along with the cheap tag/mute rule run.
+const automationBackupRules = Markup.keyboard([
+  [b('▶️ Backup Now')],
   [b('⬆️ Back to Automation')],
 ]).resize();
 
@@ -123,6 +134,10 @@ const backToSettings = Markup.keyboard([
 // Settings, matching how Browse Files' "Back to Repo" doesn't jump to Menu.
 const backToAutomation = Markup.keyboard([
   [b('⬆️ Back to Automation')],
+]).resize();
+
+const exportImport = Markup.keyboard([
+  [b('⬆️ Back to Settings')],
 ]).resize();
 
 const remove = Markup.removeKeyboard();
@@ -148,5 +163,7 @@ module.exports = {
   backToAutomation,
   automation,
   automationRules,
+  automationBackupRules,
+  exportImport,
   remove,
 };

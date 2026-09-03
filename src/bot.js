@@ -21,6 +21,7 @@ const tags = require('./handlers/tags');
 const bulkActions = require('./handlers/bulkActions');
 const myDefaults = require('./handlers/myDefaults');
 const automation = require('./handlers/automation');
+const exportImport = require('./handlers/exportImport');
 const storageData = require('./handlers/storageData');
 const accessLogScreen = require('./handlers/accessLogScreen');
 
@@ -203,11 +204,14 @@ function createBot() {
     '⬆️ Back to Automation': (ctx) => automation.showAutomationHub(ctx),
     '🏷️ Auto-Tag': (ctx) => automation.showAutoTagRules(ctx),
     '🔕 Auto-Mute': (ctx) => automation.showMuteRules(ctx),
+    '💾 Auto-Backup': (ctx) => automation.showBackupRules(ctx),
+    '▶️ Backup Now': (ctx) => automation.runBackupNow(ctx),
     '📜 Log': (ctx) => automation.showAutomationLog(ctx),
     '⚙️ Defaults': (ctx) => myDefaults.showDefaults(ctx),
     '▶️ Run Rules Now': (ctx) => automation.runAllRulesNow(ctx),
     '🗂️ Stale Repos': (ctx) => automation.showStaleRepos(ctx),
     '📦 Storage': (ctx) => storageData.showStorageData(ctx),
+    '💾 Export/Import': (ctx) => exportImport.showExportImportMenu(ctx),
     // 🔄 Refresh Status and 🔑 Access Log are no longer BBTB buttons —
     // relocated to inline (see #47/#48). Their handler functions are still
     // reachable, now via the callback_query router below.
@@ -254,8 +258,11 @@ function createBot() {
     delete ctx.session.editingDefault;
     delete ctx.session.automationRuleInput;
     delete ctx.session.automationMuteRuleInput;
+    delete ctx.session.automationBackupRuleInput;
     delete ctx.session.awaitingFullReset;
     delete ctx.session.editingDescription;
+    delete ctx.session.awaitingSettingsImport;
+    delete ctx.session.pendingImport;
     await sendCancelledMenu(ctx);
   });
 
@@ -269,6 +276,7 @@ function createBot() {
     if (ctx.session.editingDefault) return myDefaults.handleTextInput(ctx);
     if (ctx.session.automationRuleInput) return automation.handleRuleValueInput(ctx, ctx.message.text);
     if (ctx.session.automationMuteRuleInput) return automation.handleMuteRuleValueInput(ctx, ctx.message.text);
+    if (ctx.session.automationBackupRuleInput) return automation.handleBackupRuleValueInput(ctx, ctx.message.text);
     if (ctx.session.awaitingFullReset) return storageData.handleResetConfirmationText(ctx);
     if (ctx.session.editingDescription) return repoView.handleDescriptionInput(ctx, ctx.message.text);
 
@@ -283,6 +291,20 @@ function createBot() {
     if (ctx.session.awaitingFileSearch) {
       ctx.session.awaitingFileSearch = false;
       return browseFiles.searchFiles(ctx, ctx.session.currentRepo, ctx.message.text);
+    }
+    return next();
+  });
+
+  // ─── Free-document input router ─────────────────────────────
+  // Only one flow outside a Scene needs a raw document upload right now
+  // (Import Settings) — this stays intentionally tiny rather than growing
+  // into a second upload pipeline; anything heavier belongs in a Scene
+  // like uploadFile already is.
+  bot.on('document', async (ctx, next) => {
+    if (ctx.scene && ctx.scene.current) return next(); // scene handles its own documents
+    if (ctx.session.awaitingSettingsImport) {
+      ctx.session.awaitingSettingsImport = false;
+      return exportImport.handleImportFile(ctx);
     }
     return next();
   });
@@ -628,6 +650,19 @@ function createBot() {
       await ctx.answerCbQuery();
       return settings.promptQuietHours(ctx);
     }
+
+    // 💾 Export/Import
+    if (data === 'exportimport:export') { await ctx.answerCbQuery(); return exportImport.exportSettings(ctx); }
+    if (data === 'exportimport:import') { await ctx.answerCbQuery(); return exportImport.promptImportFile(ctx); }
+    if (data === 'exportimport:import:confirm') {
+      await ctx.answerCbQuery();
+      await confirmFlow.resolveConfirmation(ctx, 'confirmed', '⏳ Importing…');
+      return exportImport.applyImport(ctx);
+    }
+    if (data === 'exportimport:import:cancel') {
+      await ctx.answerCbQuery();
+      return confirmFlow.resolveConfirmation(ctx, 'cancelled', '❌ Import cancelled — nothing changed.');
+    }
     if (data === 'settings:disconnect:confirm') {
       await ctx.answerCbQuery();
       await confirmFlow.resolveConfirmation(ctx, 'confirmed', '⏳ Disconnecting…');
@@ -710,6 +745,14 @@ function createBot() {
     if (data.startsWith('automation:mute:setvisibility:')) { await ctx.answerCbQuery(); return automation.setMuteVisibilityRule(ctx, data.split(':')[3]); }
     if (data.startsWith('automation:mute:setfork:')) { await ctx.answerCbQuery(); return automation.setMuteForkRule(ctx, data.split(':')[3]); }
     if (data.startsWith('automation:mute:delete:')) { await ctx.answerCbQuery(); return automation.deleteMuteRule(ctx, data.split(':')[3]); }
+
+    if (data === 'automation:backuprules') { await ctx.answerCbQuery(); return automation.showBackupRules(ctx); }
+    if (data === 'automation:runbackup') { await ctx.answerCbQuery(); return automation.runBackupNow(ctx); }
+    if (data === 'automation:backup:add') { await ctx.answerCbQuery(); return automation.startAddBackupRule(ctx); }
+    if (data.startsWith('automation:backup:field:')) { await ctx.answerCbQuery(); return automation.selectBackupRuleField(ctx, data.split(':')[3]); }
+    if (data.startsWith('automation:backup:setvisibility:')) { await ctx.answerCbQuery(); return automation.setBackupVisibilityRule(ctx, data.split(':')[3]); }
+    if (data.startsWith('automation:backup:setfork:')) { await ctx.answerCbQuery(); return automation.setBackupForkRule(ctx, data.split(':')[3]); }
+    if (data.startsWith('automation:backup:delete:')) { await ctx.answerCbQuery(); return automation.deleteBackupRule(ctx, data.split(':')[3]); }
 
     if (data === 'automation:log') { await ctx.answerCbQuery(); return automation.showAutomationLog(ctx); }
     if (data.startsWith('automation:log:page:')) {

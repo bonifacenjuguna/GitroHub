@@ -57,4 +57,14 @@ async function recent(telegramId, limit = 10) {
   return rows;
 }
 
-module.exports = { record, recent, detectAnomaly };
+/** Same reasoning as activity.pruneOlderThan — access_log has no other
+ * cleanup path, called daily by the scheduler in index.js. */
+async function pruneOlderThan(days) {
+  const { rowCount } = await pool.query(
+    `DELETE FROM access_log WHERE created_at < now() - ($1 || ' days')::interval`,
+    [days]
+  );
+  return rowCount;
+}
+
+module.exports = { record, recent, detectAnomaly, pruneOlderThan };

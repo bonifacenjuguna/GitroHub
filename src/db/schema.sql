@@ -259,3 +259,21 @@ CREATE TABLE IF NOT EXISTS automation_mute_rules (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_automation_mute_rules_user ON automation_mute_rules (telegram_id);
+
+-- 💾 Auto-Backup Rules — same shape as mute rules, but matching repos get a
+-- weekly zip snapshot delivered as a Telegram document (weekly scheduler in
+-- index.js), or on demand via "▶️ Backup Now".
+CREATE TABLE IF NOT EXISTS automation_backup_rules (
+  id SERIAL PRIMARY KEY,
+  telegram_id BIGINT NOT NULL,
+  field TEXT NOT NULL,
+  op TEXT NOT NULL,
+  value TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_automation_backup_rules_user ON automation_backup_rules (telegram_id);
+
+-- Weekly stale-repo nudge — opt-in, off by default. Unlike the always-available
+-- passive 🗂️ Stale Repos screen, this is a proactive push the person has to
+-- turn on themselves (Notifications menu).
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_stale_nudge BOOLEAN NOT NULL DEFAULT FALSE;

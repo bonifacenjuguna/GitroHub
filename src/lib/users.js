@@ -48,6 +48,7 @@ async function getNotificationPrefs(telegramId) {
     systemAlerts: user.notif_system_alerts,
     longOps: user.notif_long_ops,
     tokenHealth: user.notif_token_health,
+    staleNudge: user.notif_stale_nudge,
     rollup: user.notif_rollup,
     quietStart: user.quiet_hours_start,
     quietEnd: user.quiet_hours_end,
@@ -75,6 +76,7 @@ async function toggleNotification(telegramId, key) {
     systemAlerts: 'notif_system_alerts',
     longOps: 'notif_long_ops',
     tokenHealth: 'notif_token_health',
+    staleNudge: 'notif_stale_nudge',
   };
   const column = columnMap[key];
   if (!column) throw new Error(`Unknown notification key: ${key}`);
