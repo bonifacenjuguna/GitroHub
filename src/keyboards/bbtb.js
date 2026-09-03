@@ -98,31 +98,38 @@ const bulkComplete = Markup.keyboard([
   [b('📁 My Repos'), b('⬆️ Menu')],
 ]).resize();
 
-// 🤖 Automation hub — mirrors My Repos' 3-row shape: two 3-across rows for
-// the sub-sections + frequent actions (equal-weight, not a sequence), then
-// a paired action+Back row (same pattern My Repos uses for Bulk Select +
-// Back to Menu).
+// 🤖 Automation hub — top level now only holds equal-weight destinations:
+// the rules/insights group (everything that used to be 4 separate top-level
+// buttons), Scheduled Commits, and Timezone (which Scheduled Commits
+// depends on to mean anything). Defaults + Log stay directly reachable
+// since they're read/adjusted far more often than any single rule type.
 const automation = Markup.keyboard([
-  [b('🏷️ Auto-Tag'), b('🔕 Auto-Mute'), b('💾 Auto-Backup')],
-  [b('⚙️ Defaults'), b('▶️ Run Rules Now'), b('📜 Log')],
-  [b('🗂️ Stale Repos'), b('⬆️ Back to Settings')],
+  [b('🔧 Rules & Insights'), b('📅 Scheduled Commits'), b('🌍 Timezone')],
+  [b('⚙️ Defaults'), b('📜 Log')],
+  [b('⬆️ Back to Settings')],
 ]).resize();
 
-// Auto-Tag Rules and Auto-Mute Rules both nest one level under Automation
-// and both want the same "run what I've set up" action close at hand —
-// same shape as Browse Files nesting under Repo View.
-const automationRules = Markup.keyboard([
+// 🔧 Rules & Insights — the new intermediate hub-of-hubs: Auto-Tag,
+// Auto-Mute, Auto-Backup, and Stale Repos all live one level under this
+// (picked via its own inline grid, see inline.rulesHubMenu).
+const automationRulesHub = Markup.keyboard([
   [b('▶️ Run Rules Now')],
   [b('⬆️ Back to Automation')],
 ]).resize();
 
+// Auto-Tag Rules / Auto-Mute Rules list screens, one level under Rules &
+// Insights — "Back" now targets that intermediate screen, not all the way
+// up to the Automation hub, matching the actual nesting depth.
+const automationRulesSub = Markup.keyboard([
+  [b('▶️ Run Rules Now')],
+  [b('⬆️ Back to Rules')],
+]).resize();
+
 // Auto-Backup Rules gets its own "Backup Now" instead of the shared "Run
-// Rules Now" — it's a heavier operation (downloads + sends a zip per
-// matching repo), so it stays a deliberate, separate tap rather than
-// silently riding along with the cheap tag/mute rule run.
+// Rules Now" — see the reasoning where this was first introduced.
 const automationBackupRules = Markup.keyboard([
   [b('▶️ Backup Now')],
-  [b('⬆️ Back to Automation')],
+  [b('⬆️ Back to Rules')],
 ]).resize();
 
 const backToSettings = Markup.keyboard([
@@ -162,7 +169,8 @@ module.exports = {
   backToSettings,
   backToAutomation,
   automation,
-  automationRules,
+  automationRulesHub,
+  automationRulesSub,
   automationBackupRules,
   exportImport,
   remove,

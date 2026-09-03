@@ -133,11 +133,98 @@ const scene = new Scenes.WizardScene(
     await ctx.reply('Tap a license option above.');
   },
 
-  // Step 6 — confirm and create
+  // Step 6 — confirm and create (or schedule for later)
   async (ctx) => {
     if (await handleGlobalActions(ctx)) return;
+
+    // 📅 Scheduled Commits — awaiting a custom date/time after "⌨️ Custom".
+    // Handled inside this same step (not a new wizard step) so nothing
+    // downstream needs re-indexing.
+    if (ctx.wizard.state.awaitingScheduleTime) {
+      if (ctx.message && ctx.message.text === '❌ Cancel') {
+        delete ctx.wizard.state.awaitingScheduleTime;
+        await ctx.reply('Scheduling cancelled — repo was not created.', bbtb.mainMenu);
+        return ctx.scene.leave();
+      }
+      if (!ctx.message || !ctx.message.text) {
+        await ctx.reply('Send the date and time as text, or ❌ Cancel.');
+        return;
+      }
+      const match = ctx.message.text.trim().match(/^(\d{4}-\d{2}-\d{2})\s+(\d{1,2}):(\d{2})$/);
+      if (!match) {
+        await ctx.reply(format.errorMessage('Couldn\u2019t read that', 'expected format is YYYY-MM-DD HH:MM', 'Example: 2026-09-15 14:00'));
+        return;
+      }
+      const [, dateStr, hh, mm] = match;
+      const timeStr = `${hh.padStart(2, '0')}:${mm}`;
+      const users = require('../lib/users');
+      const timezone = require('../lib/timezone');
+      const user = await users.getUser(ctx.from.id);
+      const tz = user.timezone || 'UTC';
+      const scheduledFor = timezone.zonedTimeToUtc(dateStr, timeStr, tz);
+      if (scheduledFor.getTime() <= Date.now()) {
+        await ctx.reply(format.errorMessage('That time has already passed', `${dateStr} ${timeStr} (${tz}) is in the past`, 'Send a future date/time, or ❌ Cancel.'));
+        return;
+      }
+      delete ctx.wizard.state.awaitingScheduleTime;
+      return finalizeSchedule(ctx, scheduledFor, tz);
+    }
+
+    if (ctx.callbackQuery && ctx.callbackQuery.data.startsWith('createrepo:schedulepick:')) {
+      await ctx.answerCbQuery();
+      const pick = ctx.callbackQuery.data.split('createrepo:schedulepick:')[1];
+      if (pick === 'custom') {
+        const users = require('../lib/users');
+        const user = await users.getUser(ctx.from.id);
+        await ctx.reply(
+          `⌨️ Send the date and time as YYYY-MM-DD HH:MM, in your timezone (${user.timezone || 'UTC'} — change it in 🤖 Automation → 🌍 Timezone).\nExample: 2026-09-15 14:00`,
+          bbtb.cancelOnly
+        );
+        ctx.wizard.state.awaitingScheduleTime = true;
+        return;
+      }
+      const now = new Date();
+      let scheduledFor;
+      if (pick === '1h') scheduledFor = new Date(now.getTime() + 60 * 60 * 1000);
+      else if (pick === '3days') scheduledFor = new Date(now.getTime() + 3 * 24 * 60 * 60 * 1000);
+      else if (pick === 'tomorrow9am') {
+        const users = require('../lib/users');
+        const timezone = require('../lib/timezone');
+        const user = await users.getUser(ctx.from.id);
+        const tz = user.timezone || 'UTC';
+        // "Tomorrow" has to mean tomorrow in the person's own calendar, not
+        // UTC's — near the date line those disagree by a full day (e.g. at
+        // 23:00 UTC, someone in UTC+13 is already living in "tomorrow").
+        const todayLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+        const [ty, tm, td] = todayLocal.split('-').map(Number);
+        const tomorrowLocal = new Date(Date.UTC(ty, tm - 1, td + 1)); // Date normalizes month/day overflow automatically
+        const y = tomorrowLocal.getUTCFullYear();
+        const mo = String(tomorrowLocal.getUTCMonth() + 1).padStart(2, '0');
+        const d = String(tomorrowLocal.getUTCDate()).padStart(2, '0');
+        scheduledFor = timezone.zonedTimeToUtc(`${y}-${mo}-${d}`, '09:00', tz);
+        if (scheduledFor.getTime() <= now.getTime()) scheduledFor = new Date(scheduledFor.getTime() + 24 * 60 * 60 * 1000);
+      }
+      const users = require('../lib/users');
+      const user = await users.getUser(ctx.from.id);
+      return finalizeSchedule(ctx, scheduledFor, user.timezone || 'UTC');
+    }
+
+    if (ctx.callbackQuery && ctx.callbackQuery.data === 'createrepo:schedule') {
+      await ctx.answerCbQuery();
+      await ctx.reply(
+        '📅 When should this repo be created?',
+        Markup.inlineKeyboard([
+          [style.callback('⏱ In 1 hour', 'createrepo:schedulepick:1h')],
+          [style.callback('🌅 Tomorrow 9am', 'createrepo:schedulepick:tomorrow9am')],
+          [style.callback('📆 In 3 days', 'createrepo:schedulepick:3days')],
+          [style.callback('⌨️ Custom date/time', 'createrepo:schedulepick:custom')],
+        ])
+      );
+      return;
+    }
+
     if (!ctx.callbackQuery || ctx.callbackQuery.data !== 'create:confirm') {
-      await ctx.reply('Tap ✅ Create or ❌ Cancel above.');
+      await ctx.reply('Tap ✅ Create Now, 📅 Schedule for Later, or ❌ Cancel above.');
       return;
     }
     await ctx.answerCbQuery();
@@ -228,13 +315,37 @@ const scene = new Scenes.WizardScene(
   }
 );
 
+/** 📅 Scheduled Commits — stores the fully-collected repo config for the
+ * scheduler in index.js to actually create later, instead of calling
+ * github.createRepo() now. Same wizard, same data, just a different final
+ * action than "✅ Create Now" takes. */
+async function finalizeSchedule(ctx, scheduledFor, tz) {
+  const { name, isPrivate, description, includeReadme, licenseTemplate } = ctx.wizard.state.data;
+  const scheduledRepos = require('../lib/scheduledRepos');
+  await scheduledRepos.create(ctx.from.id, {
+    name,
+    description: description || null,
+    visibility: isPrivate ? 'private' : 'public',
+    license: licenseTemplate || null,
+    includeReadme,
+    scheduledFor,
+  });
+
+  const timezone = require('../lib/timezone');
+  await ctx.reply(
+    `📅 Scheduled: ${name} will be created ${timezone.formatInZone(scheduledFor, tz)} (${tz}).\n\n` +
+    `Manage it anytime in 🤖 Automation → 📅 Scheduled Commits.`,
+    bbtb.mainMenu
+  );
+  return ctx.scene.leave();
+}
+
 /**
  * Shared Back/Cancel handling across every step, per the standing rule:
  * ⬅️ Back steps back one step (data preserved) · ❌ Cancel needs confirming.
  * Returns true if it handled the update (caller should stop processing).
  */
-async function handleGlobalActions(ctx) {
-  if (ctx.message && ctx.message.text === '❌ Cancel') {
+async function handleGlobalActions(ctx) {  if (ctx.message && ctx.message.text === '❌ Cancel') {
     await ctx.reply('⚠️ Cancel this repo creation? Everything entered so far will be discarded.', cancelConfirmKeyboard);
     return true;
   }

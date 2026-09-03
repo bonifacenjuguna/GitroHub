@@ -78,7 +78,8 @@ const createRepoVisibility = Markup.inlineKeyboard([
 ]);
 
 const createRepoConfirm = Markup.inlineKeyboard([
-  [style.callback('✅ Create', 'create:confirm', style.GREEN)],
+  [style.callback('✅ Create Now', 'create:confirm', style.GREEN)],
+  [style.callback('📅 Schedule for Later', 'createrepo:schedule', style.BLUE)],
   [style.callback('❌ Cancel', 'create:cancel', style.RED)],
 ]);
 
@@ -205,14 +206,32 @@ function disconnectConfirm() {
   ]);
 }
 
-/** Auto-Tag Rules list — one row per tag, ⚡ = rule active / ➖ = none.
+/** 🔧 Rules & Insights — the 2x2 grid of everything grouped under here.
+ * Exploiting inline here rather than more BBTB rows, per the redesign:
+ * these are content destinations picked once per visit, not frequent
+ * actions that deserve permanent thumb-reach real estate. */
+function rulesHubMenu() {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('🏷️ Auto-Tag', 'automation:tagrules', style.BLUE),
+      style.callback('🔕 Auto-Mute', 'automation:muterules', style.BLUE),
+    ],
+    [
+      style.callback('💾 Auto-Backup', 'automation:backuprules', style.BLUE),
+      style.callback('🗂️ Stale Repos', 'automation:stalerepos', style.BLUE),
+    ],
+    [style.callback('⬅️ Back', 'automation:hub', style.BLUE)],
+  ]);
+}
+
+/** 🏷️ Auto-Tag Rules list — one row per tag, ⚡ = rule active / ➖ = none.
  * Run Rules Now moved to BBTB (it's a frequent, low-risk action — belongs
  * there, not competing for space with the content below it). */
 function autoTagRulesMenu(userTags) {
   const rows = userTags.map((t) => [
     style.callback(`${t.auto_rule_json ? '⚡' : '➖'} ${t.emoji} ${t.name}`, `automation:rule:edit:${t.id}`),
   ]);
-  rows.push([style.callback('⬅️ Back', 'automation:hub', style.BLUE)]);
+  rows.push([style.callback('⬅️ Back', 'automation:ruleshub', style.BLUE)]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -276,7 +295,7 @@ function autoTagSuggestion(repoName, tagId) {
 function muteRulesMenu(rules) {
   const rows = rules.map((r, i) => [style.callback(`🗑 Delete #${i + 1}`, `automation:mute:delete:${r.id}`)]);
   rows.push([style.callback('➕ Add Rule', 'automation:mute:add', style.BLUE)]);
-  rows.push([style.callback('⬅️ Back', 'automation:hub', style.BLUE)]);
+  rows.push([style.callback('⬅️ Back', 'automation:ruleshub', style.BLUE)]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -318,7 +337,7 @@ function muteRuleForkMenu() {
 function backupRulesMenu(rules) {
   const rows = rules.map((r, i) => [style.callback(`🗑 Delete #${i + 1}`, `automation:backup:delete:${r.id}`)]);
   rows.push([style.callback('➕ Add Rule', 'automation:backup:add', style.BLUE)]);
-  rows.push([style.callback('⬅️ Back', 'automation:hub', style.BLUE)]);
+  rows.push([style.callback('⬅️ Back', 'automation:ruleshub', style.BLUE)]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -362,7 +381,7 @@ function staleReposMenu(repos) {
   const rows = repos.map((r) => [
     style.callback(`📦 ${r.name} — ${r.staleLabel}`, `repo:${r.name}`, style.BLUE),
   ]);
-  rows.push([style.callback('⬅️ Back', 'automation:hub', style.BLUE)]);
+  rows.push([style.callback('⬅️ Back', 'automation:ruleshub', style.BLUE)]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -470,4 +489,5 @@ module.exports = {
   automationLogPagination,
   exportImportMenu,
   importConfirm,
+  rulesHubMenu,
 };

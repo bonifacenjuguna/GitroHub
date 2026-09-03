@@ -27,41 +27,45 @@ async function showAutomationHub(ctx, { skipBbtb = false } = {}) {
   const connected = await users.isConnected(ctx.from.id);
   if (!connected) return;
 
+  const user = await users.getUser(ctx.from.id);
   const [userTags, muteRulesList, lastRunResult] = await Promise.all([
     tags.listTags(ctx.from.id),
     muteRules.listMuteRules(ctx.from.id),
     activity.recent(ctx.from.id, { limit: 1, automatedOnly: true }),
   ]);
   const backupRulesLib = require('../lib/automationBackupRules');
-  const backupRulesList = await backupRulesLib.listBackupRules(ctx.from.id);
-  const activeTagRules = userTags.filter((t) => t.auto_rule_json).length;
-  const activeMuteRules = muteRulesList.length;
-  const activeBackupRules = backupRulesList.length;
+  const scheduledRepos = require('../lib/scheduledRepos');
+  const [backupRulesList, scheduledPending] = await Promise.all([
+    backupRulesLib.listBackupRules(ctx.from.id),
+    scheduledRepos.listPending(ctx.from.id),
+  ]);
+  const activeRulesTotal = userTags.filter((t) => t.auto_rule_json).length + muteRulesList.length + backupRulesList.length;
   const lastRun = lastRunResult.rows[0] ? format.relativeTime(lastRunResult.rows[0].created_at) : 'never';
-
-  // Stale-repo nudge is a bonus stat, computed best-effort — a hiccup
-  // fetching the repo list should never block the hub itself from showing.
-  let staleNote = '';
-  try {
-    const staleCount = (await getStaleRepos(ctx)).length;
-    if (staleCount > 0) {
-      staleNote = `\n\n🗂️ *${staleCount}* repo${staleCount === 1 ? '' : 's'} haven\u2019t been pushed to in ${STALE_DAYS}\\+ days — 🗂️ Stale Repos below\\.`;
-    }
-  } catch (_) { /* non-fatal */ }
 
   const text =
     `🤖 *Automation*\n\n` +
     `Rules and background behavior that act on your repos without a manual tap every time\\.\n\n` +
+    `▸ 🔧 *Rules & Insights* — ${activeRulesTotal} active rule${activeRulesTotal === 1 ? '' : 's'} across Auto\\-Tag, Auto\\-Mute, Auto\\-Backup, plus 🗂️ Stale Repos\\.\n` +
+    `▸ 📅 *Scheduled Commits* — ${scheduledPending.length} repo${scheduledPending.length === 1 ? '' : 's'} queued\\.\n` +
+    `▸ 🌍 *Timezone* — currently *${format.escapeMd(user.timezone || 'UTC')}*\\.\n` +
     `▸ ⚙️ *Defaults* — starting values for new repos, uploads, sort/filter, notifications\\.\n` +
-    `▸ 🏷️ *Auto\\-Tag* — ${activeTagRules} active rule${activeTagRules === 1 ? '' : 's'}\\. Tags repos matching a condition\\.\n` +
-    `▸ 🔕 *Auto\\-Mute* — ${activeMuteRules} active rule${activeMuteRules === 1 ? '' : 's'}\\. Mutes alerts on repos matching a condition\\.\n` +
-    `▸ 💾 *Auto\\-Backup* — ${activeBackupRules} active rule${activeBackupRules === 1 ? '' : 's'}\\. Weekly zip snapshots for matching repos\\.\n` +
     `▸ 📜 *Log* — what ran on its own, kept separate from things you did yourself\\.\n\n` +
-    `🕐 Last rules run: ${format.escapeMd(lastRun)}` +
-    staleNote;
+    `🕐 Last rules run: ${format.escapeMd(lastRun)}`;
 
   if (!skipBbtb) await ctx.reply('🤖 Automation', bbtb.automation);
   await ctx.reply(text, { parse_mode: 'MarkdownV2' });
+}
+
+/** 🔧 Rules & Insights — the intermediate hub-of-hubs grouping every
+ * condition-matching feature (Auto-Tag, Auto-Mute, Auto-Backup) plus the
+ * one passive insight (Stale Repos) that fits the same "set a condition,
+ * see matches" shape even though it doesn't act on anything by itself. */
+async function showRulesHub(ctx, { skipBbtb = false } = {}) {
+  if (!skipBbtb) await ctx.reply('🔧 Rules & Insights', bbtb.automationRulesHub);
+  await ctx.reply(
+    '🔧 *Rules & Insights*\n\nCondition\\-based automation — tag, mute, or back up repos automatically, or just see which ones need attention\\.',
+    { parse_mode: 'MarkdownV2', ...inline.rulesHubMenu() }
+  );
 }
 
 // ─── Auto-Tag Rules ────────────────────────────────────────────────
@@ -83,7 +87,7 @@ async function showAutoTagRules(ctx) {
       .join('\n');
   }
 
-  await ctx.reply('🏷️ Auto-Tag Rules', bbtb.automationRules);
+  await ctx.reply('🏷️ Auto-Tag Rules', bbtb.automationRulesSub);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.autoTagRulesMenu(userTags) });
 }
 
@@ -198,7 +202,7 @@ async function showMuteRules(ctx) {
     text += rules.map((r, i) => `${i + 1}\\. ${format.escapeMd(ruleEngine.describeRule(r))}`).join('\n');
   }
 
-  await ctx.reply('🔕 Auto-Mute Rules', bbtb.automationRules);
+  await ctx.reply('🔕 Auto-Mute Rules', bbtb.automationRulesSub);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.muteRulesMenu(rules) });
 }
 
@@ -474,7 +478,7 @@ async function _runAllRulesNow(ctx) {
   if (reposMuted > 0) parts.push(`muted ${reposMuted} repo(s)`);
   await ctx.reply(parts.length > 0 ? `✅ Done — ${parts.join(', ')}.` : '➖ No new matches — everything\u2019s already up to date.');
 
-  return showAutomationHub(ctx, { skipBbtb: true });
+  return showRulesHub(ctx);
 }
 
 // ─── Stale Repos ───────────────────────────────────────────────────
@@ -532,6 +536,7 @@ async function showAutomationLog(ctx, { page = 1, edit = false } = {}) {
 
 module.exports = {
   showAutomationHub,
+  showRulesHub,
   showAutoTagRules,
   startEditRule,
   selectRuleField,

@@ -3,7 +3,7 @@ const { pool } = require('../db/postgres');
 async function getDefaults(telegramId) {
   const { rows } = await pool.query(
     `SELECT default_visibility, default_commit_message, default_upload_path,
-            default_sort, default_filter, auto_suggest_defaults
+            default_sort, default_filter, auto_suggest_defaults, trash_retention_days
      FROM users WHERE telegram_id = $1`,
     [telegramId]
   );
@@ -12,7 +12,7 @@ async function getDefaults(telegramId) {
 
 const ALLOWED_FIELDS = new Set([
   'default_visibility', 'default_commit_message', 'default_upload_path',
-  'default_sort', 'default_filter', 'auto_suggest_defaults',
+  'default_sort', 'default_filter', 'auto_suggest_defaults', 'trash_retention_days',
 ]);
 
 /**

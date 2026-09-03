@@ -23,7 +23,8 @@ async function showDefaults(ctx) {
     `📁 Default upload path: ${d.default_upload_path ? format.escapeMd(d.default_upload_path) : '\\(Root\\)'}\n` +
     `↕️ Default repo sort: ${format.escapeMd(SORT_LABELS[d.default_sort] || d.default_sort)}\n` +
     `🔎 Default repo filter: ${format.escapeMd(FILTER_LABELS[d.default_filter] || d.default_filter)}\n` +
-    `🧠 Auto\\-suggest defaults: ${d.auto_suggest_defaults ? 'On' : 'Off'}\n\n` +
+    `🧠 Auto\\-suggest defaults: ${d.auto_suggest_defaults ? 'On' : 'Off'}\n` +
+    `🗑️ Trash retention: ${d.trash_retention_days} days\n\n` +
     `🔔 *NOTIFICATIONS*\n` +
     `${onCount}/${totalCount} categories on`;
 
@@ -31,11 +32,31 @@ async function showDefaults(ctx) {
     [style.callback('🔒 Visibility', 'defaults:visibility', style.BLUE), style.callback('📝 Commit Message', 'defaults:commit', style.BLUE)],
     [style.callback('📁 Upload Path', 'defaults:path', style.BLUE), style.callback('↕️ Sort & Filter', 'defaults:sortfilter', style.BLUE)],
     [style.callback(d.auto_suggest_defaults ? '🧠 Turn Off Auto-Suggest' : '🧠 Turn On Auto-Suggest', 'defaults:togglelearn')],
+    [style.callback('🗑️ Trash Retention', 'defaults:trashretention', style.BLUE)],
     [style.callback('🔔 Notifications', 'defaults:notifications', style.BLUE)],
   ];
 
   await ctx.reply('⚙️ My Defaults', bbtb.backToAutomation);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
+}
+
+async function editTrashRetention(ctx) {
+  await ctx.reply(
+    '🗑️ How long should deleted repos stay recoverable in Trash before being gone for good?',
+    Markup.inlineKeyboard([
+      [
+        style.callback('7d', 'defaults:settrash:7'),
+        style.callback('30d', 'defaults:settrash:30'),
+        style.callback('90d', 'defaults:settrash:90'),
+      ],
+    ])
+  );
+}
+
+async function setTrashRetention(ctx, days) {
+  await defaults.setDefault(ctx.from.id, 'trash_retention_days', Number(days));
+  await ctx.reply(format.successMessage(`Trash retention set to ${days} days`));
+  return showDefaults(ctx);
 }
 
 async function editVisibility(ctx) {
@@ -123,6 +144,8 @@ module.exports = {
   setSort,
   setFilter,
   toggleLearn,
+  editTrashRetention,
+  setTrashRetention,
   startEditCommitMessage,
   startEditUploadPath,
   handleTextInput,

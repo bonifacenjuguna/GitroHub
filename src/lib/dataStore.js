@@ -5,11 +5,15 @@ const tags = require('./tags');
 const activity = require('./activity');
 
 async function getCounts(telegramId) {
-  const [pinCount, tagCount, activityStats, user] = await Promise.all([
+  const [pinCount, tagCount, activityStats, trashCount, user] = await Promise.all([
     pool.query('SELECT COUNT(*)::int AS c FROM pinned_repos WHERE telegram_id = $1', [telegramId]),
     pool.query('SELECT COUNT(*)::int AS c FROM tags WHERE telegram_id = $1', [telegramId]),
     pool.query(
       `SELECT COUNT(*)::int AS c, MIN(created_at) AS oldest FROM activity_log WHERE telegram_id = $1`,
+      [telegramId]
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS c FROM trashed_repos WHERE telegram_id = $1 AND restored_at IS NULL AND expires_at > now()`,
       [telegramId]
     ),
     users.getUser(telegramId),
@@ -23,6 +27,7 @@ async function getCounts(telegramId) {
     tags: tagCount.rows[0].c,
     activityEntries: activityStats.rows[0].c,
     activityDays: days,
+    trashedRepos: trashCount.rows[0].c,
     hasToken: !!(user && user.github_token_enc),
   };
 }
@@ -55,8 +60,19 @@ async function fullReset(telegramId) {
     pool.query('DELETE FROM tags WHERE telegram_id = $1', [telegramId]), // cascades repo_tags
     pool.query('DELETE FROM activity_log WHERE telegram_id = $1', [telegramId]),
     pool.query('DELETE FROM repo_path_memory WHERE telegram_id = $1', [telegramId]),
+    pool.query('DELETE FROM automation_mute_rules WHERE telegram_id = $1', [telegramId]),
+    pool.query('DELETE FROM automation_backup_rules WHERE telegram_id = $1', [telegramId]),
+    // Only PENDING scheduled repos — anything already completed/failed is
+    // history, same category as activity_log, and cancelling something
+    // that already ran (or already permanently failed) doesn't mean anything.
+    pool.query("DELETE FROM scheduled_repos WHERE telegram_id = $1 AND status = 'pending'", [telegramId]),
     clearDefaults(telegramId),
   ]);
+  // Deliberately NOT touched: trashed_repos. Full Reset clears preferences
+  // and clutter, not the one remaining safety net for something someone
+  // may have deleted five minutes ago — wiping backups as a side effect of
+  // "reset my settings" would turn a convenience action into a data-loss
+  // trap. Trash still expires on its own normal schedule regardless.
 }
 
 /** Prunes activity_log entries older than the user's configured retention window */
@@ -67,6 +83,27 @@ async function pruneOldActivity(telegramId) {
     `DELETE FROM activity_log WHERE telegram_id = $1 AND created_at < now() - ($2 || ' days')::interval`,
     [telegramId, user.activity_retention_days]
   );
+}
+
+/** Same as pruneOldActivity but for every user at once, each against their
+ * own activity_retention_days — this is what the daily scheduler in
+ * index.js calls, so retention stays correct for everyone even if they
+ * never happen to open 📜 Activity themselves (which is the only other
+ * place pruneOldActivity gets triggered, lazily, per-user, on-demand).
+ * Two different triggers, same underlying rule — not two competing ones. */
+async function pruneAllUsersActivity() {
+  const { rows } = await pool.query('SELECT telegram_id FROM users');
+  let total = 0;
+  for (const { telegram_id: telegramId } of rows) {
+    const { rowCount } = await pool.query(
+      `DELETE FROM activity_log WHERE telegram_id = $1 AND created_at < now() - (
+         (SELECT activity_retention_days FROM users WHERE telegram_id = $1) || ' days'
+       )::interval`,
+      [telegramId]
+    );
+    total += rowCount;
+  }
+  return total;
 }
 
 async function exportData(telegramId, format) {
@@ -118,4 +155,4 @@ async function exportData(telegramId, format) {
   return text;
 }
 
-module.exports = { getCounts, clearActivityLog, clearPins, clearDefaults, fullReset, pruneOldActivity, exportData };
+module.exports = { getCounts, clearActivityLog, clearPins, clearDefaults, fullReset, pruneOldActivity, pruneAllUsersActivity, exportData };

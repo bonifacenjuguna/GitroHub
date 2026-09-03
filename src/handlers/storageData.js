@@ -14,9 +14,11 @@ async function showStorageData(ctx) {
     `📌 Pinned repos: ${counts.pinnedRepos}\n` +
     `🏷️ Tags: ${counts.tags}\n` +
     `📜 Activity log: ${counts.activityEntries} entries \\(${counts.activityDays} days\\)\n` +
+    `🗑️ Trash: ${counts.trashedRepos} recoverable\n` +
     `🔐 Encrypted GitHub token: ${counts.hasToken ? '1' : '0'}`;
 
   const rows = [
+    [style.callback('🗑️ Trash', 'storage:trash')],
     [style.callback('🗑 Clear Data', 'storage:clearmenu')],
     [style.callback('⬇️ Export My Data', 'storage:exportmenu')],
     [style.callback('🧹 Auto-Cleanup Settings', 'storage:cleanupmenu')],

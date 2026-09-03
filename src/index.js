@@ -247,17 +247,20 @@ function startAutomationScheduler(bot) {
         const redisDb = require('./db/redis');
         const dateKey = now.toISOString().slice(0, 10);
 
-        // Daily: prune activity_log + access_log rows past retention —
-        // neither table has any other cleanup path, so without this they
-        // grow forever.
+        // Daily: prune activity_log (per-user retention, see
+        // dataStore.pruneAllUsersActivity) + access_log (fixed retention —
+        // it's a security log, not a per-user preference) — neither table
+        // has any other reliable cleanup path.
         const pruneMarker = `automation-prune:${dateKey}`;
         if (!(await redisDb.client.exists(pruneMarker))) {
           const config = require('./config');
-          const activity = require('./lib/activity');
+          const dataStore = require('./lib/dataStore');
           const accessLog = require('./lib/accessLog');
-          const prunedActivity = await activity.pruneOlderThan(config.LOG_RETENTION_DAYS);
+          const trash = require('./lib/trash');
+          const prunedActivity = await dataStore.pruneAllUsersActivity();
           const prunedAccess = await accessLog.pruneOlderThan(config.LOG_RETENTION_DAYS);
-          logger.info('Automation: pruned old logs', { prunedActivity, prunedAccess });
+          const prunedTrash = await trash.pruneExpired();
+          logger.info('Automation: pruned old logs', { prunedActivity, prunedAccess, prunedTrash });
           await redisDb.client.set(pruneMarker, '1', { EX: 25 * 60 * 60 });
         }
 
@@ -345,6 +348,81 @@ async function runWeeklyAutomation(bot) {
 }
 
 /**
+ * 📅 Scheduled Commits — checked every 5 minutes rather than the hourly
+ * fixed-UTC-hour pattern the other schedulers use, since a person picking
+ * a specific time for repo creation has some reasonable expectation of
+ * precision an hourly check can't give. Mirrors the exact same success
+ * path as the manual Create Repo flow (scenes/createRepo.js) — same
+ * README-removal behavior, same activity log shape — so a scheduled repo
+ * looks no different from one created by hand once it exists.
+ */
+function startScheduledCommitsPoller(bot) {
+  const POLL_MS = 5 * 60 * 1000;
+
+  async function poll() {
+    try {
+      const scheduledRepos = require('./lib/scheduledRepos');
+      const due = await scheduledRepos.getDue();
+
+      for (const item of due) {
+        try {
+          const users = require('./lib/users');
+          const github = require('./lib/github');
+          const repoCache = require('./lib/repoCache');
+          const activity = require('./lib/activity');
+
+          const token = await users.getDecryptedToken(item.telegram_id);
+          if (!token) {
+            await scheduledRepos.markFailed(item.id, 'GitHub disconnected before this could run');
+            await bot.telegram.sendMessage(
+              item.telegram_id,
+              `⚠️ Scheduled repo "${item.name}" couldn't be created — GitHub isn't connected anymore.`
+            ).catch(() => {});
+            continue;
+          }
+
+          const repo = await github.createRepo(token, {
+            name: item.name,
+            isPrivate: item.visibility === 'private',
+            description: item.description,
+            licenseTemplate: item.license,
+          });
+          repoCache.invalidateRepos(item.telegram_id);
+
+          if (!item.include_readme) {
+            try {
+              const existing = await github.getFileContent(token, repo.owner.login, repo.name, 'README.md');
+              await github.deleteFile(token, repo.owner.login, repo.name, 'README.md', existing.sha, 'Remove default README');
+            } catch (_) { /* best-effort, same as the manual flow */ }
+          }
+
+          await scheduledRepos.markCompleted(item.id);
+          await activity.log(item.telegram_id, '📅', `Scheduled repo created → ${repo.name}`, {
+            detail: `visibility:${item.visibility}`, isAutomated: true,
+          });
+          await bot.telegram.sendMessage(
+            item.telegram_id,
+            `✅ Scheduled repo created: ${repo.name}\n🔗 ${repo.html_url}`
+          ).catch(() => {});
+        } catch (err) {
+          await scheduledRepos.markFailed(item.id, err.message);
+          logger.error('Scheduled repo creation failed', { telegramId: item.telegram_id, name: item.name, message: err.message });
+          const reason = err.status === 422 ? `"${item.name}" already exists on your account` : err.message;
+          await bot.telegram.sendMessage(
+            item.telegram_id,
+            `⚠️ Scheduled repo "${item.name}" failed to create: ${reason}`
+          ).catch(() => {});
+        }
+      }
+    } catch (err) {
+      logger.error('Scheduled commits poller failed', { message: err.message });
+    }
+    setTimeout(poll, POLL_MS).unref();
+  }
+  setTimeout(poll, POLL_MS).unref();
+}
+
+/**
  * Process-level safety net. An uncaught exception leaves Node in an
  * undefined state — best practice is to log it clearly and exit via the
  * same clean shutdown path. Unhandled promise rejections are logged but
@@ -428,6 +506,7 @@ async function main() {
   startWebhookDigestPoller(bot);
   startRollupScheduler(bot);
   startAutomationScheduler(bot);
+  startScheduledCommitsPoller(bot);
 
   process.once('SIGINT', () => shutdown('SIGINT'));
   process.once('SIGTERM', () => shutdown('SIGTERM'));

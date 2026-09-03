@@ -240,7 +240,7 @@ async function showRepoDetails(ctx, repoName) {
 
 async function askDeleteRepo(ctx, repoName) {
   await ctx.reply(
-    `⚠️ Delete "${format.escapeMd(repoName)}" permanently? \nThis cannot be undone\\.`,
+    `⚠️ Delete "${format.escapeMd(repoName)}" from GitHub? \nA backup is kept in 🗑️ Trash \\(Settings → 📦 Storage\\) for a while in case you change your mind\\.`,
     { parse_mode: 'MarkdownV2', ...inline.deleteRepoConfirm(repoName) }
   );
 }
@@ -253,13 +253,46 @@ async function executeDeleteRepo(ctx, repoName) {
   const { skipped } = await actionLock.withLock(ctx.from.id, 'deleteRepo', async () => {
     try {
       const user = await repoCache.getUser(ctx.from.id, token);
+      const repo = await github.getRepo(token, user.login, repoName);
+
+      // 🗑️ Trash — back up before the real GitHub delete happens. If the
+      // backup itself fails for any reason, the person gets a clear
+      // warning and a chance to bail rather than silently losing the
+      // safety net GitroHub just told them they'd have.
+      let backupNote = '';
+      try {
+        const users = require('../lib/users');
+        const trash = require('../lib/trash');
+        const dbUser = await users.getUser(ctx.from.id);
+        const zipBuffer = await github.downloadZip(token, user.login, repoName, repo.default_branch);
+        const backupMsg = await ctx.replyWithDocument(
+          { source: zipBuffer, filename: `${repoName}-trash-backup.zip` },
+          { caption: `🗑️ Trash backup: ${repoName} (kept ${dbUser.trash_retention_days}d)` }
+        );
+        await trash.add(ctx.from.id, {
+          originalName: repoName,
+          description: repo.description,
+          visibility: repo.private ? 'private' : 'public',
+          backupFileId: backupMsg.document.file_id,
+          retentionDays: dbUser.trash_retention_days,
+        });
+        backupNote = ` — backed up to 🗑️ Trash for ${dbUser.trash_retention_days}d`;
+      } catch (backupErr) {
+        await ctx.reply(format.errorMessage(
+          'Couldn\u2019t back up before deleting',
+          backupErr.message,
+          `Nothing was deleted. Open "${repoName}" and tap 🗑️ Delete Repo again to retry, or delete it manually on GitHub if this keeps failing.`
+        ));
+        return;
+      }
+
       await github.deleteRepo(token, user.login, repoName);
       repoCache.invalidateRepos(ctx.from.id);
       repoCache.invalidateLanguages(ctx.from.id, repoName);
       repoCache.invalidateTreeStats(ctx.from.id, repoName);
-      await activity.log(ctx.from.id, '🗑', `Deleted repo → ${repoName}`);
+      await activity.log(ctx.from.id, '🗑', `Deleted repo → ${repoName}${backupNote}`);
       await cleanupOrphanedData(ctx.from.id, repoName);
-      await ctx.reply(format.successMessage(`Deleted repository "${repoName}"`), bbtb.mainMenu);
+      await ctx.reply(format.successMessage(`Deleted repository "${repoName}"`, `Recoverable from 🗑️ Trash if you change your mind.`), bbtb.mainMenu);
     } catch (err) {
       await activity.log(ctx.from.id, '⚠️', `Delete repo failed → ${repoName}`, { detail: err.message, isError: true });
       const errorHelpers = require('../lib/errorHelpers');

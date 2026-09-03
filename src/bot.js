@@ -21,7 +21,10 @@ const tags = require('./handlers/tags');
 const bulkActions = require('./handlers/bulkActions');
 const myDefaults = require('./handlers/myDefaults');
 const automation = require('./handlers/automation');
+const scheduledCommits = require('./handlers/scheduledCommits');
+const timezoneHandler = require('./handlers/timezone');
 const exportImport = require('./handlers/exportImport');
+const trash = require('./handlers/trash');
 const storageData = require('./handlers/storageData');
 const accessLogScreen = require('./handlers/accessLogScreen');
 
@@ -202,14 +205,14 @@ function createBot() {
     '⬆️ Back to Settings': (ctx) => settings.showSettings(ctx),
     '🤖 Automation': (ctx) => automation.showAutomationHub(ctx),
     '⬆️ Back to Automation': (ctx) => automation.showAutomationHub(ctx),
-    '🏷️ Auto-Tag': (ctx) => automation.showAutoTagRules(ctx),
-    '🔕 Auto-Mute': (ctx) => automation.showMuteRules(ctx),
-    '💾 Auto-Backup': (ctx) => automation.showBackupRules(ctx),
+    '🔧 Rules & Insights': (ctx) => automation.showRulesHub(ctx),
+    '⬆️ Back to Rules': (ctx) => automation.showRulesHub(ctx),
     '▶️ Backup Now': (ctx) => automation.runBackupNow(ctx),
     '📜 Log': (ctx) => automation.showAutomationLog(ctx),
     '⚙️ Defaults': (ctx) => myDefaults.showDefaults(ctx),
     '▶️ Run Rules Now': (ctx) => automation.runAllRulesNow(ctx),
-    '🗂️ Stale Repos': (ctx) => automation.showStaleRepos(ctx),
+    '📅 Scheduled Commits': (ctx) => scheduledCommits.showScheduledCommits(ctx),
+    '🌍 Timezone': (ctx) => timezoneHandler.showTimezone(ctx),
     '📦 Storage': (ctx) => storageData.showStorageData(ctx),
     '💾 Export/Import': (ctx) => exportImport.showExportImportMenu(ctx),
     // 🔄 Refresh Status and 🔑 Access Log are no longer BBTB buttons —
@@ -241,6 +244,12 @@ function createBot() {
   bot.start(startHandler.handleStart);
   bot.command('settings', (ctx) => settings.showSettings(ctx));
   bot.command('cancel', (ctx) => sendCancelledMenu(ctx));
+  // Deliberately NOT added to setMyCommands (index.js) — a power-user
+  // shortcut straight into the exact same Full Reset confirmation flow as
+  // Settings → 📦 Storage → 🗑 Clear Data → Everything, not a second
+  // reset mechanism with its own rules. Still requires typing RESET to
+  // actually go through.
+  bot.command('reset', (ctx) => storageData.confirmClear(ctx, 'full'));
 
   // ─── BBTB (Reply Keyboard) text handlers ───────────────────
   for (const [label, handler] of Object.entries(handlerMap)) {
@@ -259,6 +268,8 @@ function createBot() {
     delete ctx.session.automationRuleInput;
     delete ctx.session.automationMuteRuleInput;
     delete ctx.session.automationBackupRuleInput;
+    delete ctx.session.awaitingCustomTimezone;
+    delete ctx.session.awaitingTrashRestoreName;
     delete ctx.session.awaitingFullReset;
     delete ctx.session.editingDescription;
     delete ctx.session.awaitingSettingsImport;
@@ -277,6 +288,8 @@ function createBot() {
     if (ctx.session.automationRuleInput) return automation.handleRuleValueInput(ctx, ctx.message.text);
     if (ctx.session.automationMuteRuleInput) return automation.handleMuteRuleValueInput(ctx, ctx.message.text);
     if (ctx.session.automationBackupRuleInput) return automation.handleBackupRuleValueInput(ctx, ctx.message.text);
+    if (ctx.session.awaitingCustomTimezone) return timezoneHandler.handleCustomTimezoneInput(ctx);
+    if (ctx.session.awaitingTrashRestoreName) return trash.handleRestoreNameInput(ctx);
     if (ctx.session.awaitingFullReset) return storageData.handleResetConfirmationText(ctx);
     if (ctx.session.editingDescription) return repoView.handleDescriptionInput(ctx, ctx.message.text);
 
@@ -706,12 +719,16 @@ function createBot() {
     if (data.startsWith('defaults:setsort:')) { await ctx.answerCbQuery(); return myDefaults.setSort(ctx, data.split(':')[2]); }
     if (data.startsWith('defaults:setfilter:')) { await ctx.answerCbQuery(); return myDefaults.setFilter(ctx, data.split(':')[2]); }
     if (data === 'defaults:togglelearn') { await ctx.answerCbQuery(); return myDefaults.toggleLearn(ctx); }
+    if (data === 'defaults:trashretention') { await ctx.answerCbQuery(); return myDefaults.editTrashRetention(ctx); }
+    if (data.startsWith('defaults:settrash:')) { await ctx.answerCbQuery(); return myDefaults.setTrashRetention(ctx, data.split(':')[2]); }
 
     // 🤖 Automation
-    if (data === 'automation:hub') { await ctx.answerCbQuery(); return automation.showAutomationHub(ctx, { skipBbtb: true }); }
+    if (data === 'automation:hub') { await ctx.answerCbQuery(); return automation.showAutomationHub(ctx); }
+    if (data === 'automation:ruleshub') { await ctx.answerCbQuery(); return automation.showRulesHub(ctx); }
     if (data === 'automation:defaults') { await ctx.answerCbQuery(); return myDefaults.showDefaults(ctx); }
     if (data === 'automation:tagrules') { await ctx.answerCbQuery(); return automation.showAutoTagRules(ctx); }
     if (data === 'automation:muterules') { await ctx.answerCbQuery(); return automation.showMuteRules(ctx); }
+    if (data === 'automation:stalerepos') { await ctx.answerCbQuery(); return automation.showStaleRepos(ctx); }
     if (data === 'automation:runrules') { await ctx.answerCbQuery(); return automation.runAllRulesNow(ctx); }
 
     if (data.startsWith('automation:rule:edit:')) { await ctx.answerCbQuery(); return automation.startEditRule(ctx, data.split(':')[3]); }
@@ -759,6 +776,17 @@ function createBot() {
       await ctx.answerCbQuery();
       return automation.showAutomationLog(ctx, { page: Number(data.split(':')[3]), edit: true });
     }
+
+    // 📅 Scheduled Commits — creating one is handled entirely inside
+    // scenes/createRepo.js's own wizard step (createrepo:schedule and
+    // createrepo:schedulepick:* never reach this global router while that
+    // scene is active, same as every other createRepo callback). Only
+    // managing already-scheduled ones lives here.
+    if (data.startsWith('schedcommits:cancel:')) { await ctx.answerCbQuery(); return scheduledCommits.cancelScheduled(ctx, data.split(':')[2]); }
+
+    // 🌍 Timezone
+    if (data.startsWith('timezone:set:')) { await ctx.answerCbQuery(); return timezoneHandler.setTimezone(ctx, data.split('timezone:set:')[1]); }
+    if (data === 'timezone:custom') { await ctx.answerCbQuery(); return timezoneHandler.promptCustomTimezone(ctx); }
     if (data.startsWith('createrepo:learndefault:')) {
       await ctx.answerCbQuery();
       const value = data.split('createrepo:learndefault:')[1];
@@ -786,6 +814,8 @@ function createBot() {
     // Storage & Data
     if (data === 'storage:clearmenu') { await ctx.answerCbQuery(); return storageData.showClearMenu(ctx); }
     if (data === 'storage:back') { await ctx.answerCbQuery(); return storageData.showStorageData(ctx); }
+    if (data === 'storage:trash') { await ctx.answerCbQuery(); return trash.showTrash(ctx); }
+    if (data.startsWith('trash:restore:')) { await ctx.answerCbQuery(); return trash.requestRestore(ctx, data.split(':')[2]); }
     if (data.startsWith('storage:clear:')) { await ctx.answerCbQuery(); return storageData.confirmClear(ctx, data.split('storage:clear:')[1]); }
     if (data.startsWith('storage:doclear:')) {
       await ctx.answerCbQuery();

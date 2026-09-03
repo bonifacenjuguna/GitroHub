@@ -277,3 +277,53 @@ CREATE INDEX IF NOT EXISTS idx_automation_backup_rules_user ON automation_backup
 -- passive 🗂️ Stale Repos screen, this is a proactive push the person has to
 -- turn on themselves (Notifications menu).
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notif_stale_nudge BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- 🌍 Timezone — IANA zone name (e.g. 'America/New_York'), used to interpret
+-- and display Scheduled Commits times in the person's own local time
+-- instead of raw UTC. Defaults to UTC until they set it.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS timezone TEXT NOT NULL DEFAULT 'UTC';
+
+-- 📅 Scheduled Commits — repo creation (with its initial commit: license/
+-- gitignore) deferred to a future time. Checked every few minutes by its
+-- own poller in index.js, separate from the hourly automation scheduler,
+-- since a schedule implies some timing precision the hourly one doesn't give.
+CREATE TABLE IF NOT EXISTS scheduled_repos (
+  id SERIAL PRIMARY KEY,
+  telegram_id BIGINT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  visibility TEXT NOT NULL DEFAULT 'private',
+  license TEXT,
+  include_readme BOOLEAN NOT NULL DEFAULT TRUE,
+  scheduled_for TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending', -- pending | completed | failed | cancelled
+  error_message TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_scheduled_repos_due ON scheduled_repos (status, scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_scheduled_repos_user ON scheduled_repos (telegram_id);
+
+-- 🗑️ Trash retention (days) — configurable in ⚙️ Defaults, used by both the
+-- delete-repo backup step and the daily trash-expiry sweep.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS trash_retention_days INT NOT NULL DEFAULT 30;
+
+-- 🗑️ Trash — a repo deleted through the bot gets a zip snapshot delivered
+-- to the person's own chat before the real GitHub delete happens (its
+-- Telegram file_id IS the storage — no blob-storage backend needed here),
+-- and can be restored as a new repo until it expires. Telegram file_ids
+-- are not a formally-guaranteed-permanent store, but in practice hold up
+-- for long periods as long as the message isn't deleted from the chat —
+-- the honest caveat for anything with a 30+ day retention window.
+CREATE TABLE IF NOT EXISTS trashed_repos (
+  id SERIAL PRIMARY KEY,
+  telegram_id BIGINT NOT NULL,
+  original_name TEXT NOT NULL,
+  description TEXT,
+  visibility TEXT NOT NULL DEFAULT 'private',
+  backup_file_id TEXT NOT NULL,
+  deleted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  restored_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS idx_trashed_repos_user ON trashed_repos (telegram_id, restored_at);
+CREATE INDEX IF NOT EXISTS idx_trashed_repos_expiry ON trashed_repos (expires_at);
