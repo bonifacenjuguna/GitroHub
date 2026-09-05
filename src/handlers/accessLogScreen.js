@@ -4,6 +4,7 @@ const accessLog = require('../lib/accessLog');
 const users = require('../lib/users');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
+const ephemeral = require('../lib/ephemeral');
 
 const EVENT_ICON = { connected: '🟢', reconnected: '🟢', disconnected: '🔴', token_rejected: '⚠️' };
 const EVENT_LABEL = { connected: 'Connected', reconnected: 'Reconnected (scope updated)', disconnected: 'Disconnected', token_rejected: 'Token rejected mid-action' };
@@ -33,7 +34,7 @@ async function showAccessLog(ctx, { fromActivity = false } = {}) {
   const alertOn = user ? user.alert_on_new_connection : true;
   // Relocated here from its own Settings BBTB row (#47) — reachable from
   // inside Activity now, so "back" goes to Activity, not Settings.
-  if (!fromActivity) await ctx.reply('🔑 Access Log', bbtb.backToSettings);
+  if (!fromActivity) await ephemeral.sendEphemeral(ctx, '🔑 Access Log', bbtb.backToSettings);
   await ctx.reply(text, {
     parse_mode: 'MarkdownV2',
     ...Markup.inlineKeyboard([

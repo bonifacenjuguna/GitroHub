@@ -5,6 +5,7 @@ const github = require('../lib/github');
 const logger = require('../lib/logger');
 const users = require('../lib/users');
 const format = require('../lib/format');
+const ephemeral = require('../lib/ephemeral');
 const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const pgDb = require('../db/postgres');
@@ -120,7 +121,7 @@ async function showSettings(ctx, { skipBbtb = false } = {}) {
   // marker message on first open, not on every chained refresh tap (#48),
   // or every refresh would needlessly resend it too (the exact clutter
   // this whole redesign pass was about avoiding elsewhere).
-  if (!skipBbtb) await ctx.reply('⚙️ Settings', connected ? bbtb.settings : bbtb.disconnected);
+  if (!skipBbtb) await ephemeral.sendEphemeral(ctx, '⚙️ Settings', connected ? bbtb.settings : bbtb.disconnected);
   await ctx.reply(text, {
     parse_mode: 'MarkdownV2',
     ...Markup.inlineKeyboard([[style.callback('🔄 Refresh Status', 'settings:refresh')]]),

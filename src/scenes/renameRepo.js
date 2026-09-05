@@ -6,6 +6,7 @@ const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
+const ephemeral = require('../lib/ephemeral');
 
 const scene = new Scenes.WizardScene(
   'renameRepo',
@@ -21,7 +22,7 @@ const scene = new Scenes.WizardScene(
 
   async (ctx) => {
     if (ctx.message && ctx.message.text === '❌ Cancel') {
-      await ctx.reply('Rename cancelled.', bbtb.mainMenu);
+      await ephemeral.sendEphemeral(ctx, 'Rename cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
     }
     if (!ctx.message || !ctx.message.text) {
@@ -56,7 +57,7 @@ const scene = new Scenes.WizardScene(
     await ctx.answerCbQuery();
 
     if (ctx.callbackQuery.data === 'rename:cancel') {
-      await ctx.reply('Rename cancelled.', bbtb.mainMenu);
+      await ephemeral.sendEphemeral(ctx, 'Rename cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
     }
     if (ctx.callbackQuery.data !== 'rename:confirm') {

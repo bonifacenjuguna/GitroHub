@@ -8,6 +8,7 @@ function repoList(repos, page, totalPages, filterLabel, sortLabel) {
   if (page > 1) pagination.push(style.callback('⬅️ Prev', `repos:page:${page - 1}`, style.BLUE));
   if (page < totalPages) pagination.push(style.callback('Next ➡️', `repos:page:${page + 1}`, style.BLUE));
   if (pagination.length) rows.push(pagination);
+  rows.push([style.callback('🔄 Refresh', 'repos:refresh', style.BLUE), style.callback('📊 Stats', 'repos:stats', style.BLUE)]);
   return Markup.inlineKeyboard(rows);
 }
 
@@ -210,6 +211,31 @@ function disconnectConfirm() {
  * Exploiting inline here rather than more BBTB rows, per the redesign:
  * these are content destinations picked once per visit, not frequent
  * actions that deserve permanent thumb-reach real estate. */
+/** 🤖 Automation hub content — Log moved here from BBTB, paired with a
+ * Refresh action so the live stats in the hub text (active rule counts,
+ * queued schedule count, last-run time) can be updated without
+ * re-navigating. Same edit-in-place pattern as My Repos' inline Refresh. */
+function automationHubActions() {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('📜 Log', 'automation:log', style.BLUE),
+      style.callback('🔄 Refresh', 'automation:refresh', style.BLUE),
+    ],
+  ]);
+}
+
+/** 📅 Schedule — the 2-option grid for its hub-of-hubs (Scheduled Commits
+ * and Timezone), same shape as 🔧 Rules' own grid. */
+function scheduleHubMenu() {
+  return Markup.inlineKeyboard([
+    [
+      style.callback('📅 Scheduled Commits', 'automation:scheduledcommits', style.BLUE),
+      style.callback('🌍 Timezone', 'automation:timezone', style.BLUE),
+    ],
+    [style.callback('⬅️ Back', 'automation:hub', style.BLUE)],
+  ]);
+}
+
 function rulesHubMenu() {
   return Markup.inlineKeyboard([
     [
@@ -405,7 +431,7 @@ function exportImportMenu() {
   return Markup.inlineKeyboard([
     [style.callback('⬇️ Export Settings', 'exportimport:export', style.BLUE)],
     [style.callback('⬆️ Import Settings', 'exportimport:import', style.BLUE)],
-    [style.callback('⬅️ Back', 'settings:back', style.BLUE)],
+    [style.callback('⬅️ Back', 'storage:back', style.BLUE)],
   ]);
 }
 
@@ -490,4 +516,6 @@ module.exports = {
   exportImportMenu,
   importConfirm,
   rulesHubMenu,
+  automationHubActions,
+  scheduleHubMenu,
 };

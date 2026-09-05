@@ -16,7 +16,7 @@ async function showPinned(ctx, { edit = false } = {}) {
   const pinList = await pins.list(telegramId);
 
   if (pinList.length === 0) {
-    if (!edit) await ctx.reply('⭐ Pinned', bbtb.pinned);
+    if (!edit) await ephemeral.sendEphemeral(ctx, '⭐ Pinned', bbtb.pinned);
     await ctx.reply(
       '📌 Pinned Repos\n\nYou haven\u2019t pinned any repos yet.\nOpen any repo and tap 📌 Pin below to add it here.'
     );
@@ -33,6 +33,7 @@ async function showPinned(ctx, { edit = false } = {}) {
   // unbounded Promise.all() here would scale the number of simultaneous
   // GitHub requests directly with pin count.
   const { mapWithConcurrency } = require('../lib/concurrency');
+const ephemeral = require('../lib/ephemeral');
   const treeStatsResults = await mapWithConcurrency(pinList, 3, (p) => {
     const repo = repoByName.get(p.repo_name);
     if (!repo) return null;
@@ -76,7 +77,7 @@ async function showPinned(ctx, { edit = false } = {}) {
     } catch (_) { /* fall through to a fresh send */ }
   }
 
-  await ctx.reply('⭐ Pinned', bbtb.pinned);
+  await ephemeral.sendEphemeral(ctx, '⭐ Pinned', bbtb.pinned);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 

@@ -38,6 +38,7 @@ async function cleanupOrphanedData(telegramId, repoName) {
   // repo gets recreated), a webhook_id record serves no purpose once
   // GitHub itself has already deleted the webhook along with the repo.
   const repoWebhooks = require('../lib/repoWebhooks');
+const ephemeral = require('../lib/ephemeral');
   const notificationMutes = require('../lib/notificationMutes');
   await Promise.all([
     repoWebhooks.remove(telegramId, repoName),
@@ -189,7 +190,7 @@ async function showRepoView(ctx, repoName) {
 
   // Reply keyboard (BBTB) and inline keyboard can't share one message — send
   // the BBTB once via a tiny marker message, then the real content with only inline.
-  await ctx.reply('📦 Repo View', bbtb.repoView);
+  await ephemeral.sendEphemeral(ctx, '📦 Repo View', bbtb.repoView);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.repoActions(repo.name, pinned, repo.html_url, webhookState, readmeResult.exists) });
 
   // 🤖 Automation — surface any active auto-tag rule that matches this repo
@@ -396,7 +397,7 @@ async function handleDescriptionInput(ctx, text) {
     await activity.log(ctx.from.id, '✏️', `Description updated → ${repoName}`);
     // #2 — Undo. Colorless: a value pick, same as any other adjustment.
     const undoId = pushUndo(ctx, { type: 'description', repoName, previousValue: previousDescription });
-    await ctx.reply(format.successMessage('Description updated'), bbtb.repoView);
+    await ephemeral.sendEphemeral(ctx, format.successMessage('Description updated'), bbtb.repoView);
     await ctx.reply('You can undo this if it was a mistake:', Markup.inlineKeyboard([[style.callback('↩️ Undo', `undo:action:${undoId}`)]]));
   } catch (err) {
     await activity.log(ctx.from.id, '⚠️', `Description update failed → ${repoName}`, { detail: err.message, isError: true });
@@ -579,7 +580,7 @@ async function _toggleWebhookEnable(ctx, repoName) {
       }
     } catch (_) { /* non-fatal — Auto-Mute is a bonus check, not a dependency of enabling alerts */ }
 
-    await ctx.reply(format.successMessage(`Live alerts enabled for ${repoName}${mutedNote}.`));
+    await ephemeral.sendEphemeral(ctx, format.successMessage(`Live alerts enabled for ${repoName}${mutedNote}.`));
   } catch (err) {
     await ctx.reply(format.errorMessage('Couldn\u2019t enable live alerts', err.message, 'Check the bot has admin access to this repo, then try again.'));
   }
@@ -590,10 +591,10 @@ async function toggleWebhookMute(ctx, repoName) {
   const muted = await notificationMutes.isMuted(ctx.from.id, repoName);
   if (muted) {
     await notificationMutes.unmute(ctx.from.id, repoName);
-    await ctx.reply(format.successMessage(`Unmuted — you\u2019ll get alerts for ${repoName} again.`));
+    await ephemeral.sendEphemeral(ctx, format.successMessage(`Unmuted — you\u2019ll get alerts for ${repoName} again.`));
   } else {
     await notificationMutes.mute(ctx.from.id, repoName);
-    await ctx.reply(format.successMessage(`Muted — ${repoName} won\u2019t send alerts until you unmute it.`));
+    await ephemeral.sendEphemeral(ctx, format.successMessage(`Muted — ${repoName} won\u2019t send alerts until you unmute it.`));
   }
   return showRepoView(ctx, repoName);
 }
@@ -697,10 +698,10 @@ async function togglePin(ctx, repoName) {
 
   if (isPinned) {
     await pins.unpin(telegramId, repoName);
-    await ctx.reply(`📌 Unpinned — removed from ⭐ Pinned.`);
+    await ephemeral.sendEphemeral(ctx, `📌 Unpinned — removed from ⭐ Pinned.`);
   } else {
     await pins.pin(telegramId, repoName);
-    await ctx.reply(`📌 Pinned — added to ⭐ Pinned for quick access.`);
+    await ephemeral.sendEphemeral(ctx, `📌 Pinned — added to ⭐ Pinned for quick access.`);
   }
   // Re-render so the 📌 tag on the info card and the button label both update immediately
   return showRepoView(ctx, repoName);

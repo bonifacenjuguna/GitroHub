@@ -11,6 +11,7 @@ const config = require('../config');
 const { listDirectory } = require('../handlers/browseFiles');
 const pathMemory = require('../lib/pathMemory');
 const fileBufferCache = require('../lib/fileBufferCache');
+const ephemeral = require('../lib/ephemeral');
 
 const PATH_EXAMPLES =
   'Examples:\n' +
@@ -78,13 +79,13 @@ const scene = new Scenes.WizardScene(
     }
     if (ctx.callbackQuery && ctx.callbackQuery.data === 'upload:sync:cancel') {
       await ctx.answerCbQuery();
-      await ctx.reply('Cancelled.', bbtb.mainMenu);
+      await ephemeral.sendEphemeral(ctx, 'Cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
     }
 
     if (ctx.message && ctx.message.text === '❌ Cancel') {
       releasePendingFiles(ctx);
-      await ctx.reply('Upload cancelled.', bbtb.mainMenu);
+      await ephemeral.sendEphemeral(ctx, 'Upload cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
     }
 
@@ -213,7 +214,7 @@ const scene = new Scenes.WizardScene(
     }
     if (ctx.message && ctx.message.text === '❌ Cancel') {
       releasePendingFiles(ctx);
-      await ctx.reply('Upload cancelled.', bbtb.mainMenu);
+      await ephemeral.sendEphemeral(ctx, 'Upload cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
     }
     if (ctx.message && ctx.message.text) {
@@ -245,7 +246,7 @@ const scene = new Scenes.WizardScene(
     if (ctx.callbackQuery && ctx.callbackQuery.data === 'upload:cancel') {
       await ctx.answerCbQuery();
       releasePendingFiles(ctx);
-      await ctx.reply('Upload cancelled.', bbtb.mainMenu);
+      await ephemeral.sendEphemeral(ctx, 'Upload cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
     }
     if (ctx.callbackQuery && ctx.callbackQuery.data === 'upload:commit') {
@@ -254,10 +255,10 @@ const scene = new Scenes.WizardScene(
       const toDelete = ctx.wizard.state.toDelete || [];
       if (changed.length === 0 && toDelete.length === 0) {
         releasePendingFiles(ctx);
-        await ctx.reply('➖ Nothing to commit — every file matches what\u2019s already in the repo.', bbtb.mainMenu);
+        await ephemeral.sendEphemeral(ctx, '➖ Nothing to commit — every file matches what\u2019s already in the repo.', bbtb.mainMenu);
         return ctx.scene.leave();
       }
-      await ctx.reply('Write a commit message, use default, or tap a suggestion:', bbtb.cancelWithSkip);
+      await ephemeral.sendEphemeral(ctx, 'Write a commit message, use default, or tap a suggestion:', bbtb.cancelWithSkip);
       // #7 — quick-tap common commit messages instead of always typing one.
       // Colorless: these are value picks, not navigation.
       await ctx.reply(
@@ -282,7 +283,7 @@ const scene = new Scenes.WizardScene(
       : (d && d.default_commit_message) || 'Update via GitroHub';
     if (ctx.message && ctx.message.text === '❌ Cancel') {
       releasePendingFiles(ctx);
-      await ctx.reply('Upload cancelled.', bbtb.mainMenu);
+      await ephemeral.sendEphemeral(ctx, 'Upload cancelled.', bbtb.mainMenu);
       return ctx.scene.leave();
     }
     if (ctx.callbackQuery && ctx.callbackQuery.data.startsWith('upload:msgpick:')) {
@@ -342,7 +343,7 @@ const scene = new Scenes.WizardScene(
       await activity.log(ctx.from.id, '⚠️', `Upload commit failed → ${ctx.wizard.state.repoName}`, { detail: err.message, isError: true });
       const errorHelpers = require('../lib/errorHelpers');
       const wasAuthError = await errorHelpers.replyGithubError(ctx, err, 'Upload failed');
-      if (!wasAuthError) await ctx.reply('📍 Main Menu', bbtb.mainMenu);
+      if (!wasAuthError) await ephemeral.sendEphemeral(ctx, '📍 Main Menu', bbtb.mainMenu);
     }
     });
     if (skipped) await ctx.reply('⏳ Already uploading — please wait a moment.');
@@ -488,7 +489,7 @@ async function processZip(ctx, buffer, password) {
   if (encrypted && !password) {
     ctx.wizard.state.pendingZipRef = ctx.wizard.state.pendingZipRef || fileBufferCache.put(buffer);
     ctx.wizard.state.awaitingZipPassword = true;
-    await ctx.reply('🔒 This zip is password-protected. Send the password as text, or ❌ Cancel.', bbtb.cancelOnly);
+    await ephemeral.sendEphemeral(ctx, '🔒 This zip is password-protected. Send the password as text, or ❌ Cancel.', bbtb.cancelOnly);
     return;
   }
 
@@ -520,7 +521,7 @@ async function processZip(ctx, buffer, password) {
     } catch (err) {
       ctx.wizard.state.pendingZipRef = ctx.wizard.state.pendingZipRef || fileBufferCache.put(buffer);
       ctx.wizard.state.awaitingZipPassword = true;
-      await ctx.reply('🔒 That password didn\u2019t work. Send the correct password as text, or ❌ Cancel.', bbtb.cancelOnly);
+      await ephemeral.sendEphemeral(ctx, '🔒 That password didn\u2019t work. Send the correct password as text, or ❌ Cancel.', bbtb.cancelOnly);
       return;
     }
   }
@@ -654,7 +655,7 @@ async function showSummary(ctx) {
   files.forEach((f) => counts[f.status]++);
   const toDelete = ctx.wizard.state.toDelete || [];
 
-  await ctx.reply('📦 Upload Summary', bbtb.uploadSummary);
+  await ephemeral.sendEphemeral(ctx, '📦 Upload Summary', bbtb.uploadSummary);
 
   if (counts.new === 0 && counts.modified === 0 && toDelete.length === 0) {
     const names = files.map((f) => f.path).join(', ');

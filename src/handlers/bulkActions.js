@@ -9,6 +9,7 @@ const activity = require('../lib/activity');
 const tags = require('../lib/tags');
 const repoView = require('./repoView');
 const config = require('../config');
+const ephemeral = require('../lib/ephemeral');
 
 const PER_PAGE = 8;
 
@@ -74,7 +75,7 @@ async function startBulkSelect(ctx, { page = 1, edit = false } = {}) {
     }
   }
 
-  await ctx.reply('🧹 Bulk Select', bbtb.bulkSelect);
+  await ephemeral.sendEphemeral(ctx, '🧹 Bulk Select', bbtb.bulkSelect);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 
@@ -161,7 +162,7 @@ async function showActionMenu(ctx) {
     [style.callback('⬇️ Download All as Zips', 'bulk:action:download')],
   ];
 
-  await ctx.reply('🧹 Bulk Actions', bbtb.bulkActionMenu);
+  await ephemeral.sendEphemeral(ctx, '🧹 Bulk Actions', bbtb.bulkActionMenu);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 

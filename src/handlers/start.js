@@ -5,6 +5,7 @@ const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const config = require('../config');
 const format = require('../lib/format');
+const ephemeral = require('../lib/ephemeral');
 
 /**
  * Shared "you need to connect" prompt — used by /start, requireConnected(),
@@ -21,7 +22,7 @@ async function sendConnectPrompt(ctx, { intro, showVersion = false } = {}) {
   const url = oauth.buildAuthorizeUrl(telegramId);
   const versionLine = showVersion ? `\n\n🔧 v${format.escapeMd(config.BOT_VERSION)}` : '';
 
-  await ctx.reply('🔒 Not connected', bbtb.disconnected);
+  await ephemeral.sendEphemeral(ctx, '🔒 Not connected', bbtb.disconnected);
   await ctx.reply(
     (intro ||
       '👋 *Welcome to GitroHub*\n' +

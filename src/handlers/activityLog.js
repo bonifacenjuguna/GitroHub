@@ -4,6 +4,7 @@ const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const config = require('../config');
 const dataStore = require('../lib/dataStore');
+const ephemeral = require('../lib/ephemeral');
 
 async function showActivity(ctx, { page = 1, errorsOnly = false, edit = false, skipBbtb = false } = {}) {
   const telegramId = ctx.from.id;
@@ -39,7 +40,7 @@ async function showActivity(ctx, { page = 1, errorsOnly = false, edit = false, s
     // BBTB marker only on first open — chained refresh taps pass
     // skipBbtb since the reply keyboard is already showing correctly and
     // resending it every tap would just be clutter.
-    if (!skipBbtb) await ctx.reply('📜 Activity', bbtb.activityLog);
+    if (!skipBbtb) await ephemeral.sendEphemeral(ctx, '📜 Activity', bbtb.activityLog);
     await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
   }
 }

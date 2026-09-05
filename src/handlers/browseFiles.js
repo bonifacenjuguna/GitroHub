@@ -8,6 +8,7 @@ const activity = require('../lib/activity');
 const config = require('../config');
 const { Markup } = require('telegraf');
 const style = require('../keyboards/buttonStyle');
+const ephemeral = require('../lib/ephemeral');
 
 const TEXT_EXTENSIONS = new Set([
   // Code
@@ -117,7 +118,7 @@ async function showDirectory(ctx, repoName, dirPath = '', page = 1) {
     let label = dirPath ? `📁 /${dirPath}` : '📁 / (root)';
     if (allEntries.length > perPage) label += ` — ${allEntries.length} items, page ${safePage} of ${totalPages}`;
 
-    await ctx.reply('📁 Browse Files', bbtb.browseFiles);
+    await ephemeral.sendEphemeral(ctx, '📁 Browse Files', bbtb.browseFiles);
     await ctx.reply(format.escapeMd(label), {
       parse_mode: 'MarkdownV2',
       ...inline.fileTree(

@@ -7,6 +7,7 @@ const tags = require('../lib/tags');
 const muteRules = require('../lib/automationMuteRules');
 const ruleEngine = require('../lib/ruleEngine');
 const activity = require('../lib/activity');
+const ephemeral = require('../lib/ephemeral');
 
 const STALE_DAYS = 90;
 
@@ -45,23 +46,33 @@ async function showAutomationHub(ctx, { skipBbtb = false } = {}) {
   const text =
     `🤖 *Automation*\n\n` +
     `Rules and background behavior that act on your repos without a manual tap every time\\.\n\n` +
-    `▸ 🔧 *Rules & Insights* — ${activeRulesTotal} active rule${activeRulesTotal === 1 ? '' : 's'} across Auto\\-Tag, Auto\\-Mute, Auto\\-Backup, plus 🗂️ Stale Repos\\.\n` +
-    `▸ 📅 *Scheduled Commits* — ${scheduledPending.length} repo${scheduledPending.length === 1 ? '' : 's'} queued\\.\n` +
-    `▸ 🌍 *Timezone* — currently *${format.escapeMd(user.timezone || 'UTC')}*\\.\n` +
-    `▸ ⚙️ *Defaults* — starting values for new repos, uploads, sort/filter, notifications\\.\n` +
-    `▸ 📜 *Log* — what ran on its own, kept separate from things you did yourself\\.\n\n` +
+    `▸ 🔧 *Rules* — ${activeRulesTotal} active rule${activeRulesTotal === 1 ? '' : 's'} across Auto\\-Tag, Auto\\-Mute, Auto\\-Backup, plus 🗂️ Stale Repos\\.\n` +
+    `▸ 📅 *Schedule* — ${scheduledPending.length} repo${scheduledPending.length === 1 ? '' : 's'} queued\\. Also where 🌍 Timezone lives \\(currently *${format.escapeMd(user.timezone || 'UTC')}*\\)\\.\n` +
+    `▸ ⚙️ *Defaults* — starting values for new repos, uploads, sort/filter, notifications\\.\n\n` +
     `🕐 Last rules run: ${format.escapeMd(lastRun)}`;
 
-  if (!skipBbtb) await ctx.reply('🤖 Automation', bbtb.automation);
-  await ctx.reply(text, { parse_mode: 'MarkdownV2' });
+  if (!skipBbtb) await ephemeral.sendEphemeral(ctx, '🤖 Automation', bbtb.automation);
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.automationHubActions() });
 }
 
-/** 🔧 Rules & Insights — the intermediate hub-of-hubs grouping every
+/** 📅 Schedule — the intermediate hub-of-hubs for Scheduled Commits and
+ * Timezone. Merged into one entry point because Timezone only exists to
+ * serve Scheduled Commits (interpreting/displaying its times) — they're
+ * one feature area even though they're two screens. */
+async function showScheduleHub(ctx, { skipBbtb = false } = {}) {
+  if (!skipBbtb) await ephemeral.sendEphemeral(ctx, '📅 Schedule', bbtb.automationScheduleHub);
+  await ctx.reply(
+    '📅 *Schedule*\n\nDefer repo creation to a future time, in your own timezone\\.',
+    { parse_mode: 'MarkdownV2', ...inline.scheduleHubMenu() }
+  );
+}
+
+/** 🔧 Rules — the intermediate hub-of-hubs grouping every
  * condition-matching feature (Auto-Tag, Auto-Mute, Auto-Backup) plus the
  * one passive insight (Stale Repos) that fits the same "set a condition,
  * see matches" shape even though it doesn't act on anything by itself. */
 async function showRulesHub(ctx, { skipBbtb = false } = {}) {
-  if (!skipBbtb) await ctx.reply('🔧 Rules & Insights', bbtb.automationRulesHub);
+  if (!skipBbtb) await ephemeral.sendEphemeral(ctx, '🔧 Rules', bbtb.automationRulesHub);
   await ctx.reply(
     '🔧 *Rules & Insights*\n\nCondition\\-based automation — tag, mute, or back up repos automatically, or just see which ones need attention\\.',
     { parse_mode: 'MarkdownV2', ...inline.rulesHubMenu() }
@@ -87,7 +98,7 @@ async function showAutoTagRules(ctx) {
       .join('\n');
   }
 
-  await ctx.reply('🏷️ Auto-Tag Rules', bbtb.automationRulesSub);
+  await ephemeral.sendEphemeral(ctx, '🏷️ Auto-Tag Rules', bbtb.automationRulesSub);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.autoTagRulesMenu(userTags) });
 }
 
@@ -123,13 +134,13 @@ async function selectRuleField(ctx, tagId, field) {
 
 async function setVisibilityRule(ctx, tagId, value) {
   await tags.setAutoRule(ctx.from.id, Number(tagId), { field: 'visibility', op: 'eq', value });
-  await ctx.reply(format.successMessage('Rule saved'));
+  await ephemeral.sendEphemeral(ctx, format.successMessage('Rule saved'));
   return showAutoTagRules(ctx);
 }
 
 async function setForkRule(ctx, tagId, value) {
   await tags.setAutoRule(ctx.from.id, Number(tagId), { field: 'fork', op: 'eq', value });
-  await ctx.reply(format.successMessage('Rule saved'));
+  await ephemeral.sendEphemeral(ctx, format.successMessage('Rule saved'));
   return showAutoTagRules(ctx);
 }
 
@@ -155,13 +166,13 @@ async function handleRuleValueInput(ctx, text) {
     ? { field: 'name', op: 'matches', value }
     : { field: 'language', op: 'eq', value };
   await tags.setAutoRule(ctx.from.id, Number(state.tagId), rule);
-  await ctx.reply(format.successMessage('Rule saved'));
+  await ephemeral.sendEphemeral(ctx, format.successMessage('Rule saved'));
   return showAutoTagRules(ctx);
 }
 
 async function clearRule(ctx, tagId) {
   await tags.setAutoRule(ctx.from.id, Number(tagId), null);
-  await ctx.reply('➖ Rule cleared.');
+  await ephemeral.sendEphemeral(ctx, '➖ Rule cleared.');
   return showAutoTagRules(ctx);
 }
 
@@ -178,9 +189,9 @@ async function applySuggestedTag(ctx, repoName, tagId) {
     { isAutomated: true }
   );
   try {
-    await ctx.editMessageText(`✅ Tagged ${repoName}${tag ? ` with ${tag.emoji} ${tag.name}` : ''}.`);
+    await ctx.editMessageText(`✅ Tagged ${repoName}${tag ? ` with ${tag.emoji} ${tag.name}` : ''}.`); // suggestion card itself — not a new message, nothing to schedule
   } catch (_) {
-    await ctx.reply(`✅ Tagged ${repoName}.`);
+    await ephemeral.sendEphemeral(ctx, `✅ Tagged ${repoName}.`);
   }
 }
 
@@ -202,7 +213,7 @@ async function showMuteRules(ctx) {
     text += rules.map((r, i) => `${i + 1}\\. ${format.escapeMd(ruleEngine.describeRule(r))}`).join('\n');
   }
 
-  await ctx.reply('🔕 Auto-Mute Rules', bbtb.automationRulesSub);
+  await ephemeral.sendEphemeral(ctx, '🔕 Auto-Mute Rules', bbtb.automationRulesSub);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.muteRulesMenu(rules) });
 }
 
@@ -228,13 +239,13 @@ async function selectMuteRuleField(ctx, field) {
 
 async function setMuteVisibilityRule(ctx, value) {
   await muteRules.createMuteRule(ctx.from.id, { field: 'visibility', op: 'eq', value });
-  await ctx.reply(format.successMessage('Mute rule added'));
+  await ephemeral.sendEphemeral(ctx, format.successMessage('Mute rule added'));
   return showMuteRules(ctx);
 }
 
 async function setMuteForkRule(ctx, value) {
   await muteRules.createMuteRule(ctx.from.id, { field: 'fork', op: 'eq', value });
-  await ctx.reply(format.successMessage('Mute rule added'));
+  await ephemeral.sendEphemeral(ctx, format.successMessage('Mute rule added'));
   return showMuteRules(ctx);
 }
 
@@ -259,13 +270,13 @@ async function handleMuteRuleValueInput(ctx, text) {
     ? { field: 'name', op: 'matches', value }
     : { field: 'language', op: 'eq', value };
   await muteRules.createMuteRule(ctx.from.id, rule);
-  await ctx.reply(format.successMessage('Mute rule added'));
+  await ephemeral.sendEphemeral(ctx, format.successMessage('Mute rule added'));
   return showMuteRules(ctx);
 }
 
 async function deleteMuteRule(ctx, ruleId) {
   await muteRules.deleteMuteRule(ctx.from.id, Number(ruleId));
-  await ctx.reply('🗑 Mute rule deleted.');
+  await ephemeral.sendEphemeral(ctx, '🗑 Mute rule deleted.');
   return showMuteRules(ctx);
 }
 
@@ -280,7 +291,7 @@ async function showBackupRules(ctx) {
     ? `No backup rules yet\\.`
     : rules.map((r, i) => `${i + 1}\\. ${format.escapeMd(ruleEngine.describeRule(r))}`).join('\n');
 
-  await ctx.reply('💾 Auto-Backup Rules', bbtb.automationBackupRules);
+  await ephemeral.sendEphemeral(ctx, '💾 Auto-Backup Rules', bbtb.automationBackupRules);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...inline.backupRulesMenu(rules) });
 }
 
@@ -307,14 +318,14 @@ async function selectBackupRuleField(ctx, field) {
 async function setBackupVisibilityRule(ctx, value) {
   const backupRules = require('../lib/automationBackupRules');
   await backupRules.createBackupRule(ctx.from.id, { field: 'visibility', op: 'eq', value });
-  await ctx.reply(format.successMessage('Backup rule added'));
+  await ephemeral.sendEphemeral(ctx, format.successMessage('Backup rule added'));
   return showBackupRules(ctx);
 }
 
 async function setBackupForkRule(ctx, value) {
   const backupRules = require('../lib/automationBackupRules');
   await backupRules.createBackupRule(ctx.from.id, { field: 'fork', op: 'eq', value });
-  await ctx.reply(format.successMessage('Backup rule added'));
+  await ephemeral.sendEphemeral(ctx, format.successMessage('Backup rule added'));
   return showBackupRules(ctx);
 }
 
@@ -340,14 +351,14 @@ async function handleBackupRuleValueInput(ctx, text) {
     : { field: 'language', op: 'eq', value };
   const backupRules = require('../lib/automationBackupRules');
   await backupRules.createBackupRule(ctx.from.id, rule);
-  await ctx.reply(format.successMessage('Backup rule added'));
+  await ephemeral.sendEphemeral(ctx, format.successMessage('Backup rule added'));
   return showBackupRules(ctx);
 }
 
 async function deleteBackupRule(ctx, ruleId) {
   const backupRules = require('../lib/automationBackupRules');
   await backupRules.deleteBackupRule(ctx.from.id, Number(ruleId));
-  await ctx.reply('🗑 Backup rule deleted.');
+  await ephemeral.sendEphemeral(ctx, '🗑 Backup rule deleted.');
   return showBackupRules(ctx);
 }
 
@@ -529,7 +540,7 @@ async function showAutomationLog(ctx, { page = 1, edit = false } = {}) {
   if (edit) {
     await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
   } else {
-    await ctx.reply('📜 Automation Log', bbtb.backToAutomation);
+    await ephemeral.sendEphemeral(ctx, '📜 Automation Log', bbtb.backToAutomation);
     await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
   }
 }
@@ -537,6 +548,7 @@ async function showAutomationLog(ctx, { page = 1, edit = false } = {}) {
 module.exports = {
   showAutomationHub,
   showRulesHub,
+  showScheduleHub,
   showAutoTagRules,
   startEditRule,
   selectRuleField,

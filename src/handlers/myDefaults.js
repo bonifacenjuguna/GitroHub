@@ -12,6 +12,7 @@ async function showDefaults(ctx) {
   if (!d) return;
 
   const users = require('../lib/users');
+const ephemeral = require('../lib/ephemeral');
   const prefs = await users.getNotificationPrefs(ctx.from.id);
   const onCount = prefs ? Object.values(prefs).filter(Boolean).length : 0;
   const totalCount = prefs ? Object.keys(prefs).length : 4;
@@ -36,7 +37,7 @@ async function showDefaults(ctx) {
     [style.callback('🔔 Notifications', 'defaults:notifications', style.BLUE)],
   ];
 
-  await ctx.reply('⚙️ My Defaults', bbtb.backToAutomation);
+  await ephemeral.sendEphemeral(ctx, '⚙️ My Defaults', bbtb.backToAutomation);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 
@@ -68,7 +69,7 @@ async function editVisibility(ctx) {
 
 async function setVisibility(ctx, value) {
   await defaults.setDefault(ctx.from.id, 'default_visibility', value);
-  await ctx.reply('✅ Default visibility updated.');
+  await ephemeral.sendEphemeral(ctx, '✅ Default visibility updated.');
   return showDefaults(ctx);
 }
 
@@ -85,7 +86,7 @@ async function setSort(ctx, value) {
 
 async function setFilter(ctx, value) {
   await defaults.setDefault(ctx.from.id, 'default_filter', value);
-  await ctx.reply('✅ Default sort & filter updated.');
+  await ephemeral.sendEphemeral(ctx, '✅ Default sort & filter updated.');
   return showDefaults(ctx);
 }
 
@@ -98,12 +99,12 @@ async function toggleLearn(ctx) {
 /** Text-input flows for commit message and upload path, driven by session flags (see bot.js text router) */
 async function startEditCommitMessage(ctx) {
   ctx.session.editingDefault = 'commit';
-  await ctx.reply('📝 Send your new default commit message.', bbtb.cancelOnly);
+  await ephemeral.sendEphemeral(ctx, '📝 Send your new default commit message.', bbtb.cancelOnly);
 }
 
 async function startEditUploadPath(ctx) {
   ctx.session.editingDefault = 'path';
-  await ctx.reply('📁 Send your new default upload path, or send "root" for the repo root.', bbtb.cancelOnly);
+  await ephemeral.sendEphemeral(ctx, '📁 Send your new default upload path, or send "root" for the repo root.', bbtb.cancelOnly);
 }
 
 async function handleTextInput(ctx) {
@@ -132,7 +133,7 @@ async function handleTextInput(ctx) {
   }
 
   delete ctx.session.editingDefault;
-  await ctx.reply('✅ Default updated.');
+  await ephemeral.sendEphemeral(ctx, '✅ Default updated.');
   return showDefaults(ctx);
 }
 

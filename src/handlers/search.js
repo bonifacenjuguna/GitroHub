@@ -8,6 +8,7 @@ const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
 const { Markup } = require('telegraf');
 const style = require('../keyboards/buttonStyle');
+const ephemeral = require('../lib/ephemeral');
 
 const GITHUB_URL_RE = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9-]+)\/([a-zA-Z0-9._-]+?)(?:\.git)?\/?$/;
 
@@ -104,7 +105,7 @@ async function handleRepoSearch(ctx, query) {
 
   const text = `${format.sectionHeader('Search Results', `"${query}"`)}\n\n${sections.join('\n\n')}`;
 
-  await ctx.reply('🔍 Search Results', bbtb.searchAgain);
+  await ephemeral.sendEphemeral(ctx, '🔍 Search Results', bbtb.searchAgain);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 

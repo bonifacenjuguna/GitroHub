@@ -1,6 +1,7 @@
 const { Markup } = require('telegraf');
 const style = require('../keyboards/buttonStyle');
 const format = require('../lib/format');
+const ephemeral = require('../lib/ephemeral');
 const bbtb = require('../keyboards/bbtb');
 const tz = require('../lib/timezone');
 
@@ -31,14 +32,15 @@ async function showTimezone(ctx) {
   }
   rows.push([style.callback('⌨️ Type a Zone Name', 'timezone:custom', style.BLUE)]);
 
-  await ctx.reply('🌍 Timezone', bbtb.backToAutomation);
+  await ephemeral.sendEphemeral(ctx, '🌍 Timezone', bbtb.automationScheduleSub);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 
 async function setTimezone(ctx, zoneId) {
   const { pool } = require('../db/postgres');
+const ephemeral = require('../lib/ephemeral');
   await pool.query('UPDATE users SET timezone = $1 WHERE telegram_id = $2', [zoneId, ctx.from.id]);
-  await ctx.reply(format.successMessage(`Timezone set to ${zoneId}`));
+  await ephemeral.sendEphemeral(ctx, format.successMessage(`Timezone set to ${zoneId}`));
   return showTimezone(ctx);
 }
 

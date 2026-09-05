@@ -5,6 +5,7 @@ const users = require('../lib/users');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
 const actionLock = require('../lib/actionLock');
+const ephemeral = require('../lib/ephemeral');
 
 async function showStorageData(ctx) {
   const counts = await dataStore.getCounts(ctx.from.id);
@@ -19,12 +20,13 @@ async function showStorageData(ctx) {
 
   const rows = [
     [style.callback('🗑️ Trash', 'storage:trash')],
+    [style.callback('💾 Export/Import', 'storage:exportimport')],
     [style.callback('🗑 Clear Data', 'storage:clearmenu')],
     [style.callback('⬇️ Export My Data', 'storage:exportmenu')],
     [style.callback('🧹 Auto-Cleanup Settings', 'storage:cleanupmenu')],
   ];
 
-  await ctx.reply('📦 Storage & Data', bbtb.backToSettings);
+  await ephemeral.sendEphemeral(ctx, '📦 Storage & Data', bbtb.backToSettings);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 

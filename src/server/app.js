@@ -67,9 +67,10 @@ function describeWebhookEvent(event, payload) {
 function createApp(bot) {
   const app = express();
   // express.static() serves a DIRECTORY, not a single file path — mounting
-  // the whole public/ directory at root means /logo.png (used by the
-  // callback page) resolves correctly, and future-proofs any other
-  // static assets added to public/ later.
+  // the whole public/ directory at root future-proofs any static assets
+  // added to public/ later. The callback page's logo currently points at
+  // the GitHub-hosted raw.githubusercontent.com copy instead of this local
+  // one, so it renders correctly even before/without this route existing.
   app.use(express.static(path.join(__dirname, '..', '..', 'public')));
 
   app.get('/', (req, res) => {

@@ -25,10 +25,13 @@ const mainMenu = Markup.keyboard([
   [b('🔍 Search Repo'), b('⚙️ Settings')],
 ]).resize();
 
+// Stats and Refresh moved to inline (attached to the repo list message
+// itself, see inline.repoList) — Stats renders entirely via inline buttons
+// already (no BBTB dependency), and Refresh mirrors the same pattern
+// Settings' "🔄 Refresh Status" already uses. Frees this down to 2 rows.
 const myRepos = Markup.keyboard([
-  [b('🔎 Filter'), b('↕️ Sort'), b('📊 Stats')],
-  [b('➕ New Repo'), b('🔄 Refresh'), b('⭐ Pinned')],
-  [b('🧹 Bulk Select'), b('⬆️ Back to Menu')],
+  [b('🔎 Filter'), b('↕️ Sort'), b('➕ New Repo')],
+  [b('⭐ Pinned'), b('🧹 Bulk Select'), b('⬆️ Back to Menu')],
 ]).resize();
 
 const repoView = Markup.keyboard([
@@ -46,10 +49,12 @@ const browseFiles = Markup.keyboard([
 // keyboard — Refresh is now an inline button on the Settings message
 // itself (chained fresh-message pattern), and Access Log is reachable
 // from inside Activity instead of its own Settings row.
+// 💾 Export/Import lives inline inside 📦 Storage & Data now (alongside
+// 🗑️ Trash) rather than its own BBTB button — this keeps Settings a true
+// 2 rows instead of 3.
 const settings = Markup.keyboard([
   [b('📜 Activity'), b('🤖 Automation'), b('📦 Storage')],
-  [b('💾 Export/Import'), b('🚪 Disconnect')],
-  [b('⬆️ Back to Menu')],
+  [b('🚪 Disconnect'), b('⬆️ Back to Menu')],
 ]).resize();
 
 const cancelOnly = Markup.keyboard([[g('❌ Cancel')]]).resize();
@@ -103,10 +108,26 @@ const bulkComplete = Markup.keyboard([
 // buttons), Scheduled Commits, and Timezone (which Scheduled Commits
 // depends on to mean anything). Defaults + Log stay directly reachable
 // since they're read/adjusted far more often than any single rule type.
+// 🤖 Automation hub — Log moved to inline on the hub message itself (see
+// inline.automationHubActions), and Scheduled Commits + Timezone merged
+// into one "📅 Schedule" entry (its own intermediate hub, same
+// hub-of-hubs shape as 🔧 Rules) — both changes free enough space that
+// Defaults fits directly on row one instead of needing its own row.
 const automation = Markup.keyboard([
-  [b('🔧 Rules & Insights'), b('📅 Scheduled Commits'), b('🌍 Timezone')],
-  [b('⚙️ Defaults'), b('📜 Log')],
+  [b('🔧 Rules'), b('📅 Schedule'), b('⚙️ Defaults')],
   [b('⬆️ Back to Settings')],
+]).resize();
+
+// 📅 Schedule — the intermediate hub-of-hubs for Scheduled Commits and
+// Timezone (picked via its own inline grid, see inline.scheduleHubMenu).
+const automationScheduleHub = Markup.keyboard([
+  [b('⬆️ Back to Automation')],
+]).resize();
+
+// Scheduled Commits and Timezone both nest one level under 📅 Schedule —
+// "Back" targets that intermediate screen now, not Automation directly.
+const automationScheduleSub = Markup.keyboard([
+  [b('⬆️ Back to Schedule')],
 ]).resize();
 
 // 🔧 Rules & Insights — the new intermediate hub-of-hubs: Auto-Tag,
@@ -143,10 +164,6 @@ const backToAutomation = Markup.keyboard([
   [b('⬆️ Back to Automation')],
 ]).resize();
 
-const exportImport = Markup.keyboard([
-  [b('⬆️ Back to Settings')],
-]).resize();
-
 const remove = Markup.removeKeyboard();
 
 module.exports = {
@@ -169,9 +186,10 @@ module.exports = {
   backToSettings,
   backToAutomation,
   automation,
+  automationScheduleHub,
+  automationScheduleSub,
   automationRulesHub,
   automationRulesSub,
   automationBackupRules,
-  exportImport,
   remove,
 };

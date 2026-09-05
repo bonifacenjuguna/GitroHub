@@ -8,6 +8,7 @@ const bbtb = require('../keyboards/bbtb');
 const config = require('../config');
 const pins = require('../lib/pins');
 const tags = require('../lib/tags');
+const ephemeral = require('../lib/ephemeral');
 
 // Simple in-memory view-state per user (filter/sort/page) — not sensitive,
 // fine to keep in process memory; resets on restart which is harmless here.
@@ -160,7 +161,7 @@ async function showMyRepos(ctx, { edit = false } = {}) {
   } else {
     // Reply keyboard (BBTB) and inline keyboard can't share one message —
     // send the BBTB once via a tiny marker message, then content with only inline.
-    await ctx.reply('📁 My Repos', bbtb.myRepos);
+    await ephemeral.sendEphemeral(ctx, '📁 My Repos', bbtb.myRepos);
     await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
     // Surprise feature — recently viewed quick-access, best-effort, only
     // shown on the fresh (non-edit) load so it doesn't reappear on every

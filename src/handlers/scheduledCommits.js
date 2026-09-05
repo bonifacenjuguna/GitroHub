@@ -14,6 +14,7 @@ const timezone = require('../lib/timezone');
  */
 async function showScheduledCommits(ctx) {
   const users = require('../lib/users');
+const ephemeral = require('../lib/ephemeral');
   const user = await users.getUser(ctx.from.id);
   const tz = user.timezone || 'UTC';
   const pending = await scheduledRepos.listPending(ctx.from.id);
@@ -24,9 +25,9 @@ async function showScheduledCommits(ctx) {
     : pending.map((p, i) => `${i + 1}\\. *${format.escapeMd(p.name)}* — ${format.escapeMd(timezone.formatInZone(new Date(p.scheduled_for), tz))}`).join('\n');
 
   const rows = pending.map((p) => [style.callback(`❌ Cancel: ${p.name}`, `schedcommits:cancel:${p.id}`)]);
-  rows.push([style.callback('⬅️ Back', 'automation:hub', style.BLUE)]);
+  rows.push([style.callback('⬅️ Back', 'automation:schedulehub', style.BLUE)]);
 
-  await ctx.reply('📅 Scheduled Commits', bbtb.backToAutomation);
+  await ephemeral.sendEphemeral(ctx, '📅 Scheduled Commits', bbtb.automationScheduleSub);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
 }
 

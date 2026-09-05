@@ -1,6 +1,7 @@
 const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const format = require('../lib/format');
+const ephemeral = require('../lib/ephemeral');
 const defaultsLib = require('../lib/defaults');
 const tags = require('../lib/tags');
 const muteRules = require('../lib/automationMuteRules');
@@ -17,13 +18,15 @@ const EXPORT_VERSION = 1;
  * is a normal OAuth flow, not something to smuggle through a settings
  * file), per-repo tag assignments, pins, or any activity/log history —
  * this is a config backup, not a full data export.
+ *
+ * Lives inline inside 📦 Storage & Data (no BBTB button of its own) —
+ * inherits whatever BBTB Storage was already showing, same as 🗑️ Trash.
  */
 async function showExportImportMenu(ctx) {
   const users = require('../lib/users');
   const connected = await users.isConnected(ctx.from.id);
   if (!connected) return;
 
-  await ctx.reply('💾 Export/Import', bbtb.exportImport);
   await ctx.reply(
     `💾 *Export/Import*\n\n` +
     `Back up your Defaults, Notification prefs, Tags \\(with their auto\\-rules\\), and Auto\\-Mute/Auto\\-Backup rules as a file you can restore later — handy before a reset or a big config change\\.\n\n` +

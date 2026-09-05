@@ -7,7 +7,7 @@
 <img src="https://readme-typing-svg.demolab.com?font=Fira+Code&size=20&pause=1000&color=3B82F6&center=true&vCenter=true&width=460&lines=GitHub+from+Telegram;Create+%C2%B7+Upload+%C2%B7+Download+%C2%B7+Manage;Owner-only+%C2%B7+No+one+else+gets+in;Built+with+Telegraf.js+%2B+Octokit" alt="Typing SVG" />
 
 <p>
-<img src="https://img.shields.io/badge/version-0.1.0-3B82F6?style=for-the-badge" />
+<img src="https://img.shields.io/badge/version-0.7.1-3B82F6?style=for-the-badge" />
 <img src="https://img.shields.io/badge/node-%3E%3D18-3B82F6?style=for-the-badge&logo=node.js&logoColor=white" />
 <img src="https://img.shields.io/badge/JavaScript-No%20TypeScript-F1E05A?style=for-the-badge&logo=javascript&logoColor=black" />
 <img src="https://img.shields.io/badge/hosted%20on-Railway-0B0D0E?style=for-the-badge&logo=railway&logoColor=white" />
@@ -15,8 +15,6 @@
 </p>
 
 </div>
-
-> **Note:** replace `your-username` in the logo URL above with your actual GitHub username/org once this is pushed to a repo, so the badge resolves. Locally, `public/logo.png` renders fine from the file itself.
 
 ---
 
@@ -238,11 +236,9 @@ Open your bot on Telegram, hit `/start`, tap **Connect GitHub Account** — you'
 - A terminal-style status feed that plays out step-by-step with SVG checkmarks/X's (no emoji — Lucide-style hand-drawn stroke icons)
 - A live SVG countdown ring that auto-redirects back into Telegram (deep link) when it hits zero
 - Distinct color themes for success (blue → green) and failure (blue → red) states
-- The GitroHub logo, served from `public/logo.png` via Express's static middleware (`app.use(express.static('public'))`), so it's reachable at `/logo.png` on your deployed `BASE_URL` — no separate hosting needed
+- The GitroHub logo, loaded from the raw GitHub URL (`https://raw.githubusercontent.com/bonifacenjuguna/gitrohub/main/public/logo.png`) rather than served locally — renders correctly even if `public/` ever isn't deployed alongside `src/`, and works when opening `callback.html` directly as a local file too
 
 The bot's `app.js` injects `window.__GITROHUB__` with the real outcome (`success`/`error`, GitHub username, and — on failure — exactly which step failed) so the page always reflects what actually happened, never a generic animation.
-
-> If the logo doesn't appear on the callback page, confirm `public/` is deployed alongside `src/` (it is, by default, when deploying this whole project) and that you're viewing the page via your live `BASE_URL` — opening `callback.html` directly as a local file won't resolve `/logo.png`, since there's no server behind it in that context.
 
 ---
 

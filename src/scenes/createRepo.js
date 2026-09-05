@@ -6,6 +6,7 @@ const format = require('../lib/format');
 const inline = require('../keyboards/inline');
 const bbtb = require('../keyboards/bbtb');
 const activity = require('../lib/activity');
+const ephemeral = require('../lib/ephemeral');
 
 const cancelConfirmKeyboard = Markup.inlineKeyboard([
   [style.callback('✅ Yes, Cancel', 'createrepo:cancel:confirm', style.RED)],
@@ -18,7 +19,7 @@ const scene = new Scenes.WizardScene(
   // Step 0 — ask name
   async (ctx) => {
     ctx.wizard.state.data = {};
-    await ctx.reply('📦 Let\u2019s create a new repo.\nSend me the repository name.', bbtb.cancelOnly);
+    await ephemeral.sendEphemeral(ctx, '📦 Let\u2019s create a new repo.\nSend me the repository name.', bbtb.cancelOnly);
     return ctx.wizard.next();
   },
 
@@ -39,7 +40,7 @@ const scene = new Scenes.WizardScene(
       return;
     }
     ctx.wizard.state.data.name = name;
-    await ctx.reply('📦 New Repo — Step 2 of 5', bbtb.cancelWithBack);
+    await ephemeral.sendEphemeral(ctx, '📦 New Repo — Step 2 of 5', bbtb.cancelWithBack);
 
     const defaultsLib = require('../lib/defaults');
     const d = await defaultsLib.getDefaults(ctx.from.id);
@@ -59,7 +60,7 @@ const scene = new Scenes.WizardScene(
       const isPrivate = ctx.callbackQuery.data.endsWith('private');
       ctx.wizard.state.data.isPrivate = isPrivate;
       await ctx.answerCbQuery();
-      await ctx.reply('Add a short description, or skip.', bbtb.cancelWithSkip);
+      await ephemeral.sendEphemeral(ctx, 'Add a short description, or skip.', bbtb.cancelWithSkip);
       return ctx.wizard.next();
     }
     await ctx.reply('Tap 🔒 Private or 🌐 Public above.');
@@ -77,7 +78,7 @@ const scene = new Scenes.WizardScene(
       return;
     }
 
-    await ctx.reply('📦 New Repo — Step 4 of 5', bbtb.cancelWithBack);
+    await ephemeral.sendEphemeral(ctx, '📦 New Repo — Step 4 of 5', bbtb.cancelWithBack);
     await ctx.reply(
       '📄 Include a default README.md?',
       Markup.inlineKeyboard([
@@ -94,7 +95,7 @@ const scene = new Scenes.WizardScene(
     if (ctx.callbackQuery && ctx.callbackQuery.data.startsWith('create:readme:')) {
       ctx.wizard.state.data.includeReadme = ctx.callbackQuery.data.endsWith('yes');
       await ctx.answerCbQuery();
-      await ctx.reply('📦 New Repo — Step 5 of 5', bbtb.cancelWithBack);
+      await ephemeral.sendEphemeral(ctx, '📦 New Repo — Step 5 of 5', bbtb.cancelWithBack);
       await ctx.reply(
         '⚖️ Choose a license (or skip for none):',
         Markup.inlineKeyboard([
@@ -126,7 +127,7 @@ const scene = new Scenes.WizardScene(
       text += `\n⚖️ License: ${licenseTemplate ? LICENSE_LABELS[licenseTemplate] : 'None'}`;
       text += '\n\nReady to create this repository?';
 
-      await ctx.reply('📦 New Repo — Confirm', bbtb.cancelWithBack);
+      await ephemeral.sendEphemeral(ctx, '📦 New Repo — Confirm', bbtb.cancelWithBack);
       await ctx.reply(text, inline.createRepoConfirm);
       return ctx.wizard.next();
     }
@@ -143,7 +144,7 @@ const scene = new Scenes.WizardScene(
     if (ctx.wizard.state.awaitingScheduleTime) {
       if (ctx.message && ctx.message.text === '❌ Cancel') {
         delete ctx.wizard.state.awaitingScheduleTime;
-        await ctx.reply('Scheduling cancelled — repo was not created.', bbtb.mainMenu);
+        await ephemeral.sendEphemeral(ctx, 'Scheduling cancelled — repo was not created.', bbtb.mainMenu);
         return ctx.scene.leave();
       }
       if (!ctx.message || !ctx.message.text) {
@@ -255,7 +256,7 @@ const scene = new Scenes.WizardScene(
       await activity.log(ctx.from.id, '➕', `Created repo → ${name}`, {
         detail: `visibility:${isPrivate ? 'private' : 'public'}`,
       });
-      await ctx.reply('📍 Main Menu', bbtb.mainMenu);
+      await ephemeral.sendEphemeral(ctx, '📍 Main Menu', bbtb.mainMenu);
       await ctx.reply(
         `✅ Repo created: ${repo.name}\n🔗 ${repo.html_url}`,
         inline.createRepoSuccess(repo.name)
@@ -358,7 +359,7 @@ async function handleGlobalActions(ctx) {  if (ctx.message && ctx.message.text =
   }
   if (ctx.callbackQuery && ctx.callbackQuery.data === 'createrepo:cancel:confirm') {
     await ctx.answerCbQuery();
-    await ctx.reply('Repo creation cancelled.', bbtb.mainMenu);
+    await ephemeral.sendEphemeral(ctx, 'Repo creation cancelled.', bbtb.mainMenu);
     await ctx.scene.leave();
     return true;
   }

@@ -136,10 +136,8 @@ function createBot() {
 
     '🔎 Filter': (ctx) => myRepos.showFilterMenu(ctx),
     '↕️ Sort': (ctx) => myRepos.showSortMenu(ctx),
-    '🔄 Refresh': (ctx) => myRepos.showMyRepos(ctx),
     '⭐ Pinned': (ctx) => pinned.showPinned(ctx),
     '🧹 Bulk Select': (ctx) => bulkActions.startBulkSelect(ctx),
-    '📊 Stats': (ctx) => myRepos.showStats(ctx),
     // Bulk Select's keyboards use a shorter '⬆️ Menu' label than the rest
     // of the bot's '⬆️ Back to Menu' (#39) — same destination, own entry
     // since bot.hears matches on exact text.
@@ -205,16 +203,14 @@ function createBot() {
     '⬆️ Back to Settings': (ctx) => settings.showSettings(ctx),
     '🤖 Automation': (ctx) => automation.showAutomationHub(ctx),
     '⬆️ Back to Automation': (ctx) => automation.showAutomationHub(ctx),
-    '🔧 Rules & Insights': (ctx) => automation.showRulesHub(ctx),
+    '🔧 Rules': (ctx) => automation.showRulesHub(ctx),
     '⬆️ Back to Rules': (ctx) => automation.showRulesHub(ctx),
     '▶️ Backup Now': (ctx) => automation.runBackupNow(ctx),
-    '📜 Log': (ctx) => automation.showAutomationLog(ctx),
     '⚙️ Defaults': (ctx) => myDefaults.showDefaults(ctx),
     '▶️ Run Rules Now': (ctx) => automation.runAllRulesNow(ctx),
-    '📅 Scheduled Commits': (ctx) => scheduledCommits.showScheduledCommits(ctx),
-    '🌍 Timezone': (ctx) => timezoneHandler.showTimezone(ctx),
+    '📅 Schedule': (ctx) => automation.showScheduleHub(ctx),
+    '⬆️ Back to Schedule': (ctx) => automation.showScheduleHub(ctx),
     '📦 Storage': (ctx) => storageData.showStorageData(ctx),
-    '💾 Export/Import': (ctx) => exportImport.showExportImportMenu(ctx),
     // 🔄 Refresh Status and 🔑 Access Log are no longer BBTB buttons —
     // relocated to inline (see #47/#48). Their handler functions are still
     // reachable, now via the callback_query router below.
@@ -379,6 +375,8 @@ function createBot() {
       myRepos.setPage(ctx.from.id, Number(data.split(':')[2]));
       return myRepos.showMyRepos(ctx, { edit: true });
     }
+    if (data === 'repos:refresh') { await ctx.answerCbQuery('🔄 Refreshed'); return myRepos.showMyRepos(ctx, { edit: true }); }
+    if (data === 'repos:stats') { await ctx.answerCbQuery(); return myRepos.showStats(ctx); }
     if (data === 'repos:back') {
       await ctx.answerCbQuery();
       await ctx.deleteMessage().catch(() => {});
@@ -724,6 +722,11 @@ function createBot() {
 
     // 🤖 Automation
     if (data === 'automation:hub') { await ctx.answerCbQuery(); return automation.showAutomationHub(ctx); }
+    if (data === 'automation:refresh') { await ctx.answerCbQuery('🔄 Refreshed'); return automation.showAutomationHub(ctx, { skipBbtb: true }); }
+    if (data === 'automation:ruleshub') { await ctx.answerCbQuery(); return automation.showRulesHub(ctx); }
+    if (data === 'automation:schedulehub') { await ctx.answerCbQuery(); return automation.showScheduleHub(ctx); }
+    if (data === 'automation:scheduledcommits') { await ctx.answerCbQuery(); return scheduledCommits.showScheduledCommits(ctx); }
+    if (data === 'automation:timezone') { await ctx.answerCbQuery(); return timezoneHandler.showTimezone(ctx); }
     if (data === 'automation:ruleshub') { await ctx.answerCbQuery(); return automation.showRulesHub(ctx); }
     if (data === 'automation:defaults') { await ctx.answerCbQuery(); return myDefaults.showDefaults(ctx); }
     if (data === 'automation:tagrules') { await ctx.answerCbQuery(); return automation.showAutoTagRules(ctx); }
@@ -815,6 +818,7 @@ function createBot() {
     if (data === 'storage:clearmenu') { await ctx.answerCbQuery(); return storageData.showClearMenu(ctx); }
     if (data === 'storage:back') { await ctx.answerCbQuery(); return storageData.showStorageData(ctx); }
     if (data === 'storage:trash') { await ctx.answerCbQuery(); return trash.showTrash(ctx); }
+    if (data === 'storage:exportimport') { await ctx.answerCbQuery(); return exportImport.showExportImportMenu(ctx); }
     if (data.startsWith('trash:restore:')) { await ctx.answerCbQuery(); return trash.requestRestore(ctx, data.split(':')[2]); }
     if (data.startsWith('storage:clear:')) { await ctx.answerCbQuery(); return storageData.confirmClear(ctx, data.split('storage:clear:')[1]); }
     if (data.startsWith('storage:doclear:')) {
