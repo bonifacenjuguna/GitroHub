@@ -307,6 +307,10 @@ CREATE INDEX IF NOT EXISTS idx_scheduled_repos_user ON scheduled_repos (telegram
 -- delete-repo backup step and the daily trash-expiry sweep.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS trash_retention_days INT NOT NULL DEFAULT 30;
 
+-- Recently Viewed quick-access is on by default — this lets someone turn it
+-- off (or clear its history) from My Defaults if they'd rather not have it.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS recently_viewed_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+
 -- 🗑️ Trash — a repo deleted through the bot gets a zip snapshot delivered
 -- to the person's own chat before the real GitHub delete happens (its
 -- Telegram file_id IS the storage — no blob-storage backend needed here),

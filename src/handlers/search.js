@@ -12,6 +12,48 @@ const ephemeral = require('../lib/ephemeral');
 
 const GITHUB_URL_RE = /^(?:https?:\/\/)?(?:www\.)?github\.com\/([a-zA-Z0-9-]+)\/([a-zA-Z0-9._-]+?)(?:\.git)?\/?$/;
 
+// Advanced search qualifiers — GitHub-style `key:value` tokens that combine
+// with whatever free text is left over. Reuses lib/filterClauses.js (the
+// same engine behind Bulk Actions' filter builder and Smart Folders) so
+// "private repos matching auth" and "a Smart Folder for private repos"
+// agree on exactly what "private" means.
+const QUALIFIER_RE = /\b(is|lang|language|tag|stars):(\S+)/gi;
+
+/** Splits a raw query into filterClauses-shaped clauses plus whatever free
+ * text remains for fuzzy matching. Unrecognized qualifier values are
+ * dropped silently rather than erroring — worst case they just don't
+ * narrow anything, same "fail open" philosophy as filterClauses itself. */
+function parseAdvancedQuery(query, userTags) {
+  const clauses = [];
+  let freeText = query;
+  let match;
+  QUALIFIER_RE.lastIndex = 0;
+  while ((match = QUALIFIER_RE.exec(query))) {
+    const [full, rawKey, rawVal] = match;
+    const key = rawKey.toLowerCase();
+    const val = rawVal;
+
+    if (key === 'is') {
+      const v = val.toLowerCase();
+      if (v === 'private' || v === 'public') clauses.push({ type: 'visibility', value: v });
+      else if (v === 'fork') clauses.push({ type: 'fork', value: 'true' });
+      else if (v === 'notfork') clauses.push({ type: 'fork', value: 'false' });
+      else if (v === 'licensed') clauses.push({ type: 'haslicense', value: true });
+      else if (v === 'unlicensed') clauses.push({ type: 'nolicense', value: true });
+    } else if (key === 'lang' || key === 'language') {
+      clauses.push({ type: 'language', value: val });
+    } else if (key === 'tag') {
+      const tag = userTags.find((t) => t.name.toLowerCase() === val.toLowerCase());
+      if (tag) clauses.push({ type: 'tag', value: tag.id });
+    } else if (key === 'stars') {
+      const m = val.match(/^(>=|<=|>|<)?(\d+)$/);
+      if (m) clauses.push({ type: 'stars', value: { op: m[1] || '=', num: Number(m[2]) } });
+    }
+    freeText = freeText.replace(full, ' ');
+  }
+  return { clauses, freeText: freeText.replace(/\s+/g, ' ').trim() };
+}
+
 function parseGithubUrl(input) {
   const match = input.trim().match(GITHUB_URL_RE);
   if (!match) return null;
@@ -53,19 +95,42 @@ async function handleRepoSearch(ctx, query) {
   await searchHistory.record(ctx.from.id, query); // #12 — best-effort, non-blocking to the actual search
 
   const repos = await repoCache.getRepos(ctx.from.id, token);
-  // Multi-field: name is still weighted highest (see searchRanking),
-  // but description also participates in the fuzzy pass, so "the repo
-  // about parsing CSVs" can surface even with a totally different name.
-  const fuse = new Fuse(repos, { keys: [{ name: 'name', weight: 0.8 }, { name: 'description', weight: 0.2 }], threshold: 0.4, includeScore: true });
-  const searchRanking = require('../lib/searchRanking');
-  const results = searchRanking.rank(fuse.search(query), query);
+
+  // Advanced qualifiers (is:private, lang:JavaScript, tag:work, stars:>50,
+  // etc.) narrow the pool first; whatever free text is left, if any, then
+  // goes through the usual fuzzy pass on top of that narrowed set.
+  const filterClauses = require('../lib/filterClauses');
+  const tags = require('../lib/tags');
+  const userTags = await tags.listTags(ctx.from.id).catch(() => []);
+  const { clauses, freeText } = parseAdvancedQuery(query, userTags);
+  const qualifierCtx = await filterClauses.buildTagContext(ctx.from.id, clauses);
+  const pool = filterClauses.applyClauses(repos, clauses, qualifierCtx);
+
+  let results;
+  if (freeText) {
+    // Multi-field: name is still weighted highest (see searchRanking),
+    // but description also participates in the fuzzy pass, so "the repo
+    // about parsing CSVs" can surface even with a totally different name.
+    const fuse = new Fuse(pool, { keys: [{ name: 'name', weight: 0.8 }, { name: 'description', weight: 0.2 }], threshold: 0.4, includeScore: true });
+    const searchRanking = require('../lib/searchRanking');
+    results = searchRanking.rank(fuse.search(freeText), freeText);
+  } else if (clauses.length > 0) {
+    // Qualifiers only, no free text left — just show the filtered set,
+    // most-starred first, with no fuzzy score to speak of.
+    results = pool
+      .slice()
+      .sort((a, b) => (b.stargazers_count || 0) - (a.stargazers_count || 0))
+      .map((item) => ({ item, score: 0 }));
+  } else {
+    results = [];
+  }
 
   if (results.length === 0) {
+    const hint = clauses.length
+      ? `no repos matched those filters`
+      : `you have ${repos.length} repos total — check spelling, or try filters like is:private, lang:JavaScript, tag:work, stars:>50`;
     return ctx.reply(
-      format.errorMessage(
-        `No repos matched "${query}"`,
-        `you have ${repos.length} repos total — check spelling, or browse the full list instead`,
-      ),
+      format.errorMessage(`No repos matched "${query}"`, hint),
       bbtb.searchAgain
     );
   }
@@ -88,7 +153,7 @@ async function handleRepoSearch(ctx, query) {
       counter++;
       return card;
     });
-    sections.push(`🎯 *Close Matches*\n\n${cards.join(`\n${format.CARD_DIVIDER}\n`)}`);
+    sections.push(`🎯 *${freeText ? 'Close Matches' : 'Matches'}*\n\n${cards.join(`\n${format.CARD_DIVIDER}\n`)}`);
   }
   if (similar.length) {
     const cards = similar.map((r) => {
@@ -103,7 +168,9 @@ async function handleRepoSearch(ctx, query) {
     sections.push(`🔁 *Similar Spelling*\n\n${cards.join(`\n${format.CARD_DIVIDER}\n`)}`);
   }
 
-  const text = `${format.sectionHeader('Search Results', `"${query}"`)}\n\n${sections.join('\n\n')}`;
+  const qualifierLabel = clauses.length ? ` · ${filterClauses.describeClauses(clauses)}` : '';
+  const queryLabel = freeText ? `"${freeText}"${qualifierLabel}` : qualifierLabel.replace(/^ · /, '');
+  const text = `${format.sectionHeader('Search Results', queryLabel)}\n\n${sections.join('\n\n')}\n\n_Type another query to keep searching — no need to tap Search again\\._`;
 
   await ephemeral.sendEphemeral(ctx, '🔍 Search Results', bbtb.searchAgain);
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });

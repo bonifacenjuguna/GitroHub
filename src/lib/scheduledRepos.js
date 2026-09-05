@@ -39,6 +39,23 @@ async function cancel(telegramId, id) {
   );
 }
 
+/** Edits one field of a still-pending scheduled repo — the "✏️ Edit" flow
+ * in handlers/scheduledCommits.js. Whitelisted column map (not raw string
+ * interpolation of the field name) so this can never be pointed at an
+ * arbitrary column. */
+const EDITABLE_FIELDS = {
+  name: 'name', description: 'description', visibility: 'visibility',
+  license: 'license', scheduledFor: 'scheduled_for',
+};
+async function updateField(telegramId, id, field, value) {
+  const col = EDITABLE_FIELDS[field];
+  if (!col) throw new Error(`Unknown scheduled_repos field: ${field}`);
+  await pool.query(
+    `UPDATE scheduled_repos SET ${col} = $1 WHERE telegram_id = $2 AND id = $3 AND status = 'pending'`,
+    [value, telegramId, id]
+  );
+}
+
 /** Everything due right now, across every user — polled every few minutes
  * by index.js. A schedule implies some timing precision the hourly
  * automation scheduler doesn't give, so this runs on its own faster loop. */
@@ -55,4 +72,4 @@ async function markFailed(id, errorMessage) {
   await pool.query(`UPDATE scheduled_repos SET status = 'failed', error_message = $2 WHERE id = $1`, [id, errorMessage]);
 }
 
-module.exports = { create, listPending, get, cancel, getDue, markCompleted, markFailed };
+module.exports = { create, listPending, get, cancel, updateField, getDue, markCompleted, markFailed };

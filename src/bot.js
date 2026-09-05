@@ -179,7 +179,7 @@ function createBot() {
 
     '🔍 Search Files': async (ctx) => {
       ctx.session.awaitingFileSearch = true;
-      await ctx.reply('🔍 Type a filename or keyword to search across all files.', bbtb.cancelOnly);
+      await ctx.reply('🔍 Type a filename or keyword to search across all files.\nKeep typing new queries any time, no need to tap Search again.', bbtb.cancelOnly);
     },
     '⬆️ Back to Repo': async (ctx) => {
       const repoName = ctx.session.currentRepo;
@@ -266,6 +266,9 @@ function createBot() {
     delete ctx.session.automationBackupRuleInput;
     delete ctx.session.awaitingCustomTimezone;
     delete ctx.session.awaitingTrashRestoreName;
+    delete ctx.session.editingTrashRestore;
+    delete ctx.session.editingScheduledField;
+    delete ctx.session.editingScheduledTime;
     delete ctx.session.awaitingFullReset;
     delete ctx.session.editingDescription;
     delete ctx.session.awaitingSettingsImport;
@@ -286,19 +289,19 @@ function createBot() {
     if (ctx.session.automationBackupRuleInput) return automation.handleBackupRuleValueInput(ctx, ctx.message.text);
     if (ctx.session.awaitingCustomTimezone) return timezoneHandler.handleCustomTimezoneInput(ctx);
     if (ctx.session.awaitingTrashRestoreName) return trash.handleRestoreNameInput(ctx);
+    if (ctx.session.editingTrashRestore) return trash.handleEditRestoreTextInput(ctx);
+    if (ctx.session.editingScheduledField) return scheduledCommits.handleFieldTextInput(ctx);
+    if (ctx.session.editingScheduledTime) return scheduledCommits.handleCustomTimeInput(ctx);
     if (ctx.session.awaitingFullReset) return storageData.handleResetConfirmationText(ctx);
     if (ctx.session.editingDescription) return repoView.handleDescriptionInput(ctx, ctx.message.text);
 
     if (ctx.session.awaitingSearch) {
-      ctx.session.awaitingSearch = false;
       return search.handleMyReposSearchInput(ctx, ctx.message.text);
     }
     if (ctx.session.awaitingPublicRepo) {
-      ctx.session.awaitingPublicRepo = false;
       return search.handlePublicRepoInput(ctx, ctx.message.text);
     }
     if (ctx.session.awaitingFileSearch) {
-      ctx.session.awaitingFileSearch = false;
       return browseFiles.searchFiles(ctx, ctx.session.currentRepo, ctx.message.text);
     }
     return next();
@@ -322,6 +325,18 @@ function createBot() {
   bot.on('callback_query', async (ctx, next) => {
     const data = ctx.callbackQuery.data || '';
 
+    // Any navigation away from search (anything other than the search
+    // callbacks themselves) ends "still listening for a search query" —
+    // otherwise a stray later message could be mistaken for one. search:*
+    // and external:* are exempt since those are still part of the search
+    // flow itself (recent-search taps, star/fork/download on a looked-up
+    // repo) and shouldn't interrupt being able to paste/type another query.
+    if (!data.startsWith('search:') && !data.startsWith('external:')) {
+      ctx.session.awaitingSearch = false;
+      ctx.session.awaitingPublicRepo = false;
+      ctx.session.awaitingFileSearch = false;
+    }
+
     // Search entry-point split (📁 My Repos vs 🌐 Public Repo)
     if (data === 'search:type:myrepos') {
       await ctx.answerCbQuery();
@@ -331,7 +346,10 @@ function createBot() {
       // path is './lib/searchHistory'.
       const searchHistory = require('./lib/searchHistory');
       const recent = await searchHistory.recent(ctx.from.id, 5).catch(() => []);
-      await ctx.reply('🔍 Type a name or keyword to fuzzy-search your repos.', bbtb.cancelOnly);
+      await ctx.reply(
+        '🔍 Type a name or keyword to fuzzy-search your repos.\nAdd filters like is:private, lang:JavaScript, tag:work, stars:>50 — mix and match, or use them alone.\nKeep typing new queries any time, no need to tap Search again.',
+        bbtb.cancelOnly
+      );
       if (recent.length) {
         const rows = recent.map((q) => [style.callback(`🕒 ${q}`, `search:recent:${q}`)]);
         rows.push([style.callback('🗑 Clear History', 'search:clearhistory')]);
@@ -341,7 +359,6 @@ function createBot() {
     }
     if (data.startsWith('search:recent:')) {
       await ctx.answerCbQuery();
-      ctx.session.awaitingSearch = false;
       return search.handleMyReposSearchInput(ctx, data.split('search:recent:')[1]);
     }
     if (data === 'search:clearhistory') {
@@ -353,7 +370,7 @@ function createBot() {
     if (data === 'search:type:public') {
       await ctx.answerCbQuery();
       ctx.session.awaitingPublicRepo = true;
-      await ctx.reply('🌐 Paste a GitHub repo link (e.g. https://github.com/owner/repo).', bbtb.cancelOnly);
+      await ctx.reply('🌐 Paste a GitHub repo link (e.g. https://github.com/owner/repo). You can paste another right after this one, any time.', bbtb.cancelOnly);
       return;
     }
 
@@ -719,6 +736,10 @@ function createBot() {
     if (data === 'defaults:togglelearn') { await ctx.answerCbQuery(); return myDefaults.toggleLearn(ctx); }
     if (data === 'defaults:trashretention') { await ctx.answerCbQuery(); return myDefaults.editTrashRetention(ctx); }
     if (data.startsWith('defaults:settrash:')) { await ctx.answerCbQuery(); return myDefaults.setTrashRetention(ctx, data.split(':')[2]); }
+    if (data === 'defaults:recentlyviewed') { await ctx.answerCbQuery(); return myDefaults.showRecentlyViewedSettings(ctx); }
+    if (data === 'defaults:rv:toggle') { await ctx.answerCbQuery(); return myDefaults.toggleRecentlyViewed(ctx); }
+    if (data === 'defaults:rv:clear') { await ctx.answerCbQuery('🧹 Cleared'); return myDefaults.clearRecentlyViewed(ctx); }
+    if (data === 'defaults:rv:back') { await ctx.answerCbQuery(); return myDefaults.showDefaults(ctx); }
 
     // 🤖 Automation
     if (data === 'automation:hub') { await ctx.answerCbQuery(); return automation.showAutomationHub(ctx); }
@@ -785,6 +806,24 @@ function createBot() {
     // scene is active, same as every other createRepo callback). Only
     // managing already-scheduled ones lives here.
     if (data.startsWith('schedcommits:cancel:')) { await ctx.answerCbQuery(); return scheduledCommits.cancelScheduled(ctx, data.split(':')[2]); }
+    if (data === 'schedcommits:back') { await ctx.answerCbQuery(); return scheduledCommits.showScheduledCommits(ctx); }
+    if (data.startsWith('schedcommits:runnow:')) { await ctx.answerCbQuery(); return scheduledCommits.runScheduledNow(ctx, data.split(':')[2]); }
+    if (data.startsWith('schedcommits:edit:')) { await ctx.answerCbQuery(); return scheduledCommits.showEditMenu(ctx, data.split(':')[2]); }
+    if (data.startsWith('schedcommits:editname:')) { await ctx.answerCbQuery(); return scheduledCommits.startEditName(ctx, data.split(':')[2]); }
+    if (data.startsWith('schedcommits:editdesc:')) { await ctx.answerCbQuery(); return scheduledCommits.startEditDescription(ctx, data.split(':')[2]); }
+    if (data.startsWith('schedcommits:togglevis:')) { await ctx.answerCbQuery(); return scheduledCommits.toggleVisibility(ctx, data.split(':')[2]); }
+    if (data.startsWith('schedcommits:editlicense:')) { await ctx.answerCbQuery(); return scheduledCommits.showLicenseMenu(ctx, data.split(':')[2]); }
+    if (data.startsWith('schedcommits:setlicense:')) {
+      await ctx.answerCbQuery();
+      const [, , id, licenseKey] = data.split(':');
+      return scheduledCommits.setLicense(ctx, id, licenseKey);
+    }
+    if (data.startsWith('schedcommits:edittime:')) { await ctx.answerCbQuery(); return scheduledCommits.showTimeMenu(ctx, data.split(':')[2]); }
+    if (data.startsWith('schedcommits:settime:')) {
+      await ctx.answerCbQuery();
+      const [, , id, pick] = data.split(':');
+      return scheduledCommits.setQuickTime(ctx, id, pick);
+    }
 
     // 🌍 Timezone
     if (data.startsWith('timezone:set:')) { await ctx.answerCbQuery(); return timezoneHandler.setTimezone(ctx, data.split('timezone:set:')[1]); }
@@ -819,6 +858,15 @@ function createBot() {
     if (data === 'storage:trash') { await ctx.answerCbQuery(); return trash.showTrash(ctx); }
     if (data === 'storage:exportimport') { await ctx.answerCbQuery(); return exportImport.showExportImportMenu(ctx); }
     if (data.startsWith('trash:restore:')) { await ctx.answerCbQuery(); return trash.requestRestore(ctx, data.split(':')[2]); }
+    if (data === 'trash:back') { await ctx.answerCbQuery(); return trash.showTrash(ctx); }
+    if (data.startsWith('trash:download:')) { await ctx.answerCbQuery(); return trash.downloadZip(ctx, data.split(':')[2]); }
+    if (data.startsWith('trash:editrestore:')) { await ctx.answerCbQuery(); return trash.showEditRestore(ctx, data.split(':')[2]); }
+    if (data.startsWith('trash:editname:')) { await ctx.answerCbQuery(); return trash.startEditRestoreName(ctx, data.split(':')[2]); }
+    if (data.startsWith('trash:editdesc:')) { await ctx.answerCbQuery(); return trash.startEditRestoreDescription(ctx, data.split(':')[2]); }
+    if (data.startsWith('trash:togglevis:')) { await ctx.answerCbQuery(); return trash.toggleEditRestoreVisibility(ctx, data.split(':')[2]); }
+    if (data.startsWith('trash:deleteforever:confirm:')) { await ctx.answerCbQuery(); return trash.executeDeleteForever(ctx, data.split(':')[3]); }
+    if (data.startsWith('trash:deleteforever:cancel:')) { await ctx.answerCbQuery(); return trash.showTrash(ctx); }
+    if (data.startsWith('trash:deleteforever:')) { await ctx.answerCbQuery(); return trash.confirmDeleteForever(ctx, data.split(':')[2]); }
     if (data.startsWith('storage:clear:')) { await ctx.answerCbQuery(); return storageData.confirmClear(ctx, data.split('storage:clear:')[1]); }
     if (data.startsWith('storage:doclear:')) {
       await ctx.answerCbQuery();

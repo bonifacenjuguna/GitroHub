@@ -19,6 +19,10 @@
  *   { type: 'stale',      value: <days> }          // updated_at older than N days
  *   { type: 'tag',        value: <tagId> }          // includes nested descendant tags
  *   { type: 'name',       value: '<substring>' }    // case-insensitive contains
+ *   { type: 'fork',       value: 'true' | 'false' }
+ *   { type: 'haslicense', value: true }              // GitHub confidently detected a real license
+ *   { type: 'nolicense',  value: true }
+ *   { type: 'stars',      value: { op: '>'|'<'|'>='|'<='|'=', num: <n> } }
  */
 
 const STALE_DEFAULT_DAYS = 180;
@@ -40,6 +44,23 @@ function matchesClause(repo, clause, ctx) {
     }
     case 'name':
       return repo.name.toLowerCase().includes(String(clause.value).toLowerCase());
+    case 'fork':
+      return !!repo.fork === (clause.value !== 'false');
+    // #9's has-license / no-license definition, shared with myRepos' own
+    // filterType so "no license" means the same thing everywhere in the bot.
+    case 'haslicense':
+      return !!(repo.license && repo.license.spdx_id && repo.license.spdx_id !== 'NOASSERTION');
+    case 'nolicense':
+      return !(repo.license && repo.license.spdx_id && repo.license.spdx_id !== 'NOASSERTION');
+    case 'stars': {
+      const { op, num } = clause.value;
+      const stars = repo.stargazers_count || 0;
+      if (op === '>') return stars > num;
+      if (op === '<') return stars < num;
+      if (op === '>=') return stars >= num;
+      if (op === '<=') return stars <= num;
+      return stars === num;
+    }
     default:
       return true; // unknown clause type — fail open rather than silently excluding everything
   }
@@ -77,6 +98,10 @@ function describeClause(clause, { tagName } = {}) {
     case 'stale': return `😴 Stale ${clause.value}d+`;
     case 'tag': return `🏷️ ${tagName || clause.value}`;
     case 'name': return `🔤 Name contains "${clause.value}"`;
+    case 'fork': return clause.value === 'false' ? '🚫 Not a Fork' : '🍴 Fork';
+    case 'haslicense': return '📜 Has License';
+    case 'nolicense': return '🚫 No License';
+    case 'stars': return `⭐ Stars ${clause.value.op}${clause.value.num}`;
     default: return String(clause.type);
   }
 }

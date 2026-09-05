@@ -4,6 +4,7 @@ const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
 const requireConnected = require('../lib/requireConnected');
 const trash = require('../lib/trash');
+const ephemeral = require('../lib/ephemeral');
 
 /**
  * 🗑️ Trash — lives inline inside 📦 Storage & Data (no new BBTB row), so it
@@ -21,10 +22,140 @@ async function showTrash(ctx) {
         return `${i + 1}\\. *${format.escapeMd(e.original_name)}* — ${daysLeft}d left`;
       }).join('\n');
 
-  const rows = entries.map((e) => [style.callback(`♻️ Restore: ${e.original_name}`, `trash:restore:${e.id}`)]);
+  // Two rows per entry — Restore/Edit are the safe, common paths; ZIP is
+  // informational; Delete Forever is BLUE here (just opens a confirm
+  // screen) — only the actual confirm button on that screen is RED, same
+  // rule as Delete Repo/File everywhere else in the bot.
+  const rows = [];
+  entries.forEach((e, i) => {
+    rows.push([
+      style.callback(`♻️ ${i + 1}. Restore`, `trash:restore:${e.id}`),
+      style.callback('✏️ Edit', `trash:editrestore:${e.id}`),
+    ]);
+    rows.push([
+      style.callback('⬇️ ZIP', `trash:download:${e.id}`),
+      style.callback('🗑️ Delete Forever', `trash:deleteforever:${e.id}`, style.BLUE),
+    ]);
+  });
   rows.push([style.callback('⬅️ Back', 'storage:back', style.BLUE)]);
 
   await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
+}
+
+/** ⬇️ Re-sends the backup document straight from its Telegram file_id — no
+ * re-download/re-upload needed, Telegram lets a bot resend a file it
+ * already knows the id of. */
+async function downloadZip(ctx, trashId) {
+  const entry = await trash.get(ctx.from.id, trashId);
+  if (!entry || entry.restored_at) {
+    await ctx.reply('That trash entry is no longer available.');
+    return showTrash(ctx);
+  }
+  await ctx.replyWithDocument(entry.backup_file_id, {
+    caption: `📦 ${entry.original_name}`,
+  });
+}
+
+/** 🗑️ Delete Forever — step 1, just opens the confirm screen (BLUE, per
+ * the bot-wide rule that only the actual execute button is RED). */
+async function confirmDeleteForever(ctx, trashId) {
+  const entry = await trash.get(ctx.from.id, trashId);
+  if (!entry || entry.restored_at) {
+    await ctx.reply('That trash entry is no longer available.');
+    return showTrash(ctx);
+  }
+  await ctx.reply(
+    `⚠️ Permanently delete "${format.escapeMd(entry.original_name)}" from Trash\\?\n\nThis removes it from Trash for good — it won\\u2019t be recoverable through the bot anymore\\.`,
+    {
+      parse_mode: 'MarkdownV2',
+      ...Markup.inlineKeyboard([
+        [style.callback('✅ Yes, Delete Forever', `trash:deleteforever:confirm:${trashId}`, style.RED)],
+        [style.callback('❌ Cancel', `trash:deleteforever:cancel:${trashId}`, style.GREEN)],
+      ]),
+    }
+  );
+}
+
+async function executeDeleteForever(ctx, trashId) {
+  const removed = await trash.remove(ctx.from.id, trashId);
+  await ctx.reply(removed ? format.successMessage('Deleted from Trash for good') : 'That trash entry is no longer available.');
+  return showTrash(ctx);
+}
+
+/** ✏️ Edit & Restore — lets someone change the name/description/visibility
+ * a repo will be restored under BEFORE committing to the restore, instead
+ * of only finding out about a name collision after the fact. Edits land
+ * directly on the trash entry itself (see lib/trash.js's update) so
+ * requestRestore, which always re-fetches fresh, naturally picks them up. */
+async function showEditRestore(ctx, trashId) {
+  const entry = await trash.get(ctx.from.id, trashId);
+  if (!entry || entry.restored_at) {
+    await ctx.reply('That trash entry is no longer available.');
+    return showTrash(ctx);
+  }
+
+  const text =
+    `✏️ *Edit before restoring*\n\n` +
+    `📛 Name: ${format.escapeMd(entry.original_name)}\n` +
+    `📝 Description: ${entry.description ? format.escapeMd(entry.description) : '_None_'}\n` +
+    `${format.visibilityLine(entry.visibility === 'private')}`;
+
+  const rows = [
+    [style.callback('📛 Edit Name', `trash:editname:${trashId}`), style.callback('📝 Edit Description', `trash:editdesc:${trashId}`)],
+    [style.callback(entry.visibility === 'private' ? '🌐 Make Public' : '🔒 Make Private', `trash:togglevis:${trashId}`)],
+    [style.callback('♻️ Restore Now', `trash:restore:${trashId}`, style.GREEN)],
+    [style.callback('⬅️ Back', 'trash:back', style.BLUE)],
+  ];
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
+}
+
+async function toggleEditRestoreVisibility(ctx, trashId) {
+  const entry = await trash.get(ctx.from.id, trashId);
+  if (!entry || entry.restored_at) {
+    await ctx.reply('That trash entry is no longer available.');
+    return showTrash(ctx);
+  }
+  await trash.update(ctx.from.id, trashId, 'visibility', entry.visibility === 'private' ? 'public' : 'private');
+  return showEditRestore(ctx, trashId);
+}
+
+/** Text-input flows for editing name/description before restore, driven by
+ * ctx.session.editingTrashRestore (see bot.js text router). */
+async function startEditRestoreName(ctx, trashId) {
+  ctx.session.editingTrashRestore = { trashId, field: 'name' };
+  await ephemeral.sendEphemeral(ctx, '📛 Send the new name to restore this repo under.', bbtb.cancelOnly);
+}
+
+async function startEditRestoreDescription(ctx, trashId) {
+  ctx.session.editingTrashRestore = { trashId, field: 'description' };
+  await ephemeral.sendEphemeral(ctx, '📝 Send the new description (or "none" to clear it).', bbtb.cancelOnly);
+}
+
+async function handleEditRestoreTextInput(ctx) {
+  const state = ctx.session.editingTrashRestore;
+  delete ctx.session.editingTrashRestore;
+  if (!state) return;
+
+  if (ctx.message.text === '❌ Cancel') {
+    await ctx.reply('Cancelled.');
+    return showEditRestore(ctx, state.trashId);
+  }
+
+  const text = ctx.message.text.trim();
+  if (state.field === 'name') {
+    if (!/^[a-zA-Z0-9._-]+$/.test(text)) {
+      await ctx.reply(format.errorMessage('Invalid repo name', 'GitHub repo names can only contain letters, numbers, dots, hyphens, and underscores', 'Send a valid name, or ❌ Cancel.'));
+      ctx.session.editingTrashRestore = state;
+      return;
+    }
+    await trash.update(ctx.from.id, state.trashId, 'originalName', text);
+  } else if (state.field === 'description') {
+    const desc = text.toLowerCase() === 'none' ? null : text;
+    await trash.update(ctx.from.id, state.trashId, 'description', desc);
+  }
+
+  await ephemeral.sendEphemeral(ctx, '✅ Updated.');
+  return showEditRestore(ctx, state.trashId);
 }
 
 async function requestRestore(ctx, trashId) {
@@ -181,4 +312,16 @@ async function performRestore(ctx, entry, newName) {
   }
 }
 
-module.exports = { showTrash, requestRestore, handleRestoreNameInput };
+module.exports = {
+  showTrash,
+  downloadZip,
+  confirmDeleteForever,
+  executeDeleteForever,
+  showEditRestore,
+  toggleEditRestoreVisibility,
+  startEditRestoreName,
+  startEditRestoreDescription,
+  handleEditRestoreTextInput,
+  requestRestore,
+  handleRestoreNameInput,
+};

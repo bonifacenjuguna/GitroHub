@@ -3,6 +3,7 @@ const style = require('../keyboards/buttonStyle');
 const defaults = require('../lib/defaults');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
+const ephemeral = require('../lib/ephemeral');
 
 const SORT_LABELS = { updated: '🕒 Recently Updated', name: '🔤 Name (A-Z)', stars: '⭐ Most Stars', created: '📅 Recently Created', language: '💻 Dominant Language' };
 const FILTER_LABELS = { all: 'All', public: '🌐 Public', private: '🔒 Private', forks: '🍴 Forks' };
@@ -12,7 +13,6 @@ async function showDefaults(ctx) {
   if (!d) return;
 
   const users = require('../lib/users');
-const ephemeral = require('../lib/ephemeral');
   const prefs = await users.getNotificationPrefs(ctx.from.id);
   const onCount = prefs ? Object.values(prefs).filter(Boolean).length : 0;
   const totalCount = prefs ? Object.keys(prefs).length : 4;
@@ -25,7 +25,8 @@ const ephemeral = require('../lib/ephemeral');
     `↕️ Default repo sort: ${format.escapeMd(SORT_LABELS[d.default_sort] || d.default_sort)}\n` +
     `🔎 Default repo filter: ${format.escapeMd(FILTER_LABELS[d.default_filter] || d.default_filter)}\n` +
     `🧠 Auto\\-suggest defaults: ${d.auto_suggest_defaults ? 'On' : 'Off'}\n` +
-    `🗑️ Trash retention: ${d.trash_retention_days} days\n\n` +
+    `🗑️ Trash retention: ${d.trash_retention_days} days\n` +
+    `🕐 Recently Viewed: ${d.recently_viewed_enabled ? 'On' : 'Off'}\n\n` +
     `🔔 *NOTIFICATIONS*\n` +
     `${onCount}/${totalCount} categories on`;
 
@@ -33,7 +34,7 @@ const ephemeral = require('../lib/ephemeral');
     [style.callback('🔒 Visibility', 'defaults:visibility', style.BLUE), style.callback('📝 Commit Message', 'defaults:commit', style.BLUE)],
     [style.callback('📁 Upload Path', 'defaults:path', style.BLUE), style.callback('↕️ Sort & Filter', 'defaults:sortfilter', style.BLUE)],
     [style.callback(d.auto_suggest_defaults ? '🧠 Turn Off Auto-Suggest' : '🧠 Turn On Auto-Suggest', 'defaults:togglelearn')],
-    [style.callback('🗑️ Trash Retention', 'defaults:trashretention', style.BLUE)],
+    [style.callback('🗑️ Trash Retention', 'defaults:trashretention', style.BLUE), style.callback('🕐 Recently Viewed', 'defaults:recentlyviewed', style.BLUE)],
     [style.callback('🔔 Notifications', 'defaults:notifications', style.BLUE)],
   ];
 
@@ -96,6 +97,33 @@ async function toggleLearn(ctx) {
   return showDefaults(ctx);
 }
 
+async function showRecentlyViewedSettings(ctx) {
+  const d = await defaults.getDefaults(ctx.from.id);
+  const text =
+    `🕐 *Recently Viewed*\n\n` +
+    `Shows your last 5 opened repos as quick\\-access buttons under 📁 My Repos\\.\n\n` +
+    `Status: ${d.recently_viewed_enabled ? 'On' : 'Off'}`;
+
+  const rows = [
+    [style.callback(d.recently_viewed_enabled ? '🔕 Turn Off' : '🔔 Turn On', 'defaults:rv:toggle')],
+    [style.callback('🧹 Clear History', 'defaults:rv:clear')],
+    [style.callback('⬅️ Back', 'defaults:rv:back', style.BLUE)],
+  ];
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
+}
+
+async function toggleRecentlyViewed(ctx) {
+  const d = await defaults.getDefaults(ctx.from.id);
+  await defaults.setDefault(ctx.from.id, 'recently_viewed_enabled', !d.recently_viewed_enabled);
+  return showRecentlyViewedSettings(ctx);
+}
+
+async function clearRecentlyViewed(ctx) {
+  const recentlyViewed = require('../lib/recentlyViewed');
+  await recentlyViewed.clear(ctx.from.id);
+  return ctx.editMessageText('🧹 Recently Viewed history cleared.');
+}
+
 /** Text-input flows for commit message and upload path, driven by session flags (see bot.js text router) */
 async function startEditCommitMessage(ctx) {
   ctx.session.editingDefault = 'commit';
@@ -147,6 +175,9 @@ module.exports = {
   toggleLearn,
   editTrashRetention,
   setTrashRetention,
+  showRecentlyViewedSettings,
+  toggleRecentlyViewed,
+  clearRecentlyViewed,
   startEditCommitMessage,
   startEditUploadPath,
   handleTextInput,

@@ -15,10 +15,11 @@
  *
  *   RED       — ONLY the single button that actually executes something
  *               irreversible. Not "near danger" — IS the irreversible
- *               action. Reserved for exactly 5 buttons in the whole bot
+ *               action. Reserved for exactly 6 buttons in the whole bot
  *               (Delete Repo, Delete File, Disconnect, Storage Clear,
- *               Bulk's destructive execute). Keeping this the smallest,
- *               rarest tier is what makes it alarming when you see it.
+ *               Bulk's destructive execute, Trash's Delete Forever).
+ *               Keeping this the smallest, rarest tier is what makes it
+ *               alarming when you see it.
  *   GREEN     — means exactly one thing: "the safe way out." Every real
  *               Cancel button, everywhere, no exceptions.
  *   BLUE      — "the expected way to move forward" — general navigation

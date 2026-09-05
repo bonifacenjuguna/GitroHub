@@ -1,9 +1,16 @@
 const { pool } = require('../db/postgres');
+const defaults = require('./defaults');
 
 const MAX_HISTORY = 5;
 
-/** Records a repo view, keeping only the most recent MAX_HISTORY per user. */
+/** Records a repo view, keeping only the most recent MAX_HISTORY per user.
+ * Respects the person's Recently Viewed setting (My Defaults) — if they've
+ * turned it off, skip recording entirely rather than silently building up
+ * history behind a hidden feature. */
 async function record(telegramId, repoName) {
+  const d = await defaults.getDefaults(telegramId);
+  if (d && d.recently_viewed_enabled === false) return;
+
   await pool.query(
     'INSERT INTO recently_viewed (telegram_id, repo_name, viewed_at) VALUES ($1, $2, now())',
     [telegramId, repoName]
@@ -17,8 +24,12 @@ async function record(telegramId, repoName) {
   );
 }
 
-/** Most recently viewed distinct repos, newest first. */
+/** Most recently viewed distinct repos, newest first. Returns empty if the
+ * person has turned the feature off, even if old history still exists. */
 async function recent(telegramId, limit = MAX_HISTORY) {
+  const d = await defaults.getDefaults(telegramId);
+  if (d && d.recently_viewed_enabled === false) return [];
+
   const { rows } = await pool.query(
     `SELECT DISTINCT ON (repo_name) repo_name, viewed_at FROM recently_viewed
      WHERE telegram_id = $1 ORDER BY repo_name, viewed_at DESC`,
@@ -30,4 +41,10 @@ async function recent(telegramId, limit = MAX_HISTORY) {
     .map((r) => r.repo_name);
 }
 
-module.exports = { record, recent };
+/** Wipes all Recently Viewed history for this person — My Defaults' "Clear
+ * History" action. */
+async function clear(telegramId) {
+  await pool.query('DELETE FROM recently_viewed WHERE telegram_id = $1', [telegramId]);
+}
+
+module.exports = { record, recent, clear };
