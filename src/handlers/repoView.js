@@ -15,6 +15,7 @@ const pathMemory = require('../lib/pathMemory');
 const recentlyViewed = require('../lib/recentlyViewed');
 const repoWebhooks = require('../lib/repoWebhooks');
 const notificationMutes = require('../lib/notificationMutes');
+const ephemeral = require('../lib/ephemeral');
 
 /** #2 — undo history now holds up to 5 entries instead of just the single
  * most recent one; each gets its own id so a specific entry can be
@@ -38,7 +39,6 @@ async function cleanupOrphanedData(telegramId, repoName) {
   // repo gets recreated), a webhook_id record serves no purpose once
   // GitHub itself has already deleted the webhook along with the repo.
   const repoWebhooks = require('../lib/repoWebhooks');
-const ephemeral = require('../lib/ephemeral');
   const notificationMutes = require('../lib/notificationMutes');
   await Promise.all([
     repoWebhooks.remove(telegramId, repoName),
