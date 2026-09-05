@@ -1,16 +1,20 @@
 /**
  * Ephemeral messages — "flash, then vanish." Generalizes the exact pattern
  * Filter/Sort already used (edit a confirmation, delete it ~800ms later,
- * show the real result underneath) into a reusable helper, so BBTB marker
- * messages and other low-stakes confirmations across the bot can do the
- * same thing instead of piling up forever in the chat.
+ * show the real result underneath) into a reusable helper for low-stakes
+ * confirmations that would otherwise pile up forever in the chat.
  *
- * Why this is safe for BBTB markers specifically: a Telegram reply
- * keyboard (BBTB) is a CHAT-level UI element, not tied to the message that
- * introduced it. Once sent, it stays displayed until replaced by another
- * reply keyboard or explicitly removed — deleting the message that
- * carried it does NOT remove the keyboard from view. This is standard,
- * documented Bot API behavior, not something this bot invented.
+ * IMPORTANT — BBTB markers are the one thing this must NOT auto-delete.
+ * An earlier version of this file assumed a Telegram reply keyboard (BBTB)
+ * is purely chat-level and survives deletion of the message that
+ * introduced it. That assumption was wrong in practice: deleting the
+ * message carrying a reply_markup keyboard causes Telegram clients to
+ * collapse/hide that keyboard (this is exactly what was reported as "the
+ * BBTB tries to disappear, then disappears completely" — the 2.5s timer
+ * firing and taking the keyboard down with it). So: any message sent with
+ * a reply keyboard (a bbtb.* markup) is intentionally sent as permanent,
+ * matching how v0.6.0 always did it — only messages with no keyboard (or
+ * an inline keyboard attached to that same message) are safe to auto-delete.
  *
  * What this is deliberately NOT used for: errors/warnings, anything that
  * functions as a receipt (delete/restore/export results, bulk-run
@@ -21,14 +25,23 @@
 
 const DEFAULT_DELAY_MS = 2500;
 
-/** Sends a message and schedules its own deletion. Use for BBTB markers
- * and low-stakes confirmations — never for anything the person might want
- * to scroll back to. Failure to delete (message already gone, chat
- * cleared, etc.) is silently ignored — it was only ever a tidiness step,
- * never something the rest of the flow depends on. */
+/** True if `extra` would attach a Telegram custom reply keyboard (BBTB) —
+ * i.e. Markup.keyboard(...), as opposed to no markup or an inline_keyboard
+ * attached to the message itself. */
+function carriesReplyKeyboard(extra) {
+  return !!(extra && extra.reply_markup && extra.reply_markup.keyboard);
+}
+
+/** Sends a message and, unless it carries a BBTB reply keyboard, schedules
+ * its own deletion. Use for low-stakes confirmations — never for anything
+ * the person might want to scroll back to. Failure to delete (message
+ * already gone, chat cleared, etc.) is silently ignored — it was only ever
+ * a tidiness step, never something the rest of the flow depends on. */
 async function sendEphemeral(ctx, text, extra = {}, delayMs = DEFAULT_DELAY_MS) {
   const msg = await ctx.reply(text, extra);
-  scheduleDelete(ctx, msg.message_id, delayMs);
+  if (!carriesReplyKeyboard(extra)) {
+    scheduleDelete(ctx, msg.message_id, delayMs);
+  }
   return msg;
 }
 
@@ -42,4 +55,4 @@ function scheduleDelete(ctx, messageId, delayMs = DEFAULT_DELAY_MS) {
   }, delayMs).unref();
 }
 
-module.exports = { sendEphemeral, scheduleDelete, DEFAULT_DELAY_MS };
+module.exports = { sendEphemeral, scheduleDelete, carriesReplyKeyboard, DEFAULT_DELAY_MS };
