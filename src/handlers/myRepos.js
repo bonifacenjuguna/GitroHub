@@ -9,6 +9,7 @@ const config = require('../config');
 const pins = require('../lib/pins');
 const tags = require('../lib/tags');
 const ephemeral = require('../lib/ephemeral');
+const savedViews = require('../lib/savedViews');
 
 // Simple in-memory view-state per user (filter/sort/page) — not sensitive,
 // fine to keep in process memory; resets on restart which is harmless here.
@@ -16,30 +17,37 @@ const viewState = new Map();
 
 function getState(telegramId) {
   if (!viewState.has(telegramId)) {
-    viewState.set(telegramId, { filterType: 'all', filterValue: null, sort: 'updated', page: 1, initialized: false });
+    viewState.set(telegramId, { filterType: 'all', filterValue: null, sort: 'updated', page: 1, initialized: false, savedViewId: null });
   }
   return viewState.get(telegramId);
 }
 
-async function applyFilterSort(repos, state, telegramId) {
+async function applyFilterSort(repos, state, telegramId, activeView) {
   let filtered = repos;
-  if (state.filterType === 'public') filtered = repos.filter((r) => !r.private);
-  if (state.filterType === 'private') filtered = repos.filter((r) => r.private);
-  if (state.filterType === 'forks') filtered = repos.filter((r) => r.fork);
-  // #9 — has-license / no-license filter. license.key === 'other' or
-  // spdx_id === 'NOASSERTION' both mean GitHub couldn't confidently detect
-  // a real license, treated the same as "no license" everywhere else in
-  // the bot (see format.repoCard).
-  if (state.filterType === 'haslicense') {
-    filtered = repos.filter((r) => r.license && r.license.spdx_id && r.license.spdx_id !== 'NOASSERTION');
-  }
-  if (state.filterType === 'nolicense') {
-    filtered = repos.filter((r) => !r.license || !r.license.spdx_id || r.license.spdx_id === 'NOASSERTION');
-  }
-  if (state.filterType === 'language') filtered = repos.filter((r) => (r.language || 'None') === state.filterValue);
-  if (state.filterType === 'tag') {
-    const repoNames = new Set(await tags.reposWithTag(telegramId, Number(state.filterValue)));
-    filtered = repos.filter((r) => repoNames.has(r.name));
+  if (activeView) {
+    // Smart Folder active — its saved clauses replace the simple
+    // filterType chain entirely (they're two different filtering systems;
+    // mixing them silently would be confusing about which one "won").
+    filtered = await savedViews.apply(telegramId, activeView, repos);
+  } else {
+    if (state.filterType === 'public') filtered = repos.filter((r) => !r.private);
+    if (state.filterType === 'private') filtered = repos.filter((r) => r.private);
+    if (state.filterType === 'forks') filtered = repos.filter((r) => r.fork);
+    // #9 — has-license / no-license filter. license.key === 'other' or
+    // spdx_id === 'NOASSERTION' both mean GitHub couldn't confidently detect
+    // a real license, treated the same as "no license" everywhere else in
+    // the bot (see format.repoCard).
+    if (state.filterType === 'haslicense') {
+      filtered = repos.filter((r) => r.license && r.license.spdx_id && r.license.spdx_id !== 'NOASSERTION');
+    }
+    if (state.filterType === 'nolicense') {
+      filtered = repos.filter((r) => !r.license || !r.license.spdx_id || r.license.spdx_id === 'NOASSERTION');
+    }
+    if (state.filterType === 'language') filtered = repos.filter((r) => (r.language || 'None') === state.filterValue);
+    if (state.filterType === 'tag') {
+      const repoNames = new Set(await tags.reposWithTag(telegramId, Number(state.filterValue)));
+      filtered = repos.filter((r) => repoNames.has(r.name));
+    }
   }
 
   const sorted = [...filtered];
@@ -54,7 +62,8 @@ async function applyFilterSort(repos, state, telegramId) {
 
 const SORT_LABELS = { updated: 'Recently Updated', name: 'Name (A-Z)', stars: 'Most Stars', created: 'Recently Created', language: 'Dominant Language (A-Z)' };
 
-async function filterLabel(state, telegramId) {
+async function filterLabel(state, telegramId, activeView) {
+  if (activeView) return `📁 ${activeView.name}`;
   if (state.filterType === 'all') return 'All';
   if (state.filterType === 'public') return '🌐 Public';
   if (state.filterType === 'private') return '🔒 Private';
@@ -113,14 +122,23 @@ async function showMyRepos(ctx, { edit = false } = {}) {
   }
 
   const allRepos = await repoCache.getRepos(ctx.from.id, token);
-  const filtered = await applyFilterSort(allRepos, state, telegramId);
+
+  // Smart Folders (saved views) — resolved once per load so applyFilterSort
+  // and filterLabel agree on the same view without querying twice.
+  let activeView = null;
+  if (state.savedViewId) {
+    activeView = await savedViews.get(telegramId, state.savedViewId);
+    if (!activeView) state.savedViewId = null; // deleted elsewhere — fall back silently
+  }
+
+  const filtered = await applyFilterSort(allRepos, state, telegramId, activeView);
 
   const perPage = config.REPOS_PER_PAGE;
   const totalPages = Math.max(1, Math.ceil(filtered.length / perPage));
   state.page = Math.min(state.page, totalPages);
   const pageRepos = filtered.slice((state.page - 1) * perPage, state.page * perPage);
 
-  const fLabel = await filterLabel(state, telegramId);
+  const fLabel = await filterLabel(state, telegramId, activeView);
   let text = `${format.sectionHeader('Repositories', `${allRepos.length} total`)}\n`;
   text += `  Filter: ${format.escapeMd(fLabel)} · Sort: ${format.escapeMd(SORT_LABELS[state.sort])}\n\n`;
 
@@ -157,28 +175,48 @@ async function showMyRepos(ctx, { edit = false } = {}) {
   const keyboard = inline.repoList(pageRepos, state.page, totalPages);
 
   if (edit) {
-    await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
-  } else {
-    // Reply keyboard (BBTB) and inline keyboard can't share one message —
-    // send the BBTB once via a tiny marker message, then content with only inline.
-    await ephemeral.sendEphemeral(ctx, '📁 My Repos', bbtb.myRepos);
-    await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
-    // Surprise feature — recently viewed quick-access, best-effort, only
-    // shown on the fresh (non-edit) load so it doesn't reappear on every
-    // filter/sort/page tweak
     try {
-      const recentlyViewed = require('../lib/recentlyViewed');
-      const recent = await recentlyViewed.recent(telegramId, 5);
-      if (recent.length) {
-        const style = require('../keyboards/buttonStyle');
-        const { Markup } = require('telegraf');
-        await ctx.reply(
-          '🕐 Recently viewed:',
-          Markup.inlineKeyboard(recent.map((name) => [style.callback(`📦 ${name}`, `repo:${name}`, style.BLUE)]))
-        );
-      }
-    } catch (_) { /* best-effort, never blocks the main list */ }
+      return await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
+    } catch (_) { /* e.g. "message is not modified" on a no-op refresh — fall through to a fresh send */ }
   }
+  // 📁 Smart Folders picker — sent above the list, fresh loads only (not
+  // edit-in-place refreshes), same best-effort shape as Recently Viewed
+  // below. This is what Bulk Actions' "find it above My Repos" message
+  // (shown after saving a Smart Folder) refers to.
+  try {
+    const views = await savedViews.list(telegramId);
+    if (views.length) {
+      const style = require('../keyboards/buttonStyle');
+      const { Markup } = require('telegraf');
+      const rows = [];
+      for (let i = 0; i < views.length; i += 2) {
+        rows.push(views.slice(i, i + 2).map((v) =>
+          style.callback(`${activeView && v.id === activeView.id ? '✅ ' : ''}📁 ${v.name}`, `savedview:apply:${v.id}`, style.BLUE)
+        ));
+      }
+      if (activeView) rows.push([style.callback('❌ Exit Smart Folder', 'savedview:exit', style.BLUE)]);
+      await ctx.reply('📁 *Smart Folders*', { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) });
+    }
+  } catch (_) { /* best-effort — never blocks the main list */ }
+  // Reply keyboard (BBTB) and inline keyboard can't share one message —
+  // send the BBTB once via a tiny marker message, then content with only inline.
+  await ephemeral.sendEphemeral(ctx, '📁 My Repos', bbtb.myRepos);
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
+  // Surprise feature — recently viewed quick-access, best-effort, only
+  // shown on the fresh (non-edit) load so it doesn't reappear on every
+  // filter/sort/page tweak
+  try {
+    const recentlyViewed = require('../lib/recentlyViewed');
+    const recent = await recentlyViewed.recent(telegramId, 5);
+    if (recent.length) {
+      const style = require('../keyboards/buttonStyle');
+      const { Markup } = require('telegraf');
+      await ctx.reply(
+        '🕐 Recently viewed:',
+        Markup.inlineKeyboard(recent.map((name) => [style.callback(`📦 ${name}`, `repo:${name}`, style.BLUE)]))
+      );
+    }
+  } catch (_) { /* best-effort, never blocks the main list */ }
 }
 
 async function showStats(ctx) {
@@ -340,6 +378,7 @@ function setFilter(telegramId, type, value = null) {
   const state = getState(telegramId);
   state.filterType = type;
   state.filterValue = value;
+  state.savedViewId = null; // choosing a plain filter exits any active Smart Folder
   state.page = 1;
 }
 
@@ -353,6 +392,18 @@ function setPage(telegramId, page) {
   getState(telegramId).page = page;
 }
 
+function setSavedView(telegramId, viewId) {
+  const state = getState(telegramId);
+  state.savedViewId = viewId;
+  state.page = 1;
+}
+
+function clearSavedView(telegramId) {
+  const state = getState(telegramId);
+  state.savedViewId = null;
+  state.page = 1;
+}
+
 module.exports = {
   showMyRepos,
   showStats,
@@ -364,6 +415,8 @@ module.exports = {
   setFilter,
   setSort,
   setPage,
+  setSavedView,
+  clearSavedView,
   getState,
   renderRepoLine,
   tagLineFor,

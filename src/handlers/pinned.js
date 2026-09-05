@@ -7,6 +7,7 @@ const requireConnected = require('../lib/requireConnected');
 const format = require('../lib/format');
 const bbtb = require('../keyboards/bbtb');
 const myRepos = require('./myRepos');
+const ephemeral = require('../lib/ephemeral');
 
 async function showPinned(ctx, { edit = false } = {}) {
   const token = await requireConnected(ctx);
@@ -33,7 +34,6 @@ async function showPinned(ctx, { edit = false } = {}) {
   // unbounded Promise.all() here would scale the number of simultaneous
   // GitHub requests directly with pin count.
   const { mapWithConcurrency } = require('../lib/concurrency');
-const ephemeral = require('../lib/ephemeral');
   const treeStatsResults = await mapWithConcurrency(pinList, 3, (p) => {
     const repo = repoByName.get(p.repo_name);
     if (!repo) return null;

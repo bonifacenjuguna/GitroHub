@@ -35,14 +35,15 @@ async function showActivity(ctx, { page = 1, errorsOnly = false, edit = false, s
   const keyboard = inline.activityPagination(page, totalPages, errorsOnly);
 
   if (edit) {
-    await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
-  } else {
-    // BBTB marker only on first open — chained refresh taps pass
-    // skipBbtb since the reply keyboard is already showing correctly and
-    // resending it every tap would just be clutter.
-    if (!skipBbtb) await ephemeral.sendEphemeral(ctx, '📜 Activity', bbtb.activityLog);
-    await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
+    try {
+      return await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
+    } catch (_) { /* e.g. "message is not modified" on a no-op refresh — fall through to a fresh send */ }
   }
+  // BBTB marker only on first open — chained refresh taps pass
+  // skipBbtb since the reply keyboard is already showing correctly and
+  // resending it every tap would just be clutter.
+  if (!skipBbtb) await ephemeral.sendEphemeral(ctx, '📜 Activity', bbtb.activityLog);
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
 }
 
 module.exports = { showActivity };

@@ -727,7 +727,6 @@ function createBot() {
     if (data === 'automation:schedulehub') { await ctx.answerCbQuery(); return automation.showScheduleHub(ctx); }
     if (data === 'automation:scheduledcommits') { await ctx.answerCbQuery(); return scheduledCommits.showScheduledCommits(ctx); }
     if (data === 'automation:timezone') { await ctx.answerCbQuery(); return timezoneHandler.showTimezone(ctx); }
-    if (data === 'automation:ruleshub') { await ctx.answerCbQuery(); return automation.showRulesHub(ctx); }
     if (data === 'automation:defaults') { await ctx.answerCbQuery(); return myDefaults.showDefaults(ctx); }
     if (data === 'automation:tagrules') { await ctx.answerCbQuery(); return automation.showAutoTagRules(ctx); }
     if (data === 'automation:muterules') { await ctx.answerCbQuery(); return automation.showMuteRules(ctx); }
@@ -894,12 +893,23 @@ function createBot() {
     // Smart Folders (saved views)
     if (data.startsWith('savedview:apply:')) {
       await ctx.answerCbQuery();
-      const savedViews = require('./lib/savedViews');
       const myRepos = require('./handlers/myRepos');
-      return myRepos.showMyRepos(ctx, { savedViewId: Number(data.split('savedview:apply:')[1]) });
+      const viewId = Number(data.split('savedview:apply:')[1]);
+      myRepos.setSavedView(ctx.from.id, viewId);
+      await ctx.editMessageText('✅ Smart Folder applied');
+      setTimeout(() => ctx.deleteMessage().catch(() => {}), 800);
+      return myRepos.showMyRepos(ctx);
+    }
+    if (data === 'savedview:exit') {
+      await ctx.answerCbQuery();
+      const myRepos = require('./handlers/myRepos');
+      myRepos.clearSavedView(ctx.from.id);
+      await ctx.editMessageText('✅ Exited Smart Folder');
+      setTimeout(() => ctx.deleteMessage().catch(() => {}), 800);
+      return myRepos.showMyRepos(ctx);
     }
     if (data.startsWith('savedview:delete:')) {
-      await ctx.answerCbQuery();
+      await ctx.answerCbQuery('🗑 Removed');
       const savedViews = require('./lib/savedViews');
       await savedViews.remove(ctx.from.id, Number(data.split('savedview:delete:')[1]));
       const myRepos = require('./handlers/myRepos');

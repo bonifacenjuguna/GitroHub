@@ -38,7 +38,6 @@ async function showTimezone(ctx) {
 
 async function setTimezone(ctx, zoneId) {
   const { pool } = require('../db/postgres');
-const ephemeral = require('../lib/ephemeral');
   await pool.query('UPDATE users SET timezone = $1 WHERE telegram_id = $2', [zoneId, ctx.from.id]);
   await ephemeral.sendEphemeral(ctx, format.successMessage(`Timezone set to ${zoneId}`));
   return showTimezone(ctx);

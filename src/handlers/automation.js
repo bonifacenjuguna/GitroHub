@@ -538,11 +538,12 @@ async function showAutomationLog(ctx, { page = 1, edit = false } = {}) {
 
   const keyboard = inline.automationLogPagination(page, totalPages);
   if (edit) {
-    await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
-  } else {
-    await ephemeral.sendEphemeral(ctx, '📜 Automation Log', bbtb.backToAutomation);
-    await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
+    try {
+      return await ctx.editMessageText(text, { parse_mode: 'MarkdownV2', ...keyboard });
+    } catch (_) { /* e.g. "message is not modified" on a no-op refresh — fall through to a fresh send */ }
   }
+  await ephemeral.sendEphemeral(ctx, '📜 Automation Log', bbtb.backToAutomation);
+  await ctx.reply(text, { parse_mode: 'MarkdownV2', ...keyboard });
 }
 
 module.exports = {
