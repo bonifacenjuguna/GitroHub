@@ -141,7 +141,7 @@ function createBot() {
     '⭐ Pinned': (ctx) => pinned.showPinned(ctx),
     '🧹 Bulk Select': (ctx) => bulkActions.startBulkSelect(ctx),
     // Bulk Select's keyboards use a shorter '⬆️ Menu' label than the rest
-    // of the bot's '⬆️ Back to Menu' — same destination, own entry
+    // of the bot's '⬆️ Back to Menu' (#39) — same destination, own entry
     // since bot.hears matches on exact text.
     '⬆️ Menu': async (ctx) => {
       ctx.session.awaitingSearch = false;
@@ -215,9 +215,9 @@ function createBot() {
     '📅 Schedule': (ctx) => automation.showScheduleHub(ctx),
     '⬆️ Back to Schedule': (ctx) => automation.showScheduleHub(ctx),
     '📦 Storage': (ctx) => storageData.showStorageData(ctx),
-    // 🔄 Refresh Status and 🔑 Access Log live inline rather than as BBTB
-    // buttons. Their handler functions are reachable via the
-    // callback_query router below.
+    // 🔄 Refresh Status and 🔑 Access Log are no longer BBTB buttons —
+    // relocated to inline (see #47/#48). Their handler functions are still
+    // reachable, now via the callback_query router below.
 
     '⬅️ Back': async (ctx) => {
       // Clears every search-mode flag before re-showing the type picker —

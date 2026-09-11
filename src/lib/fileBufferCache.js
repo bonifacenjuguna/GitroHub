@@ -20,7 +20,7 @@ const config = require('../config');
  * this cache is lost (the wizard session itself may survive in Redis, but
  * the actual file bytes won't). That's an acceptable cost — a rare
  * mid-flow restart losing one in-progress upload is far cheaper than every
- * normal upload straining memory by round-tripping through Redis.
+ * normal upload straining memory the way the old approach did.
  */
 const store = new Map(); // id -> { content, timer }
 

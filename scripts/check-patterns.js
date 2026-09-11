@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 /**
- * check-patterns.js — permanent home for two bug-class detectors, run
- * automatically every time via `npm run check:patterns` (or `npm run
- * verify`) rather than depending on someone remembering to run an
- * audit script by hand.
+ * check-patterns.js — permanent home for the two bug-class detectors that
+ * were originally written as one-off audit scripts, run by hand, and
+ * thrown away afterward. That meant every check only ever caught bugs
+ * that already existed at the moment someone happened to remember to run
+ * it — this file exists so the same checks run automatically, every
+ * time, via `npm run check:patterns` (or `npm run verify`).
  *
  * Exits non-zero (failing CI / a pre-deploy check) if EXIT_ON_FINDINGS is
  * true for a given check and it finds something. Two checks are strict

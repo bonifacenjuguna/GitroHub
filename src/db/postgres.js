@@ -7,13 +7,12 @@ const logger = require('../lib/logger');
 // buffers in memory. Capped low to keep the baseline footprint small on
 // Railway's 512MB free-tier limit.
 //
-// connectionTimeoutMillis / statement_timeout are both set explicitly:
-// leaving either unset means a request that can't get a free connection
-// (e.g. the pool exhausted by orphaned connections from a prior crashed
-// instance) would wait forever instead of failing with a clear error —
-// and since even the "are you connected" check is a DB query, that would
-// make the whole bot appear frozen, including /start. Both fail fast
-// instead of hanging.
+// connectionTimeoutMillis / statement_timeout: previously UNSET, meaning a
+// request that couldn't get a free connection (e.g. the pool exhausted by
+// orphaned connections from a prior crashed instance) just waited forever
+// instead of failing with a clear error — this is what caused the whole
+// bot to appear frozen, including /start, since even the "are you
+// connected" check is a DB query. Now both fail fast instead of hanging.
 const pool = new Pool({
   connectionString: config.DATABASE_URL,
   max: config.PG_POOL_MAX,

@@ -63,8 +63,8 @@ async function confirmClear(ctx, scope) {
   );
 }
 
-/** actionLock-protected — see lib/actionLock.js — since this is a
- * destructive Storage & Data action and needs double-tap protection. */
+/** actionLock-protected — see lib/actionLock.js. Clear was previously the
+ * only destructive Storage & Data action without double-tap protection. */
 async function executeClear(ctx, scope) {
   const telegramId = ctx.from.id;
   const { skipped } = await actionLock.withLock(telegramId, 'storageClear', async () => {
@@ -130,7 +130,7 @@ async function showCleanupMenu(ctx, { edit = false } = {}) {
     [style.callback(user.auto_cleanup_on_delete ? '🗑 Turn Off Auto-Delete' : '🗑 Turn On Auto-Delete', 'storage:toggleautodelete')],
   ]);
 
-  // Retention/auto-delete are a multi-toggle screen you flip
+  // #34 — retention/auto-delete are a multi-toggle screen you flip
   // repeatedly, same shape as Notifications, so it edits in place instead
   // of resending a fresh menu every tap.
   if (edit) {

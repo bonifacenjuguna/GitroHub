@@ -34,7 +34,7 @@ async function applyFilterSort(repos, state, telegramId, activeView) {
     if (state.filterType === 'public') filtered = repos.filter((r) => !r.private);
     if (state.filterType === 'private') filtered = repos.filter((r) => r.private);
     if (state.filterType === 'forks') filtered = repos.filter((r) => r.fork);
-    // has-license / no-license filter. license.key === 'other' or
+    // #9 — has-license / no-license filter. license.key === 'other' or
     // spdx_id === 'NOASSERTION' both mean GitHub couldn't confidently detect
     // a real license, treated the same as "no license" everywhere else in
     // the bot (see format.repoCard).
@@ -245,7 +245,7 @@ async function showStats(ctx) {
   const mostActive = [...allRepos].sort((a, b) => new Date(b.pushed_at || b.updated_at) - new Date(a.pushed_at || a.updated_at))[0];
   const oldest = [...allRepos].sort((a, b) => new Date(a.created_at) - new Date(b.created_at))[0];
 
-  // Size trend. Uses GitHub's own repo.size field (already on every
+  // #8 — size trend. Uses GitHub's own repo.size field (already on every
   // repo object here, no extra fetch) rather than the real tree-based size
   // used elsewhere — summing real tree sizes across an entire account would
   // mean one tree fetch per repo just to render Stats, which isn't worth it

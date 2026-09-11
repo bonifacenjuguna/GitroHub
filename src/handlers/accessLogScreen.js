@@ -32,8 +32,8 @@ async function showAccessLog(ctx, { fromActivity = false } = {}) {
   }
 
   const alertOn = user ? user.alert_on_new_connection : true;
-  // Reachable from inside Activity, so "back" goes to Activity, not
-  // Settings.
+  // Relocated here from its own Settings BBTB row (#47) — reachable from
+  // inside Activity now, so "back" goes to Activity, not Settings.
   if (!fromActivity) await ephemeral.sendEphemeral(ctx, '🔑 Access Log', bbtb.backToSettings);
   await ctx.reply(text, {
     parse_mode: 'MarkdownV2',

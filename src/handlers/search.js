@@ -92,7 +92,7 @@ async function handleRepoSearch(ctx, query) {
   if (!token) return;
 
   const searchHistory = require('../lib/searchHistory');
-  await searchHistory.record(ctx.from.id, query); // best-effort, non-blocking to the actual search
+  await searchHistory.record(ctx.from.id, query); // #12 — best-effort, non-blocking to the actual search
 
   const repos = await repoCache.getRepos(ctx.from.id, token);
 
@@ -144,7 +144,7 @@ async function handleRepoSearch(ctx, query) {
 
   if (close.length) {
     const cards = close.map((r) => {
-      // Copy Link alongside Open, informational not navigation, colorless
+      // #4 — Copy Link alongside Open, informational not navigation, colorless
       rows.push([
         style.callback(`${counter}. ${r.name}`, `repo:${r.name}`, style.BLUE),
         style.callback('📋 Copy Link', `search:copylink:${r.name}`),
@@ -204,7 +204,7 @@ async function handleExternalRepo(ctx, owner, repoName) {
     const keyboard = Markup.inlineKeyboard([
       [style.callback('⬇️ Download as ZIP', 'external:download', style.BLUE)],
       [style.callback('🍴 Fork to My Account', 'external:fork', style.BLUE)],
-      // Star/Unstar — a toggle that redraws this same screen, not
+      // Star/Unstar (#6) — a toggle that redraws this same screen, not
       // navigation, so it stays colorless like every other toggle.
       [style.callback(starred ? '⭐ Unstar' : '⭐ Star', 'external:star')],
       [Markup.button.url('🔗 View on GitHub', repo.html_url)],
@@ -223,7 +223,7 @@ async function handleExternalRepo(ctx, owner, repoName) {
   }
 }
 
-/** Star/Unstar toggle. Re-shows the same external-repo screen after,
+/** #6 — Star/Unstar toggle. Re-shows the same external-repo screen after,
  * matching how other in-place toggles (Pin, Notifications) behave. */
 async function toggleStar(ctx) {
   const { owner, repo } = ctx.session.externalRepo;
@@ -302,7 +302,7 @@ async function executeForkExternal(ctx) {
   if (skipped) await ctx.reply('⏳ Already forking — please wait a moment.');
 }
 
-/** Copy Link, sent as its own message so the URL is easy to tap-copy. */
+/** #4 — Copy Link, sent as its own message so the URL is easy to tap-copy. */
 async function copyRepoLink(ctx, repoName) {
   const token = await requireConnected(ctx);
   if (!token) return;

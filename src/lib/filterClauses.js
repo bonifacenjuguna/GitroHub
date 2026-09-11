@@ -46,8 +46,8 @@ function matchesClause(repo, clause, ctx) {
       return repo.name.toLowerCase().includes(String(clause.value).toLowerCase());
     case 'fork':
       return !!repo.fork === (clause.value !== 'false');
-    // Same has-license / no-license definition as myRepos' own filterType,
-    // so "no license" means the same thing everywhere in the bot.
+    // #9's has-license / no-license definition, shared with myRepos' own
+    // filterType so "no license" means the same thing everywhere in the bot.
     case 'haslicense':
       return !!(repo.license && repo.license.spdx_id && repo.license.spdx_id !== 'NOASSERTION');
     case 'nolicense':

@@ -296,7 +296,7 @@ const scene = new Scenes.WizardScene(
         inline.createRepoSuccess(repo.name)
       );
 
-      // Default tag suggestion, based on the visibility/license just
+      // #9 — default tag suggestion, based on the visibility/license just
       // picked in this same flow. Only suggests a tag that already exists
       // with a matching name — never auto-creates one without the person's
       // consent, and never guesses if nothing matches.

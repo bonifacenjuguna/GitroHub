@@ -1,16 +1,20 @@
 /**
- * Ephemeral messages — "flash, then vanish." A reusable helper for
- * low-stakes confirmations (edit a confirmation, delete it ~800ms later,
- * show the real result underneath) that would otherwise pile up forever
- * in the chat.
+ * Ephemeral messages — "flash, then vanish." Generalizes the exact pattern
+ * Filter/Sort already used (edit a confirmation, delete it ~800ms later,
+ * show the real result underneath) into a reusable helper for low-stakes
+ * confirmations that would otherwise pile up forever in the chat.
  *
  * IMPORTANT — BBTB markers are the one thing this must NOT auto-delete.
- * A Telegram reply keyboard (BBTB) is not purely chat-level: deleting the
- * message that carries a reply_markup keyboard causes Telegram clients to
- * collapse/hide that keyboard along with it. So: any message sent with a
- * reply keyboard (a bbtb.* markup) is intentionally sent as permanent —
- * only messages with no keyboard (or an inline keyboard attached to that
- * same message) are safe to auto-delete.
+ * An earlier version of this file assumed a Telegram reply keyboard (BBTB)
+ * is purely chat-level and survives deletion of the message that
+ * introduced it. That assumption was wrong in practice: deleting the
+ * message carrying a reply_markup keyboard causes Telegram clients to
+ * collapse/hide that keyboard (this is exactly what was reported as "the
+ * BBTB tries to disappear, then disappears completely" — the 2.5s timer
+ * firing and taking the keyboard down with it). So: any message sent with
+ * a reply keyboard (a bbtb.* markup) is intentionally sent as permanent,
+ * matching how v0.6.0 always did it — only messages with no keyboard (or
+ * an inline keyboard attached to that same message) are safe to auto-delete.
  *
  * What this is deliberately NOT used for: errors/warnings, anything that
  * functions as a receipt (delete/restore/export results, bulk-run

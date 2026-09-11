@@ -39,7 +39,7 @@ async function recent(telegramId, { limit = 6, offset = 0, errorsOnly = false, a
   return { rows, total: countRows[0].total };
 }
 
-/** Looks for a rename event landing on this exact repo name within
+/** #7 — looks for a rename event landing on this exact repo name within
  * the last N days, to show "renamed from X" so a forgotten rename doesn't
  * look like the repo went missing. Matches the exact log format written
  * in scenes/renameRepo.js ('Renamed → oldName → newName'). */

@@ -1,13 +1,14 @@
 /**
- * safeEditMessageText — a single guard against an entire class of crash:
- * Telegram rejects editMessageText with "message is not modified" whenever
- * the new text is identical to what's already there (most commonly a rapid
+ * safeEditMessageText — the structural fix for an entire class of crash
+ * that used to be patched individually at each call site: Telegram
+ * rejects editMessageText with "message is not modified" whenever the
+ * new text is identical to what's already there (most commonly a rapid
  * double-tap firing the same edit twice, or a "Refresh" tap when nothing
  * actually changed). That's an expected, routine outcome of editing a
  * message — not a bug condition — so every call to ctx.editMessageText
- * anywhere in this bot goes through here instead of calling it directly,
- * rather than each screen needing its own try/catch written correctly by
- * hand.
+ * anywhere in this bot should go through here instead of calling it
+ * directly, rather than each new screen needing its own try/catch
+ * remembered and written correctly by hand.
  *
  * Returns true if the edit went through, false if it was skipped (either
  * because the content was already identical, or the message could no

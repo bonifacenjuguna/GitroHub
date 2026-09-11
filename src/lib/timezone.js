@@ -7,7 +7,7 @@
  * render a candidate UTC instant in the target zone, measure how far off
  * it is from the intended local time, and correct by that difference.
  * Verified against known UTC offsets including DST transitions (Europe/
- * London BST vs GMT).
+ * London BST vs GMT) before this was relied on for anything.
  */
 
 const COMMON_ZONES = [

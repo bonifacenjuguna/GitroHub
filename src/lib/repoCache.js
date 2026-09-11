@@ -47,7 +47,7 @@ async function getTreeStats(telegramId, owner, repoName, token) {
   const key = `${telegramId}:${repoName}`;
   const cached = treeStatsCache.get(key);
   if (cached && Date.now() - cached.timestamp < TREE_STATS_TTL_MS) {
-    return { ...cached.stats, fetchedAt: cached.timestamp }; // feeds "last synced" note
+    return { ...cached.stats, fetchedAt: cached.timestamp }; // #11 — feeds "last synced" note
   }
   const stats = await github.getTreeStats(token, owner, repoName);
   treeStatsCache.set(key, { stats, timestamp: Date.now() });

@@ -20,8 +20,9 @@ const STALE_DAYS = 90;
  * (an audit trail of what ran on its own).
  *
  * Defaults itself is untouched — same handler, same data, same behavior —
- * reachable one level deeper (myDefaults.showDefaults, entered via the
- * '⚙️ Defaults' BBTB button or the 'automation:defaults' callback).
+ * just relocated one level deeper (myDefaults.showDefaults, entered via
+ * the '⚙️ Defaults' BBTB button or 'automation:defaults' callback instead
+ * of its own top-level BBTB button).
  */
 async function showAutomationHub(ctx, { skipBbtb = false } = {}) {
   const users = require('../lib/users');

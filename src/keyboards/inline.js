@@ -40,9 +40,9 @@ function repoActions(repoName, pinned = false, repoUrl, webhookState = 'none', h
       style.callback(pinned ? '📌 Unpin' : '📌 Pin', `repo:pin:${repoName}`),
       style.callback('🏷️ Tags', `repo:tags:${repoName}`, style.BLUE),
     ],
-    // Clone URL is informational, not navigation — stays colorless.
+    // Clone URL is informational, not navigation — stays colorless (#3).
     // Open in Browser genuinely leaves the bot for github.com, so it's
-    // navigation like everything else in that tier.
+    // navigation like everything else in that tier (#13).
     [style.callback('📋 Clone URL', `repo:cloneurl:${repoName}`), style.callback('📄 Export JSON', `repo:export:${repoName}`)],
   ];
   if (hasReadme) rows.push([style.callback('📖 Send Full README', `repo:readme:${repoName}`)]);
@@ -116,7 +116,7 @@ function fileTree(entries, currentPath, pagination = null, repoUrl = null) {
     const parent = currentPath.split('/').slice(0, -1).join('/');
     rows.push([style.callback('⬅️ Up One Level', `browse:dir:${parent}`, style.BLUE)]);
   }
-  // Open in Browser fallback, same reasoning as Repo View's version
+  // #13 — Open in Browser fallback, same reasoning as Repo View's version
   if (repoUrl) {
     const ghPath = currentPath ? `${repoUrl}/tree/HEAD/${currentPath}` : repoUrl;
     rows.push([style.url('🔗 Open in Browser', ghPath, style.BLUE)]);

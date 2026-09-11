@@ -63,8 +63,9 @@ async function startBulkSelect(ctx, { page = 1, edit = false } = {}) {
     `${selected.length > 0 ? format.escapeMd(previewNames(selected)) : format.escapeMd('None selected yet')}\n\n` +
     `Page ${page} of ${totalPages}`;
 
-  // Every checkbox tap, filter button, and page flip edits the same
-  // message in place (matching how Notifications works), so selecting 10
+  // #33 — every checkbox tap, filter button, and page flip used to resend
+  // the whole screen as a brand-new message. Now it edits the same message
+  // in place (matching how Notifications already worked), so selecting 10
   // repos doesn't produce 10 messages.
   if (edit) {
     const kb = { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard(rows) };
@@ -127,7 +128,7 @@ async function showTagSelectMenu(ctx) {
     style.callback(`${t.emoji} ${t.name} (${t.repo_count})`, `bulk:selecttag:${t.id}`),
   ]);
   rows.push([style.callback('⬅️ Back', 'bulk:back')]);
-  // Single-pick menu: edited briefly, then this whole message is
+  // #29 — single-pick menu: edit briefly, then this whole message gets
   // replaced by the re-rendered Bulk Select screen on pick (selectByTag
   // below calls startBulkSelect with edit:true), so nothing lingers.
   if (!(await safeEditMessageText(ctx, '🏷️ Select all repos with this tag:', Markup.inlineKeyboard(rows)))) {
@@ -193,8 +194,8 @@ async function execute(ctx, action) {
   if (skipped) await ctx.reply('⏳ Already processing — please wait a moment.');
 }
 
-/** Re-runs execute() against just the names that failed last time,
- * reusing the same selection-state machinery Bulk Select already has
+/** #6 — re-runs execute() against just the names that failed last time,
+ * reusing the exact same selection-state machinery Bulk Select already has
  * rather than making the person re-select repos by hand. */
 async function retryFailed(ctx, action) {
   const queue = ctx.session.bulkRetryQueue;
@@ -295,7 +296,7 @@ async function _execute(ctx, action) {
   ctx.session.bulkSelected = [];
   await maybeAddLongOpNotice(ctx, selected.length);
 
-  // Retry Failed Only, so a partial failure doesn't mean re-selecting
+  // #6 — Retry Failed Only, so a partial failure doesn't mean re-selecting
   // everything by hand. Stores just the failed names for the retry tap.
   if (failed.length > 0) {
     ctx.session.bulkRetryQueue = { action, names: failed.map((r) => r.name) };

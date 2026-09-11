@@ -318,7 +318,7 @@ async function forkRepo(token, owner, repo) {
   })(), 'Fork repo');
 }
 
-/** Last N commits — used for Repo View's commit preview. */
+/** Last N commits — used for Repo View's commit preview (#5). */
 async function getRecentCommits(token, owner, repo, count = 3) {
   return withRetry((signal) => (async () => {
     const octo = client(token);
@@ -332,7 +332,7 @@ async function getRecentCommits(token, owner, repo, count = 3) {
   })(), 'Get recent commits');
 }
 
-/** Star/unstar a repo — quick toggle on public/external repos. GitHub's
+/** Star/unstar a repo (#6 — quick toggle on public/external repos). GitHub's
  * star endpoints return 204 No Content on success, nothing to parse. */
 async function starRepo(token, owner, repo) {
   return withAbortTimeout((signal) => (async () => {

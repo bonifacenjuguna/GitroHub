@@ -17,9 +17,9 @@ const repoWebhooks = require('../lib/repoWebhooks');
 const notificationMutes = require('../lib/notificationMutes');
 const ephemeral = require('../lib/ephemeral');
 
-/** Undo history holds up to 5 entries; each gets its own id so a
- * specific entry can be reversed even if something else happened
- * after it. */
+/** #2 — undo history now holds up to 5 entries instead of just the single
+ * most recent one; each gets its own id so a specific entry can be
+ * reversed even if something else happened after it. */
 const MAX_UNDO_HISTORY = 5;
 function pushUndo(ctx, entry) {
   ctx.session.undoHistory = ctx.session.undoHistory || [];
@@ -86,7 +86,7 @@ async function showRepoView(ctx, repoName) {
     treeStats = await repoCache.getTreeStats(ctx.from.id, repo.owner.login, repo.name, token);
   } catch (_) { /* empty/new repo — fall back to repo.size below */ }
 
-  // Language breakdown is also GitHub's own async background scan
+  // #56 — language breakdown is also GitHub's own async background scan
   // (linguist), not synchronous with a commit. "No language detected" is
   // only genuinely correct for a truly empty repo (fileCount === 0) — if
   // the repo actually has files but the breakdown still came back empty,
@@ -100,7 +100,7 @@ async function showRepoView(ctx, repoName) {
   const [pinned, repoTags, readmeResult, commits] = await Promise.all([
     pins.isPinned(ctx.from.id, repo.name),
     tags.tagsForRepo(ctx.from.id, repo.name),
-    // README preview and the health flag's hasReadme share this
+    // README preview (#14) and the health flag's hasReadme (#15) share this
     // one fetch — success means it exists (and gives us preview text),
     // 404 means it doesn't, anything else is treated as "unknown, don't
     // penalize the health flag for a fetch error that isn't really about
@@ -115,7 +115,7 @@ async function showRepoView(ctx, repoName) {
     ? `🏷️ ${format.escapeMd(repoTags.map((t) => `${t.emoji} ${t.name}`).join(' · '))}`
     : '';
 
-  // Forked-from — GitHub's single-repo GET already includes `parent`
+  // Forked-from (#1) — GitHub's single-repo GET already includes `parent`
   // for forks, no extra call needed; the repo LIST endpoint doesn't, which
   // is why list screens only show a plain "🍴 Fork" badge, not the source.
   const forkedFrom = repo.fork && repo.parent ? repo.parent.full_name : undefined;
@@ -132,19 +132,19 @@ async function showRepoView(ctx, repoName) {
     ? `▸ ${treeStats.fileCount} files · ${treeStats.folderCount} folders${treeStats.sizeIncomplete ? ' (size is a lower bound — some very large files weren\u2019t sized)' : ''}\n`
     : '';
 
-  // Last-synced note, since tree-based sizes are cached (not live)
+  // #11 — last-synced note, since tree-based sizes are cached (not live)
   const syncedNote = treeStats && treeStats.fetchedAt
     ? `▸ 🕓 Size as of ${format.escapeMd(format.relativeTime(treeStats.fetchedAt))}\n`
     : '';
 
-  // Rename history note, only within the last 2 weeks so it doesn't
+  // #7 — rename history note, only within the last 2 weeks so it doesn't
   // linger indefinitely once it's no longer useful context
   const renameInfo = await activity.recentRename(ctx.from.id, repo.name, 14).catch(() => null);
   const renameNote = renameInfo
     ? `▸ ✏️ Renamed from *${format.escapeMd(renameInfo.previousName)}* ${format.escapeMd(format.relativeTime(renameInfo.renamedAt))}\n`
     : '';
 
-  // README preview — first 3 non-empty lines, truncated hard so a huge
+  // README preview (#14) — first 3 non-empty lines, truncated hard so a huge
   // README can't blow out the message.
   let readmeSection = '';
   if (readmeResult.exists && readmeResult.content) {
@@ -153,7 +153,7 @@ async function showRepoView(ctx, repoName) {
     readmeSection = `\n\n📖 *README PREVIEW*\n${format.escapeMd(preview)}${readmeResult.content.length > 300 ? '…' : ''}`;
   }
 
-  // Last commits preview
+  // Last commits preview (#5)
   let commitsSection = '';
   if (commits.length) {
     const lines = commits.map((c) => `▸ \`${c.sha}\` ${format.escapeMd(c.message)} — ${format.escapeMd(format.relativeTime(c.date))}`);
@@ -180,7 +180,7 @@ async function showRepoView(ctx, repoName) {
   // Surprise feature — recently viewed, best-effort, never blocks the view itself
   recentlyViewed.record(ctx.from.id, repo.name).catch(() => {});
 
-  // Webhook/notifications state for this repo
+  // #1 — webhook/notifications state for this repo
   const webhookReg = await repoWebhooks.get(ctx.from.id, repo.name).catch(() => null);
   let webhookState = 'none';
   if (webhookReg) {
@@ -342,7 +342,7 @@ async function _executeToggleVisibility(ctx, repoName) {
     const updated = await github.setVisibility(token, user.login, repoName, !repo.private);
     repoCache.invalidateRepos(ctx.from.id);
     await activity.log(ctx.from.id, '🔒', `Visibility changed → ${repoName} (${repo.private ? 'Private→Public' : 'Public→Private'})`);
-    // Undo, pushed into the short history list
+    // #2 — Undo, now pushed into a short history list instead of a single slot
     const undoId = pushUndo(ctx, { type: 'visibility', repoName, previousValue: wasPrivate });
     await ctx.reply(format.successMessage(
       `Visibility updated: ${repoName} is now ${updated.private ? '🔒 Private' : '🌐 Public'}`
@@ -372,7 +372,7 @@ async function askEditDescription(ctx, repoName) {
   ctx.session.editingDescription = repoName;
   const user = await repoCache.getUser(ctx.from.id, token);
   const repo = await github.getRepo(token, user.login, repoName);
-  ctx.session.editingDescriptionPrevious = repo.description || ''; // feeds Undo
+  ctx.session.editingDescriptionPrevious = repo.description || ''; // feeds #11 Undo
   await ctx.reply(
     `✏️ Current description: ${repo.description ? `"${repo.description}"` : '(none)'}\n\nSend a new description, or ⏭️ Skip to clear it.`,
     bbtb.cancelWithSkip
@@ -396,7 +396,7 @@ async function handleDescriptionInput(ctx, text) {
     await github.updateDescription(token, user.login, repoName, description);
     repoCache.invalidateRepos(ctx.from.id);
     await activity.log(ctx.from.id, '✏️', `Description updated → ${repoName}`);
-    // Undo. Colorless: a value pick, same as any other adjustment.
+    // #2 — Undo. Colorless: a value pick, same as any other adjustment.
     const undoId = pushUndo(ctx, { type: 'description', repoName, previousValue: previousDescription });
     await ephemeral.sendEphemeral(ctx, format.successMessage('Description updated'), bbtb.repoView);
     await ctx.reply('You can undo this if it was a mistake:', Markup.inlineKeyboard([[style.callback('↩️ Undo', `undo:action:${undoId}`)]]));
@@ -469,7 +469,7 @@ async function _executeSetLicense(ctx, repoName, licenseKey) {
     repoCache.invalidateRepos(ctx.from.id);
     repoCache.invalidateTreeStats(ctx.from.id, repoName);
     await activity.log(ctx.from.id, '⚖️', `License updated → ${repoName} (${licenseKey})`);
-    // GitHub's license detection is an async background scan
+    // #55 — GitHub's license detection is an async background scan
     // (licensee), not synchronous with the commit. Re-showing the repo
     // card immediately would display GitHub's still-stale answer as if it
     // were current — misleading, since it visibly "catches up" a minute
@@ -487,7 +487,7 @@ async function _executeSetLicense(ctx, repoName, licenseKey) {
   }
 }
 
-/** Clone URL, sent as its own message so the ```code block``` is
+/** #3 — Clone URL, sent as its own message so the ```code block``` is
  * easily tap-to-copy in Telegram. */
 async function showCloneUrl(ctx, repoName) {
   const token = await requireConnected(ctx);
@@ -506,9 +506,9 @@ async function showCloneUrl(ctx, repoName) {
   );
 }
 
-/** Undo by specific id: undo history holds up to 5 entries, so
- * reversing an older entry doesn't require reversing everything after
- * it too. */
+/** #2 — undo by specific id, since undo history now holds up to 5 entries
+ * rather than a single slot; reversing an older entry doesn't require
+ * reversing everything after it too. */
 async function undoAction(ctx, undoId) {
   const history = ctx.session.undoHistory || [];
   const idx = history.findIndex((h) => String(h.id) === String(undoId));
@@ -538,7 +538,7 @@ async function undoAction(ctx, undoId) {
   }
 }
 
-/** First tap on a repo registers a real GitHub webhook pointed at our
+/** #1 — first tap on a repo registers a real GitHub webhook pointed at our
  * /webhook/github endpoint; subsequent taps just toggle mute (the webhook
  * itself stays registered, we just skip sending while muted, avoiding a
  * delete+recreate round trip with GitHub for something reversible locally). */
@@ -600,7 +600,7 @@ async function toggleWebhookMute(ctx, repoName) {
   return showRepoView(ctx, repoName);
 }
 
-/** Dumps everything GitroHub itself knows about a repo (not a GitHub
+/** #12 — dumps everything GitroHub itself knows about a repo (not a GitHub
  * data export) as a downloadable JSON file: tags, pin status, and whatever
  * local metadata exists, for backup/review purposes. */
 async function exportRepoJson(ctx, repoName) {
@@ -640,7 +640,7 @@ async function exportRepoJson(ctx, repoName) {
   }
 }
 
-/** Sends the full README as a document, alongside the truncated
+/** #8 — sends the full README as a document, alongside the truncated
  * preview already shown inline (reuses browseFiles' send-as-document idea). */
 async function sendFullReadme(ctx, repoName) {
   const token = await requireConnected(ctx);

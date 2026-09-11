@@ -210,8 +210,9 @@ async function showSettings(ctx, { skipBbtb = false, edit = false } = {}) {
   }
 
   // BBTB reply keyboard persists on screen once shown — only send the
-  // marker message on first open, not on every chained refresh tap, or
-  // every refresh would needlessly resend it and clutter the chat.
+  // marker message on first open, not on every chained refresh tap (#48),
+  // or every refresh would needlessly resend it too (the exact clutter
+  // this whole redesign pass was about avoiding elsewhere).
   if (!skipBbtb) await ephemeral.sendEphemeral(ctx, '⚙️ Settings', connected ? bbtb.settings : bbtb.disconnected);
 
   const keyboard = { parse_mode: 'MarkdownV2', ...Markup.inlineKeyboard([[style.callback('🔄 Refresh Status', 'settings:refresh')]]) };

@@ -314,7 +314,7 @@ const scene = new Scenes.WizardScene(
         return ctx.scene.leave();
       }
       await ephemeral.sendEphemeral(ctx, 'Write a commit message, use default, or tap a suggestion:', bbtb.cancelWithSkip);
-      // Quick-tap common commit messages instead of always typing one.
+      // #7 — quick-tap common commit messages instead of always typing one.
       // Colorless: these are value picks, not navigation.
       await ctx.reply(
         'Suggestions:',

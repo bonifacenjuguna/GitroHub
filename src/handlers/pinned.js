@@ -64,10 +64,10 @@ async function showPinned(ctx, { edit = false } = {}) {
     rows.push(arrowRow);
   }
 
-  // Refresh lives here rather than as its own BBTB row, avoiding a
-  // collision with My Repos' Refresh button. Reorder arrows and refresh
-  // all edit this same message in place instead of resending the whole
-  // pinned list on every tap.
+  // #50 — Refresh relocated here (was its own BBTB row, colliding with My
+  // Repos' Refresh button — see #49's discovery). #35 — reorder arrows and
+  // refresh all edit this same message in place instead of resending the
+  // whole pinned list on every tap.
   rows.push([style.callback('🔄 Refresh', 'pinned:refresh')]);
 
   const text = `${format.sectionHeader('Pinned Repos', `${lines.length} total`)}\n\n` + lines.join(`\n${format.CARD_DIVIDER}\n`);

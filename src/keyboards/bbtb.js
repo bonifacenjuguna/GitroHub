@@ -45,10 +45,10 @@ const browseFiles = Markup.keyboard([
   [b('⬆️ Back to Repo')],
 ]).resize();
 
-// Refresh Status and Access Log both live off this keyboard — Refresh
-// is an inline button on the Settings message itself (chained
-// fresh-message pattern), and Access Log is reachable from inside
-// Activity rather than its own Settings row.
+// Refresh Status (#48) and Access Log (#47) both relocated off this
+// keyboard — Refresh is now an inline button on the Settings message
+// itself (chained fresh-message pattern), and Access Log is reachable
+// from inside Activity instead of its own Settings row.
 // 💾 Export/Import lives inline inside 📦 Storage & Data now (alongside
 // 🗑️ Trash) rather than its own BBTB button — this keeps Settings a true
 // 2 rows instead of 3.
@@ -75,8 +75,8 @@ const searchAgain = Markup.keyboard([
   [b('⬅️ Back'), b('⬆️ Back to Menu')],
 ]).resize();
 
-// Refresh is an inline button on the Activity message itself (same
-// chained pattern as Settings' Refresh Status).
+// Refresh relocated to an inline button on the Activity message itself
+// (#49, same chained pattern as Settings' Refresh Status).
 const activityLog = Markup.keyboard([
   [b('⬆️ Back to Settings')],
 ]).resize();
@@ -85,8 +85,8 @@ const disconnected = Markup.keyboard([
   [b('🔗 Connect GitHub'), b('⚙️ Settings')],
 ]).resize();
 
-// Refresh is an inline button alongside the pin reorder arrows (same
-// reasoning as Activity's Refresh above).
+// Refresh relocated to an inline button alongside the pin reorder arrows
+// (#50, same reasoning as Activity's Refresh above).
 const pinned = Markup.keyboard([
   [b('⬆️ Back to Menu')],
 ]).resize();
@@ -103,14 +103,16 @@ const bulkComplete = Markup.keyboard([
   [b('📁 My Repos'), b('⬆️ Menu')],
 ]).resize();
 
-// 🤖 Automation hub — top level holds equal-weight destinations: the
-// rules/insights group (🔧 Rules, its own intermediate hub), 📅 Schedule
-// (its own intermediate hub bundling Scheduled Commits with Timezone,
-// since Scheduled Commits depends on Timezone to mean anything), and
-// Defaults, which sits directly on row one since it's read/adjusted far
-// more often than any single rule type. Log lives inline on the hub
-// message itself (see inline.automationHubActions) rather than as a BBTB
-// button.
+// 🤖 Automation hub — top level now only holds equal-weight destinations:
+// the rules/insights group (everything that used to be 4 separate top-level
+// buttons), Scheduled Commits, and Timezone (which Scheduled Commits
+// depends on to mean anything). Defaults + Log stay directly reachable
+// since they're read/adjusted far more often than any single rule type.
+// 🤖 Automation hub — Log moved to inline on the hub message itself (see
+// inline.automationHubActions), and Scheduled Commits + Timezone merged
+// into one "📅 Schedule" entry (its own intermediate hub, same
+// hub-of-hubs shape as 🔧 Rules) — both changes free enough space that
+// Defaults fits directly on row one instead of needing its own row.
 const automation = Markup.keyboard([
   [b('🔧 Rules'), b('📅 Schedule'), b('⚙️ Defaults')],
   [b('⬆️ Back to Settings')],

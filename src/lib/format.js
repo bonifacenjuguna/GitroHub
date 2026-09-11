@@ -91,7 +91,7 @@ function successMessage(what, detail) {
   return msg;
 }
 
-/** 🟢🟡🔴 Activity Status — purely a function of last-push recency,
+/** 🟢🟡🔴 Activity Status (#2) — purely a function of last-push recency,
  * no extra API call needed since repo.pushed_at is already on every repo
  * object. Thresholds: <30d actively touched, <180d ticking over, older
  * than that is genuinely stale. */
@@ -119,7 +119,7 @@ function activityStatus(repo) {
  * lib/github.js getTreeStats(). List screens that don't already fetch a
  * per-repo tree fall back to repo.size to avoid an extra API call per row.
  *
- * `forkedFrom` and `hasReadme` (feeds the health flag) are both
+ * `forkedFrom` (#1) and `hasReadme` (#15, feeds the health flag) are both
  * optional and only ever known in contexts that already fetched the full
  * repo object or its tree — list screens simply omit them rather than
  * paying for an extra API call per row just to populate a card detail.
@@ -147,7 +147,7 @@ function repoCard(repo, { pinned = false, license, description, sizeBytes, tagLi
     `▸ ${descLine}`;
   if (tagLine) card += `\n${tagLine}`;
 
-  // Health flag — full 3-part check (README+description+license)
+  // Health flag (#15) — full 3-part check (README+description+license)
   // only runs when hasReadme is explicitly passed (Repo View, which already
   // fetches it). List screens get a lighter 2-part check instead — adding
   // a README existence check per row there would mean an extra API call
